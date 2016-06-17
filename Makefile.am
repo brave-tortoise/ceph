@@ -15,12 +15,15 @@ EXTRA_DIST += \
 	etc/sysconfig/SuSEfirewall2.d/services/ceph-mon \
 	etc/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds \
 	udev/50-rbd.rules \
-	udev/60-ceph-partuuid-workaround.rules \
 	udev/95-ceph-osd.rules \
-	udev/95-ceph-osd-alt.rules \
 	share/known_hosts_drop.ceph.com \
 	share/id_dsa_drop.ceph.com \
 	share/id_dsa_drop.ceph.com.pub
+
+NPROC = nproc
+if FREEBSD
+	NPROC = sysctl -n hw.ncpu
+endif
 
 # why is it so hard to make autotools to this?
 install-data-local::
@@ -46,7 +49,7 @@ check-local:: all
 	@cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) lib/libgmock.la lib/libgmock_main.la
 #	exercise cli tools
 	u=`ulimit -u` ; \
-	p=`expr $(shell nproc) / 2` ; \
+	p=`expr $(shell ${NPROC}) / 2` ; \
 	n=`expr $$p \* 1024` ; \
 	if ${CHECK_ULIMIT} && echo ${MAKEFLAGS} | grep --quiet -e -j && test $$u -lt $$n ; then \
 		echo "ulimit -u is $$u which is lower than $$n = $$p / 2 * 1024" ; \
@@ -68,7 +71,7 @@ check_SCRIPTS = \
 # "make distclean" both runs this and recurses into src/gtest, if
 # gtest is in DIST_SUBDIRS. Take extra care to not fail when
 # effectively cleaned twice.
-clean-local:
+clean-local::
 	@if test -e src/gmock/Makefile; then \
 	  echo "Making clean in src/gmock"; \
 	  cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) clean; \

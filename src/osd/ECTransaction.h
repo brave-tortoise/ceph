@@ -17,9 +17,7 @@
 
 #include "OSD.h"
 #include "PGBackend.h"
-#include "osd_types.h"
 #include "ECUtil.h"
-#include <boost/optional/optional_io.hpp>
 #include "erasure-code/ErasureCodeInterface.h"
 
 class ECTransaction : public PGBackend::PGTransaction {
@@ -52,11 +50,11 @@ public:
   };
   struct TouchOp {
     hobject_t oid;
-    TouchOp(const hobject_t &oid) : oid(oid) {}
+    explicit TouchOp(const hobject_t &oid) : oid(oid) {}
   };
   struct RemoveOp {
     hobject_t oid;
-    RemoveOp(const hobject_t &oid) : oid(oid) {}
+    explicit RemoveOp(const hobject_t &oid) : oid(oid) {}
   };
   struct SetAttrsOp {
     hobject_t oid;
@@ -79,11 +77,15 @@ public:
     hobject_t oid;
     uint64_t expected_object_size;
     uint64_t expected_write_size;
+    uint32_t flags;
     AllocHintOp(const hobject_t &oid,
                 uint64_t expected_object_size,
-                uint64_t expected_write_size)
-      : oid(oid), expected_object_size(expected_object_size),
-        expected_write_size(expected_write_size) {}
+                uint64_t expected_write_size,
+		uint32_t flags)
+      : oid(oid),
+	expected_object_size(expected_object_size),
+        expected_write_size(expected_write_size),
+	flags(flags) {}
   };
   struct NoOp {};
   typedef boost::variant<
@@ -104,7 +106,6 @@ public:
   /// Write
   void touch(
     const hobject_t &hoid) {
-    bufferlist bl;
     ops.push_back(TouchOp(hoid));
   }
   void append(
@@ -159,8 +160,10 @@ public:
   void set_alloc_hint(
     const hobject_t &hoid,
     uint64_t expected_object_size,
-    uint64_t expected_write_size) {
-    ops.push_back(AllocHintOp(hoid, expected_object_size, expected_write_size));
+    uint64_t expected_write_size,
+    uint32_t flags) {
+    ops.push_back(AllocHintOp(hoid, expected_object_size, expected_write_size,
+			      flags));
   }
 
   void append(PGTransaction *_to_append) {

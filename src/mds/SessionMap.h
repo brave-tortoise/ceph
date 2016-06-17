@@ -86,7 +86,7 @@ private:
   void _update_human_name();
   std::string human_name;
 
-  // Versions in this this session was projected: used to verify
+  // Versions in this session was projected: used to verify
   // that appropriate mark_dirty calls follow.
   std::deque<version_t> projected;
 
@@ -186,7 +186,7 @@ public:
     ++importing_count;
   }
   void dec_importing() {
-    assert(importing_count);
+    assert(importing_count > 0);
     --importing_count;
   }
   bool is_importing() { return importing_count > 0; }
@@ -303,8 +303,8 @@ public:
     completed_requests_dirty = false;
   }
 
-  bool check_access(CInode *in, unsigned mask, int caller_uid, int caller_gid,
-		    int new_uid, int new_gid);
+  int check_access(CInode *in, unsigned mask, int caller_uid, int caller_gid,
+		   int new_uid, int new_gid);
 
 
   Session() : 
@@ -428,10 +428,16 @@ public:
   uint64_t set_state(Session *session, int state);
   map<version_t, list<MDSInternalContextBase*> > commit_waiters;
 
-  SessionMap(MDSRank *m) : mds(m),
+  explicit SessionMap(MDSRank *m) : mds(m),
 		       projected(0), committing(0), committed(0),
                        loaded_legacy(false)
   { }
+
+  ~SessionMap()
+  {
+    for (auto p : by_state)
+      delete p.second;
+  }
 
   void set_version(const version_t v)
   {

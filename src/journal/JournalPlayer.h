@@ -12,6 +12,8 @@
 #include "journal/JournalMetadata.h"
 #include "journal/ObjectPlayer.h"
 #include "cls/journal/cls_journal_types.h"
+#include <boost/none.hpp>
+#include <boost/optional.hpp>
 #include <map>
 
 class SafeTimer;
@@ -23,8 +25,8 @@ class ReplayHandler;
 
 class JournalPlayer {
 public:
-  typedef cls::journal::EntryPosition EntryPosition;
-  typedef cls::journal::EntryPositions EntryPositions;
+  typedef cls::journal::ObjectPosition ObjectPosition;
+  typedef cls::journal::ObjectPositions ObjectPositions;
   typedef cls::journal::ObjectSetPosition ObjectSetPosition;
 
   JournalPlayer(librados::IoCtx &ioctx, const std::string &object_oid_prefix,
@@ -34,15 +36,16 @@ public:
 
   void prefetch();
   void prefetch_and_watch(double interval);
-  void unwatch();
+  void shut_down(Context *on_finish);
 
   bool try_pop_front(Entry *entry, uint64_t *commit_tid);
 
 private:
   typedef std::set<uint8_t> PrefetchSplayOffsets;
-  typedef std::map<std::string, uint64_t> AllocatedTids;
   typedef std::map<uint64_t, ObjectPlayerPtr> ObjectPlayers;
   typedef std::map<uint8_t, ObjectPlayers> SplayedObjectPlayers;
+  typedef std::map<uint8_t, ObjectPosition> SplayedObjectPositions;
+  typedef std::set<uint64_t> ObjectNumbers;
 
   enum State {
     STATE_INIT,
@@ -51,15 +54,10 @@ private:
     STATE_ERROR
   };
 
-  struct C_Watch : public Context {
-    JournalPlayer *player;
-    uint64_t object_num;
-
-    C_Watch(JournalPlayer *p, uint64_t o) : player(p), object_num(o) {
-    }
-    virtual void finish(int r) {
-      player->handle_watch(object_num, r);
-    }
+  enum WatchStep {
+    WATCH_STEP_FETCH_CURRENT,
+    WATCH_STEP_FETCH_FIRST,
+    WATCH_STEP_ASSERT_ACTIVE
   };
 
   struct C_Fetch : public Context {
@@ -73,6 +71,22 @@ private:
     }
     virtual void finish(int r) {
       player->handle_fetched(object_num, r);
+    }
+  };
+
+  struct C_Watch : public Context {
+    JournalPlayer *player;
+    uint64_t object_num;
+    C_Watch(JournalPlayer *player, uint64_t object_num)
+      : player(player), object_num(object_num) {
+      player->m_async_op_tracker.start_op();
+    }
+    virtual ~C_Watch() {
+      player->m_async_op_tracker.finish_op();
+    }
+
+    virtual void finish(int r) override {
+      player->handle_watch(object_num, r);
     }
   };
 
@@ -92,17 +106,32 @@ private:
   bool m_watch_enabled;
   bool m_watch_scheduled;
   double m_watch_interval;
+  WatchStep m_watch_step = WATCH_STEP_FETCH_CURRENT;
+  bool m_watch_prune_active_tag = false;
+
+  bool m_shut_down = false;
+  bool m_handler_notified = false;
+
+  ObjectNumbers m_fetch_object_numbers;
 
   PrefetchSplayOffsets m_prefetch_splay_offsets;
   SplayedObjectPlayers m_object_players;
   uint64_t m_commit_object;
-  std::string m_commit_tag;
-  AllocatedTids m_commit_tids;
+  SplayedObjectPositions m_commit_positions;
+
+  boost::optional<uint64_t> m_active_tag_tid = boost::none;
+  boost::optional<uint64_t> m_prune_tag_tid = boost::none;
 
   void advance_splay_object();
 
+  bool is_object_set_ready() const;
+  bool verify_playback_ready();
+  void prune_tag(uint64_t tag_tid);
+  void prune_active_tag(const boost::optional<uint64_t>& tag_tid);
+
   const ObjectPlayers &get_object_players() const;
   ObjectPlayerPtr get_object_player() const;
+  ObjectPlayerPtr get_object_player(uint64_t object_number) const;
   ObjectPlayerPtr get_next_set_object_player() const;
   bool remove_empty_object_player(const ObjectPlayerPtr &object_player);
 
@@ -112,7 +141,13 @@ private:
 
   void fetch(uint64_t object_num);
   void handle_fetched(uint64_t object_num, int r);
+
+  void schedule_watch();
   void handle_watch(uint64_t object_num, int r);
+  void handle_watch_assert_active(int r);
+
+  void notify_entries_available();
+  void notify_complete(int r);
 };
 
 } // namespace journal

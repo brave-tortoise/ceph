@@ -7,7 +7,7 @@
 #include "librbd/AioImageRequestWQ.h"
 #include "librbd/internal.h"
 #include "librbd/Journal.h"
-#include "librbd/journal/Entries.h"
+#include "librbd/journal/Types.h"
 #include "journal/Journaler.h"
 #include "journal/ReplayEntry.h"
 #include "journal/ReplayHandler.h"
@@ -57,6 +57,7 @@ public:
          it != m_journalers.end(); ++it) {
       journal::Journaler *journaler = *it;
       journaler->stop_replay();
+      journaler->shut_down();
       delete journaler;
     }
 
@@ -67,7 +68,7 @@ public:
     journal::Journaler *journaler = new journal::Journaler(
       ictx->md_ctx, ictx->id, "dummy client", 1);
 
-    int r = journaler->register_client("unit test client");
+    int r = journaler->register_client(bufferlist());
     if (r < 0) {
       ADD_FAILURE() << "failed to register journal client";
       delete journaler;
@@ -150,6 +151,9 @@ TEST_F(TestJournalEntries, AioWrite) {
   bufferlist buffer_bl;
   buffer_bl.append(buffer);
   ASSERT_TRUE(aio_write_event.data.contents_equal(buffer_bl));
+
+  ASSERT_EQ(librbd::journal::AioWriteEvent::get_fixed_size() +
+              aio_write_event.data.length(), replay_entry.get_data().length());
 }
 
 TEST_F(TestJournalEntries, AioDiscard) {

@@ -3,6 +3,7 @@ if WITH_OSD
 
 
 libceph_example_la_SOURCES = \
+	common/buffer.cc \
 	compressor/Compressor.cc \
 	test/compressor/compressor_plugin_example.cc
 noinst_HEADERS += test/compressor/compressor_example.h
@@ -44,6 +45,28 @@ if LINUX
 unittest_compression_plugin_snappy_LDADD += -ldl
 endif
 check_TESTPROGRAMS += unittest_compression_plugin_snappy
+
+unittest_compression_zlib_SOURCES = \
+	test/compressor/test_compression_zlib.cc \
+	${zlib_sources}
+unittest_compression_zlib_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+unittest_compression_zlib_LDADD = $(LIBOSD) $(LIBCOMMON) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
+unittest_compression_zlib_LDFLAGS = -lz
+if LINUX
+unittest_compression_zlib_LDADD += -ldl
+endif
+check_TESTPROGRAMS += unittest_compression_zlib
+
+unittest_compression_plugin_zlib_SOURCES = \
+	test/compressor/test_compression_plugin_zlib.cc \
+	${zlib_sources}
+unittest_compression_plugin_zlib_CXXFLAGS = ${AM_CXXFLAGS} ${UNITTEST_CXXFLAGS}
+unittest_compression_plugin_zlib_LDADD = $(LIBOSD) $(LIBCOMMON) $(UNITTEST_LDADD) $(CEPH_GLOBAL) $(LIBCOMPRESSOR)
+unittest_compression_plugin_zlib_LDFLAGS = -lz
+if LINUX
+unittest_compression_plugin_zlib_LDADD += -ldl
+endif
+check_TESTPROGRAMS += unittest_compression_plugin_zlib
 
 endif # WITH_OSD
 endif # ENABLE_SERVER

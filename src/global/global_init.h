@@ -15,9 +15,7 @@
 #ifndef CEPH_COMMON_GLOBAL_INIT_H
 #define CEPH_COMMON_GLOBAL_INIT_H
 
-#include <deque>
 #include <stdint.h>
-#include <string>
 #include <vector>
 
 #include "common/code_environment.h"
@@ -32,14 +30,19 @@ class CephContext;
  */
 void global_init(std::vector < const char * > *alt_def_args,
 		 std::vector < const char* >& args,
-		 uint32_t module_type, code_environment_t code_env, int flags);
+		 uint32_t module_type,
+		 code_environment_t code_env,
+		 int flags,
+		 const char *data_dir_option = 0,
+		 bool run_pre_init = true);
 
 // just the first half; enough to get config parsed but doesn't start up the
 // cct or log.
 void global_pre_init(std::vector < const char * > *alt_def_args,
 		     std::vector < const char* >& args,
 		     uint32_t module_type, code_environment_t code_env,
-		     int flags);
+		     int flags,
+		     const char *data_dir_option = 0);
 
 /*
  * perform all of the steps that global_init_daemonize performs just prior

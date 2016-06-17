@@ -1,11 +1,12 @@
-// -*- mode:C; tab-width:8; c-basic-offset:8; indent-tabs-mode:t -*- 
+// -*- mode:C++; tab-width:8; c-basic-offset:8; indent-tabs-mode:t -*-
+// vim: ts=8 sw=8 smarttab
 /*
  *	Copyright (C) 1991, NeXT Computer, Inc.  All Rights Reserverd.
  *
  *	File:	fsx.cc
  *	Author:	Avadis Tevanian, Jr.
  *
- *	File system exerciser. 
+ *	File system exerciser.
  *
  *	Rewritten 8/98 by Conrad Minshall.
  *
@@ -43,10 +44,17 @@
 #include "include/intarith.h"
 #include "include/krbd.h"
 #include "include/rados/librados.h"
+#include "include/rados/librados.hpp"
 #include "include/rbd/librbd.h"
-
+#include "include/rbd/librbd.hpp"
+#include "common/Cond.h"
 #include "common/SubProcess.h"
 #include "common/safe_io.h"
+#include "journal/Journaler.h"
+#include "journal/ReplayEntry.h"
+#include "journal/ReplayHandler.h"
+
+#include <boost/scope_exit.hpp>
 
 #define NUMPRINTCOLUMNS 32	/* # columns of data to print on each line */
 
@@ -116,6 +124,7 @@ int			logcount = 0;	/* total ops */
 #undef PAGE_MASK
 #define PAGE_MASK       (PAGE_SIZE - 1)
 
+
 char	*original_buf;			/* a pointer to the original data */
 char	*good_buf;			/* a pointer to the correct data */
 char	*temp_buf;			/* a pointer to the current data */
@@ -130,8 +139,10 @@ unsigned long	simulatedopcount = 0;	/* -b flag */
 int	closeprob = 0;			/* -c flag */
 int	debug = 0;			/* -d flag */
 unsigned long	debugstart = 0;		/* -D flag */
-int	flush = 0;			/* -f flag */
+int	flush_enabled = 0;		/* -f flag */
 int	holebdy = 1;			/* -h flag */
+bool    journal_replay = false;         /* -j flah */
+int	keep_on_success = 0;		/* -k flag */
 int	do_fsync = 0;			/* -y flag */
 unsigned long	maxfilelen = 256 * 1024;	/* -l flag */
 int	sizechecks = 1;			/* -n flag disables them */
@@ -242,6 +253,243 @@ get_random(void)
 {
 	return random_generator();
 }
+
+void replay_imagename(char *buf, size_t len, int clones);
+
+namespace {
+
+static const std::string JOURNAL_CLIENT_ID("fsx");
+
+struct ReplayHandler : public journal::ReplayHandler {
+        journal::Journaler *journaler;
+        journal::Journaler *replay_journaler;
+        Context *on_finish;
+
+        ReplayHandler(journal::Journaler *journaler,
+                      journal::Journaler *replay_journaler, Context *on_finish)
+                : journaler(journaler), replay_journaler(replay_journaler),
+                  on_finish(on_finish) {
+        }
+
+        virtual void get() {
+        }
+        virtual void put() {
+        }
+
+        virtual void handle_entries_available() {
+                while (true) {
+                        journal::ReplayEntry replay_entry;
+                        if (!journaler->try_pop_front(&replay_entry)) {
+                                return;
+                        }
+
+                        replay_journaler->append(0, replay_entry.get_data());
+                }
+        }
+
+        virtual void handle_complete(int r) {
+                on_finish->complete(r);
+        }
+};
+
+int get_image_id(librados::IoCtx &io_ctx, const char *image_name,
+                 std::string *image_id) {
+        librbd::RBD rbd;
+        librbd::Image image;
+        int r = rbd.open(io_ctx, image, image_name);
+        if (r < 0) {
+                simple_err("failed to open image", r);
+                return r;
+        }
+
+        rbd_image_info_t info;
+        r = image.stat(info, sizeof(info));
+        if (r < 0) {
+                simple_err("failed to stat image", r);
+                return r;
+        }
+
+        *image_id = std::string(&info.block_name_prefix[strlen(RBD_DATA_PREFIX)]);
+        return 0;
+}
+
+int register_journal(rados_ioctx_t ioctx, const char *image_name) {
+        librados::IoCtx io_ctx;
+        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
+
+        std::string image_id;
+        int r = get_image_id(io_ctx, image_name, &image_id);
+        if (r < 0) {
+                return r;
+        }
+
+        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, 0);
+        r = journaler.register_client(bufferlist());
+        if (r < 0) {
+                simple_err("failed to register journal client", r);
+                return r;
+        }
+        return 0;
+}
+
+int unregister_journal(rados_ioctx_t ioctx, const char *image_name) {
+        librados::IoCtx io_ctx;
+        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
+
+        std::string image_id;
+        int r = get_image_id(io_ctx, image_name, &image_id);
+        if (r < 0) {
+                return r;
+        }
+
+        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, 0);
+        r = journaler.unregister_client();
+        if (r < 0) {
+                simple_err("failed to unregister journal client", r);
+                return r;
+        }
+        return 0;
+}
+
+int create_replay_image(rados_ioctx_t ioctx, int order,
+                        uint64_t stripe_unit, int stripe_count,
+                        const char *replay_image_name,
+                        const char *last_replay_image_name) {
+        librados::IoCtx io_ctx;
+        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
+
+        int r;
+        librbd::RBD rbd;
+        if (last_replay_image_name == nullptr) {
+                r = rbd.create2(io_ctx, replay_image_name, 0,
+                                RBD_FEATURES_ALL, &order);
+        } else {
+                r = rbd.clone2(io_ctx, last_replay_image_name, "snap",
+                               io_ctx, replay_image_name, RBD_FEATURES_ALL,
+                               &order, stripe_unit, stripe_count);
+        }
+
+        if (r < 0) {
+                simple_err("failed to create replay image", r);
+                return r;
+        }
+
+        return 0;
+}
+
+int replay_journal(rados_ioctx_t ioctx, const char *image_name,
+                   const char *replay_image_name) {
+        librados::IoCtx io_ctx;
+        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
+
+        std::string image_id;
+        int r = get_image_id(io_ctx, image_name, &image_id);
+        if (r < 0) {
+                return r;
+        }
+
+        std::string replay_image_id;
+        r = get_image_id(io_ctx, replay_image_name, &replay_image_id);
+        if (r < 0) {
+                return r;
+        }
+
+        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, 0);
+        C_SaferCond init_ctx;
+        journaler.init(&init_ctx);
+        BOOST_SCOPE_EXIT_ALL( (&journaler) ) {
+                journaler.shut_down();
+        };
+
+        r = init_ctx.wait();
+        if (r < 0) {
+                simple_err("failed to initialize journal", r);
+                return r;
+        }
+
+        journal::Journaler replay_journaler(io_ctx, replay_image_id, "", 0);
+
+        C_SaferCond replay_init_ctx;
+        replay_journaler.init(&replay_init_ctx);
+        BOOST_SCOPE_EXIT_ALL( (&replay_journaler) ) {
+                replay_journaler.shut_down();
+        };
+
+        r = replay_init_ctx.wait();
+        if (r < 0) {
+                simple_err("failed to initialize replay journal", r);
+                return r;
+        }
+
+        replay_journaler.start_append(0, 0, 0);
+
+        C_SaferCond replay_ctx;
+        ReplayHandler replay_handler(&journaler, &replay_journaler,
+                                     &replay_ctx);
+
+        // copy journal events from source image to replay image
+        journaler.start_replay(&replay_handler);
+        r = replay_ctx.wait();
+
+        journaler.stop_replay();
+
+        C_SaferCond stop_ctx;
+        replay_journaler.stop_append(&stop_ctx);
+        int stop_r = stop_ctx.wait();
+        if (r == 0 && stop_r < 0) {
+                r = stop_r;
+        }
+
+        if (r < 0) {
+                simple_err("failed to replay journal", r);
+                return r;
+        }
+
+        librbd::RBD rbd;
+        librbd::Image image;
+        r = rbd.open(io_ctx, image, replay_image_name);
+        if (r < 0) {
+                simple_err("failed to open replay image", r);
+                return r;
+        }
+
+        // perform an IO op to initiate the journal replay
+        bufferlist bl;
+        r = static_cast<ssize_t>(image.write(0, 0, bl));
+        if (r < 0) {
+                simple_err("failed to write to replay image", r);
+                return r;
+        }
+        return 0;
+}
+
+int finalize_journal(rados_ioctx_t ioctx, const char *imagename, int clones,
+                     int order, uint64_t stripe_unit, int stripe_count) {
+        char replayimagename[1024];
+        replay_imagename(replayimagename, sizeof(replayimagename), clones);
+
+        char lastreplayimagename[1024];
+        if (clones > 0) {
+                replay_imagename(lastreplayimagename,
+                                 sizeof(lastreplayimagename), clones - 1);
+        }
+
+        int ret = create_replay_image(ioctx, order, stripe_unit,
+                                      stripe_count, replayimagename,
+                                      clones > 0 ? lastreplayimagename :
+                                                   nullptr);
+        if (ret < 0) {
+                exit(EXIT_FAILURE);
+        }
+
+        ret = replay_journal(ioctx, imagename, replayimagename);
+        if (ret < 0) {
+                exit(EXIT_FAILURE);
+        }
+        return 0;
+}
+
+} // anonymous namespace
 
 /*
  * rbd
@@ -809,7 +1057,7 @@ nbd_open(const char *name, struct rbd_ctx *ctx)
 
         r = process.spawn();
         if (r < 0) {
-		prt("nbd_open failed to run rbd-nbd error: %s\n", process.err());
+		prt("nbd_open failed to run rbd-nbd error: %s\n", process.err().c_str());
 		return r;
         }
 	r = safe_read(process.get_stdout(), dev, sizeof(dev));
@@ -823,7 +1071,7 @@ nbd_open(const char *name, struct rbd_ctx *ctx)
 	dev[r] = 0;
 	r = process.join();
 	if (r) {
-		prt("rbd-nbd failed with error: %s", process.err());
+		prt("rbd-nbd failed with error: %s", process.err().c_str());
 		return -EINVAL;
 	}
 
@@ -863,12 +1111,12 @@ nbd_close(struct rbd_ctx *ctx)
 
         r = process.spawn();
         if (r < 0) {
-		prt("nbd_close failed to run rbd-nbd error: %s\n", process.err());
+		prt("nbd_close failed to run rbd-nbd error: %s\n", process.err().c_str());
 		return r;
         }
 	r = process.join();
 	if (r) {
-		prt("rbd-nbd failed with error: %d", process.err());
+		prt("rbd-nbd failed with error: %d", process.err().c_str());
 		return -EINVAL;
 	}
 
@@ -1123,7 +1371,7 @@ check_buffers(char *good_buf, char *temp_buf, unsigned offset, unsigned size)
 					unsigned bad = short_at(&temp_buf[i]);
 				        prt("0x%5x\t0x%04x\t0x%04x", offset,
 				            short_at(&good_buf[offset]), bad);
-					unsigned op = temp_buf[offset & 1 ? i+1 : i];
+					unsigned op = temp_buf[(offset & 1) ? i+1 : i];
 				        prt("\t0x%5x\n", n);
 					if (op)
 						prt("operation# (mod 256) for "
@@ -1232,8 +1480,16 @@ create_image()
 		simple_err("Error creating ioctx", r);
 		goto failed_krbd;
 	}
-	if (clone_calls) {
-		r = rbd_create2(ioctx, iname, 0, RBD_FEATURE_LAYERING, &order);
+	if (clone_calls || journal_replay) {
+                uint64_t features = 0;
+                if (clone_calls) {
+                        features |= RBD_FEATURE_LAYERING;
+                }
+                if (journal_replay) {
+                        features |= (RBD_FEATURE_EXCLUSIVE_LOCK |
+                                     RBD_FEATURE_JOURNALING);
+                }
+		r = rbd_create2(ioctx, iname, 0, features, &order);
 	} else {
 		r = rbd_create(ioctx, iname, 0, &order);
 	}
@@ -1242,6 +1498,12 @@ create_image()
 		goto failed_open;
 	}
 
+        if (journal_replay) {
+                r = register_journal(ioctx, iname);
+                if (r < 0) {
+                        goto failed_open;
+                }
+        }
 	return 0;
 
  failed_open:
@@ -1397,12 +1659,12 @@ dowrite(unsigned offset, unsigned size)
 		       (debug &&
 		       (monitorstart == -1 ||
 			(offset + size > monitorstart &&
-			(monitorend == -1 || offset <= monitorend))))))
+			 (monitorend == -1 || (long)offset <= monitorend))))))
 		prt("%lu write\t0x%x thru\t0x%x\t(0x%x bytes)\n", testcalls,
 		    offset, offset + size - 1, size);
 
 	ret = ops->write(&ctx, offset, size, good_buf + offset);
-	if (ret != size) {
+	if (ret != (ssize_t)size) {
 		if (ret < 0)
 			prterrcode("dowrite: ops->write", ret);
 		else
@@ -1411,7 +1673,7 @@ dowrite(unsigned offset, unsigned size)
 		report_failure(151);
 	}
 
-	if (flush)
+	if (flush_enabled)
 		doflush(offset, size);
 }
 
@@ -1442,7 +1704,7 @@ dotruncate(unsigned size)
 
 	if ((progressinterval && testcalls % progressinterval == 0) ||
 	    (debug && (monitorstart == -1 || monitorend == -1 ||
-		      size <= monitorend)))
+		       (long)size <= monitorend)))
 		prt("%lu trunc\tfrom 0x%x to 0x%x\n", testcalls, oldsize, size);
 
 	ret = ops->resize(&ctx, size);
@@ -1485,7 +1747,7 @@ do_punch_hole(unsigned offset, unsigned length)
 
 	if ((progressinterval && testcalls % progressinterval == 0) ||
 	    (debug && (monitorstart == -1 || monitorend == -1 ||
-		      end_offset <= monitorend))) {
+		       (long)end_offset <= monitorend))) {
 		prt("%lu punch\tfrom 0x%x to 0x%x, (0x%x bytes)\n", testcalls,
 			offset, offset+length, length);
 	}
@@ -1515,9 +1777,17 @@ void clone_imagename(char *buf, size_t len, int clones)
 		snprintf(buf, len, "%s-clone%d", iname, clones);
 	else
 		strncpy(buf, iname, len);
+        buf[len - 1] = '\0';
 }
 
-void check_clone(int clonenum);
+void replay_imagename(char *buf, size_t len, int clones)
+{
+        clone_imagename(buf, len, clones);
+        strncat(buf, "-replay", len - strlen(buf));
+        buf[len - 1] = '\0';
+}
+
+void check_clone(int clonenum, bool replay_image);
 
 void
 do_clone()
@@ -1613,6 +1883,19 @@ do_clone()
 		exit(174);
 	}
 
+        if (journal_replay) {
+                ret = finalize_journal(ioctx, lastimagename, num_clones - 1,
+                                       order, stripe_unit, stripe_count);
+                if (ret < 0) {
+                        exit(EXIT_FAILURE);
+                }
+
+                ret = register_journal(ioctx, imagename);
+                if (ret < 0) {
+                        exit(EXIT_FAILURE);
+                }
+        }
+
 	/*
 	 * Open freshly made clone.
 	 */
@@ -1621,12 +1904,16 @@ do_clone()
 		exit(166);
 	}
 
-	if (num_clones > 1)
-		check_clone(num_clones - 2);
+	if (num_clones > 1) {
+                if (journal_replay) {
+		        check_clone(num_clones - 2, true);
+                }
+		check_clone(num_clones - 2, false);
+        }
 }
 
 void
-check_clone(int clonenum)
+check_clone(int clonenum, bool replay_image)
 {
 	char filename[128];
 	char imagename[128];
@@ -1635,7 +1922,12 @@ check_clone(int clonenum)
 	struct stat file_info;
 	char *good_buf, *temp_buf;
 
-	clone_imagename(imagename, sizeof(imagename), clonenum);
+        if (replay_image) {
+                replay_imagename(imagename, sizeof(imagename), clonenum);
+        } else {
+        	clone_imagename(imagename, sizeof(imagename), clonenum);
+        }
+
 	if ((ret = ops->open(imagename, &cur_ctx)) < 0) {
 		prterrcode("check_clone: ops->open", ret);
 		exit(167);
@@ -1687,7 +1979,9 @@ check_clone(int clonenum)
 	}
 	check_buffers(good_buf, temp_buf, 0, file_info.st_size);
 
-	unlink(filename);
+        if (!replay_image) {
+	        unlink(filename);
+        }
 
 	free(good_buf);
 	free(temp_buf);
@@ -1912,12 +2206,14 @@ void
 usage(void)
 {
 	fprintf(stdout, "usage: %s",
-		"fsx [-dfnqxyACFHKLORUWZ] [-b opnum] [-c Prob] [-h holebdy] [-l flen] [-m start:end] [-o oplen] [-p progressinterval] [-r readbdy] [-s style] [-t truncbdy] [-w writebdy] [-D startingop] [-N numops] [-P dirpath] [-S seed] pname iname\n\
+		"fsx [-dfjknqxyACFHKLORUWZ] [-b opnum] [-c Prob] [-h holebdy] [-l flen] [-m start:end] [-o oplen] [-p progressinterval] [-r readbdy] [-s style] [-t truncbdy] [-w writebdy] [-D startingop] [-N numops] [-P dirpath] [-S seed] pname iname\n\
 	-b opnum: beginning operation number (default 1)\n\
 	-c P: 1 in P chance of file close+open at each op (default infinity)\n\
 	-d: debug output for all operations\n\
 	-f: flush and invalidate cache after I/O\n\
 	-h holebdy: 4096 would make discards page aligned (default 1)\n\
+	-j: journal replay stress test\n\
+	-k: keep data on success (default 0)\n\
 	-l flen: the upper bound on file size (default 262144)\n\
 	-m startop:endop: monitor (print debug output) specified byte range (default 0:infinity)\n\
 	-n: no verifications of file size\n\
@@ -2111,6 +2407,49 @@ test_fallocate()
 
 }
 
+void remove_image(rados_ioctx_t ioctx, char *imagename, bool remove_snap,
+                  bool unregister) {
+	rbd_image_t image;
+	char errmsg[128];
+        int ret;
+
+	if ((ret = rbd_open(ioctx, imagename, &image, NULL)) < 0) {
+		sprintf(errmsg, "rbd_open %s", imagename);
+		prterrcode(errmsg, ret);
+		report_failure(101);
+	}
+	if (remove_snap) {
+		if ((ret = rbd_snap_unprotect(image, "snap")) < 0) {
+			sprintf(errmsg, "rbd_snap_unprotect %s@snap",
+				imagename);
+			prterrcode(errmsg, ret);
+			report_failure(102);
+		}
+		if ((ret = rbd_snap_remove(image, "snap")) < 0) {
+			sprintf(errmsg, "rbd_snap_remove %s@snap",
+				imagename);
+			prterrcode(errmsg, ret);
+			report_failure(103);
+		}
+	}
+	if ((ret = rbd_close(image)) < 0) {
+		sprintf(errmsg, "rbd_close %s", imagename);
+		prterrcode(errmsg, ret);
+		report_failure(104);
+	}
+
+        if (unregister &&
+            (ret = unregister_journal(ioctx, imagename)) < 0) {
+                report_failure(105);
+        }
+
+	if ((ret = rbd_remove(ioctx, imagename)) < 0) {
+		sprintf(errmsg, "rbd_remove %s", imagename);
+		prterrcode(errmsg, ret);
+		report_failure(106);
+	}
+}
+
 int
 main(int argc, char **argv)
 {
@@ -2128,7 +2467,7 @@ main(int argc, char **argv)
 
 	setvbuf(stdout, (char *)0, _IOLBF, 0); /* line buffered stdout */
 
-	while ((ch = getopt(argc, argv, "b:c:dfh:l:m:no:p:qr:s:t:w:xyACD:FHKMLN:OP:RS:UWZ"))
+	while ((ch = getopt(argc, argv, "b:c:dfh:jkl:m:no:p:qr:s:t:w:xyACD:FHKMLN:OP:RS:UWZ"))
 	       != EOF)
 		switch (ch) {
 		case 'b':
@@ -2153,12 +2492,18 @@ main(int argc, char **argv)
 			debug = 1;
 			break;
 		case 'f':
-			flush = 1;
+			flush_enabled = 1;
 			break;
 		case 'h':
 			holebdy = getnum(optarg, &endp);
 			if (holebdy <= 0)
 				usage();
+			break;
+                case 'j':
+                        journal_replay = true;
+                        break;
+		case 'k':
+			keep_on_success = 1;
 			break;
 		case 'l':
 			{
@@ -2416,49 +2761,44 @@ main(int argc, char **argv)
 		report_failure(99);
 	}
 
-	if (num_clones > 0)
-		check_clone(num_clones - 1);
+        if (journal_replay) {
+                char imagename[1024];
+	        clone_imagename(imagename, sizeof(imagename), num_clones);
+                ret = finalize_journal(ioctx, imagename, num_clones, 0, 0, 0);
+                if (ret < 0) {
+                        report_failure(100);
+                }
+        }
 
-	while (num_clones >= 0) {
-		static int first = 1;
-		rbd_image_t image;
-		char clonename[128];
-		char errmsg[128];
+	if (num_clones > 0) {
+                if (journal_replay) {
+		        check_clone(num_clones - 1, true);
+                }
+		check_clone(num_clones - 1, false);
+        }
 
-		clone_imagename(clonename, 128, num_clones);
-		if ((ret = rbd_open(ioctx, clonename, &image, NULL)) < 0) {
-			sprintf(errmsg, "rbd_open %s", clonename);
-			prterrcode(errmsg, ret);
-			report_failure(101);
-		}
-		if (!first) {
-			if ((ret = rbd_snap_unprotect(image, "snap")) < 0) {
-				sprintf(errmsg, "rbd_snap_unprotect %s@snap",
-					clonename);
-				prterrcode(errmsg, ret);
-				report_failure(102);
+	if (!keep_on_success) {
+		while (num_clones >= 0) {
+			static bool remove_snap = false;
+
+			if (journal_replay) {
+				char replayimagename[1024];
+				replay_imagename(replayimagename,
+						 sizeof(replayimagename),
+						 num_clones);
+				remove_image(ioctx, replayimagename,
+					     remove_snap,
+					     false);
 			}
-			if ((ret = rbd_snap_remove(image, "snap")) < 0) {
-				sprintf(errmsg, "rbd_snap_remove %s@snap",
-					clonename);
-				prterrcode(errmsg, ret);
-				report_failure(103);
-			}
-		}
-		if ((ret = rbd_close(image)) < 0) {
-			sprintf(errmsg, "rbd_close %s", clonename);
-			prterrcode(errmsg, ret);
-			report_failure(104);
-		}
 
-		if ((ret = rbd_remove(ioctx, clonename)) < 0) {
-			sprintf(errmsg, "rbd_remove %s", clonename);
-			prterrcode(errmsg, ret);
-			report_failure(105);
-		}
+			char clonename[128];
+			clone_imagename(clonename, 128, num_clones);
+			remove_image(ioctx, clonename, remove_snap,
+				     journal_replay);
 
-		first = 0;
-		num_clones--;
+			remove_snap = true;
+			num_clones--;
+		}
 	}
 
 	prt("All operations completed A-OK!\n");

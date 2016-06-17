@@ -16,8 +16,8 @@ sbin_SCRIPTS =
 su_sbin_PROGRAMS =
 su_sbin_SCRIPTS =
 dist_bin_SCRIPTS =
-lib_LTLIBRARIES = 
-noinst_LTLIBRARIES = 
+lib_LTLIBRARIES =
+noinst_LTLIBRARIES =
 noinst_LIBRARIES =
 radoslib_LTLIBRARIES =
 
@@ -63,7 +63,7 @@ HARDENING_CFLAGS = \
                    --param=ssp-buffer-size=4 \
                    -fPIE
 
-SET_STACK_PROTECTOR_STRONG = $(shell expr `gcc -dumpversion` \>= 4.9)
+SET_STACK_PROTECTOR_STRONG = $(shell expr `$(CC) -dumpversion` \>= 4.9)
 
 		ifeq ($(SET_STACK_PROTECTOR_STRONG),1)
 				HARDENING_CFLAGS += -fstack-protector-strong
@@ -85,11 +85,11 @@ AM_COMMON_CPPFLAGS = \
 	-D__STDC_FORMAT_MACROS \
 	-D_GNU_SOURCE \
 	-DCEPH_LIBDIR=\"${libdir}\" \
-	-DCEPH_PKGLIBDIR=\"${pkglibdir}\" \
-	-DGTEST_USE_OWN_TR1_TUPLE=0
+	-DCEPH_PKGLIBDIR=\"${pkglibdir}\" 
 
 if LINUX
 AM_COMMON_CPPFLAGS += \
+	-DGTEST_USE_OWN_TR1_TUPLE=0 \
 	-D_REENTRANT
 endif
 
@@ -233,6 +233,10 @@ if WITH_LIBZFS
 LIBOS += libos_zfs.a -lzfs
 endif # WITH_LIBZFS
 
+if WITH_SPDK
+LIBOS += ${LIBSPDK_LIBS} ${LIBDPDK_LIBS} ${LIBPCIACCESS_LIBS}
+endif # WITH_SPDK
+
 if WITH_TCMALLOC_MINIMAL
 LIBPERFGLUE += -ltcmalloc_minimal
 endif # WITH_TCMALLOC_MINIMAL
@@ -251,6 +255,8 @@ endif # WITH_JEMALLOC
 if ENABLE_COVERAGE
 EXTRALIBS += -lgcov
 endif # ENABLE_COVERAGE
+
+LIBCOMMON += -luuid
 
 # Libosd always needs osdc and os
 LIBOSD += $(LIBOSDC) $(LIBOS)
@@ -274,7 +280,7 @@ LIBKV += -llz4
 endif
 endif # WITH_SLIBROCKSDB
 LIBKV += -lz -lleveldb -lsnappy
-LIBOS += $(LIBOS_TYPES) $(LIBKV)
+LIBOS += $(LIBOS_TYPES) $(LIBKV) $(LIBFUSE_LIBS)
 
 LIBMON += $(LIBMON_TYPES)
 
@@ -285,11 +291,16 @@ CEPH_GLOBAL = $(LIBGLOBAL) $(LIBCOMMON) $(PTHREAD_LIBS) -lm $(CRYPTO_LIBS) $(EXT
 LIBCOMMON_DEPS =
 LIBRADOS_DEPS =
 LIBRGW_DEPS =
+LIBCIVETWEB_DEPS =
 
 # This is used by the dencoder test
 DENCODER_SOURCES =
 DENCODER_DEPS =
 
+# put virtualenvs in this directory
+# otherwise it may overflow #! 80 kernel limit
+# beware that some build environments might not be able to write to /tmp
+export TMPDIR ?= /tmp
+export CEPH_BUILD_VIRTUALENV = $(TMPDIR)
 
 radoslibdir = $(libdir)/rados-classes
-

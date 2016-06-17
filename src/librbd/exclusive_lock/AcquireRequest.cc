@@ -10,9 +10,12 @@
 #include "include/stringify.h"
 #include "librbd/ExclusiveLock.h"
 #include "librbd/ImageCtx.h"
+#include "librbd/ImageState.h"
+#include "librbd/ImageWatcher.h"
 #include "librbd/Journal.h"
 #include "librbd/ObjectMap.h"
 #include "librbd/Utils.h"
+#include "librbd/journal/Policy.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -73,7 +76,28 @@ AcquireRequest<I>::~AcquireRequest() {
 
 template <typename I>
 void AcquireRequest<I>::send() {
+  send_flush_notifies();
+}
+
+template <typename I>
+void AcquireRequest<I>::send_flush_notifies() {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  using klass = AcquireRequest<I>;
+  Context *ctx = create_context_callback<klass, &klass::handle_flush_notifies>(
+    this);
+  m_image_ctx.image_watcher->flush(ctx);
+}
+
+template <typename I>
+Context *AcquireRequest<I>::handle_flush_notifies(int *ret_val) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  assert(*ret_val == 0);
   send_lock();
+  return nullptr;
 }
 
 template <typename I>
@@ -100,7 +124,7 @@ Context *AcquireRequest<I>::handle_lock(int *ret_val) {
   ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
 
   if (*ret_val == 0) {
-    return send_open_object_map();
+    return send_refresh();
   } else if (*ret_val != -EBUSY) {
     lderr(cct) << "failed to lock: " << cpp_strerror(*ret_val) << dendl;
     return m_on_finish;
@@ -108,6 +132,37 @@ Context *AcquireRequest<I>::handle_lock(int *ret_val) {
 
   send_get_lockers();
   return nullptr;
+}
+
+template <typename I>
+Context *AcquireRequest<I>::send_refresh() {
+  if (!m_image_ctx.state->is_refresh_required()) {
+    return send_open_object_map();
+  }
+
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  using klass = AcquireRequest<I>;
+  Context *ctx = create_context_callback<klass, &klass::handle_refresh>(this);
+  m_image_ctx.state->acquire_lock_refresh(ctx);
+  return nullptr;
+}
+
+template <typename I>
+Context *AcquireRequest<I>::handle_refresh(int *ret_val) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+
+  if (*ret_val < 0) {
+    lderr(cct) << "failed to refresh image: " << cpp_strerror(*ret_val)
+               << dendl;
+    m_error_result = *ret_val;
+    send_unlock();
+    return nullptr;
+  }
+
+  return send_open_object_map();
 }
 
 template <typename I>
@@ -129,7 +184,7 @@ Context *AcquireRequest<I>::send_open_journal() {
     this);
   m_journal = m_image_ctx.create_journal();
 
-  // journal playback required object map (if enabled) and itself
+  // journal playback requires object map (if enabled) and itself
   apply();
 
   m_journal->open(ctx);
@@ -144,10 +199,64 @@ Context *AcquireRequest<I>::handle_open_journal(int *ret_val) {
   if (*ret_val < 0) {
     lderr(cct) << "failed to open journal: " << cpp_strerror(*ret_val) << dendl;
     m_error_result = *ret_val;
-    return send_unlock_object_map();
+    send_close_journal();
+    return nullptr;
   }
 
+  send_allocate_journal_tag();
+  return nullptr;
+}
+
+template <typename I>
+void AcquireRequest<I>::send_allocate_journal_tag() {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  RWLock::RLocker snap_locker(m_image_ctx.snap_lock);
+  using klass = AcquireRequest<I>;
+  Context *ctx = create_context_callback<
+    klass, &klass::handle_allocate_journal_tag>(this);
+  m_image_ctx.get_journal_policy()->allocate_tag_on_lock(ctx);
+}
+
+template <typename I>
+Context *AcquireRequest<I>::handle_allocate_journal_tag(int *ret_val) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+
+  if (*ret_val < 0) {
+    lderr(cct) << "failed to allocate journal tag: " << cpp_strerror(*ret_val)
+               << dendl;
+    m_error_result = *ret_val;
+    send_close_journal();
+    return nullptr;
+  }
   return m_on_finish;
+}
+
+template <typename I>
+void AcquireRequest<I>::send_close_journal() {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
+
+  using klass = AcquireRequest<I>;
+  Context *ctx = create_context_callback<klass, &klass::handle_close_journal>(
+    this);
+  m_journal->close(ctx);
+}
+
+template <typename I>
+Context *AcquireRequest<I>::handle_close_journal(int *ret_val) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+
+  if (*ret_val < 0) {
+    lderr(cct) << "failed to close journal: " << cpp_strerror(*ret_val)
+               << dendl;
+  }
+
+  send_close_object_map();
+  return nullptr;
 }
 
 template <typename I>
@@ -173,40 +282,23 @@ Context *AcquireRequest<I>::handle_open_object_map(int *ret_val) {
   CephContext *cct = m_image_ctx.cct;
   ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
 
-  // object map should never result in an error
-  assert(*ret_val == 0);
-  return send_lock_object_map();
-}
+  if (*ret_val < 0) {
+    lderr(cct) << "failed to open object map: " << cpp_strerror(*ret_val)
+               << dendl;
 
-template <typename I>
-Context *AcquireRequest<I>::send_lock_object_map() {
-  CephContext *cct = m_image_ctx.cct;
-  ldout(cct, 10) << __func__ << dendl;
+    *ret_val = 0;
+    delete m_object_map;
+    m_object_map = nullptr;
+  }
 
-  assert(m_object_map != nullptr);
-
-  using klass = AcquireRequest<I>;
-  Context *ctx = create_context_callback<klass, &klass::handle_lock_object_map>(
-    this);
-  m_object_map->lock(ctx);
-  return nullptr;
-}
-
-template <typename I>
-Context *AcquireRequest<I>::handle_lock_object_map(int *ret_val) {
-  CephContext *cct = m_image_ctx.cct;
-  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
-
-  // object map should never result in an error
-  assert(*ret_val == 0);
   return send_open_journal();
 }
 
 template <typename I>
-Context *AcquireRequest<I>::send_unlock_object_map() {
+void AcquireRequest<I>::send_close_object_map() {
   if (m_object_map == nullptr) {
-    revert();
-    return m_on_finish;
+    send_unlock();
+    return;
   }
 
   CephContext *cct = m_image_ctx.cct;
@@ -214,23 +306,48 @@ Context *AcquireRequest<I>::send_unlock_object_map() {
 
   using klass = AcquireRequest<I>;
   Context *ctx = create_context_callback<
-    klass, &klass::handle_unlock_object_map>(this);
-  m_object_map->unlock(ctx);
-  return nullptr;
+    klass, &klass::handle_close_object_map>(this);
+  m_object_map->close(ctx);
 }
 
 template <typename I>
-Context *AcquireRequest<I>::handle_unlock_object_map(int *ret_val) {
+Context *AcquireRequest<I>::handle_close_object_map(int *ret_val) {
   CephContext *cct = m_image_ctx.cct;
   ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
 
   // object map should never result in an error
   assert(*ret_val == 0);
+  send_unlock();
+  return nullptr;
+}
 
-  assert(m_error_result < 0);
-  *ret_val = m_error_result;
+template <typename I>
+void AcquireRequest<I>::send_unlock() {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << dendl;
 
-  revert();
+  librados::ObjectWriteOperation op;
+  rados::cls::lock::unlock(&op, RBD_LOCK_NAME, m_cookie);
+
+  using klass = AcquireRequest<I>;
+  librados::AioCompletion *rados_completion =
+    create_rados_safe_callback<klass, &klass::handle_unlock>(this);
+  int r = m_image_ctx.md_ctx.aio_operate(m_image_ctx.header_oid,
+                                         rados_completion, &op);
+  assert(r == 0);
+  rados_completion->release();
+}
+
+template <typename I>
+Context *AcquireRequest<I>::handle_unlock(int *ret_val) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << __func__ << ": r=" << *ret_val << dendl;
+
+  if (*ret_val < 0) {
+    lderr(cct) << "failed to unlock image: " << cpp_strerror(*ret_val) << dendl;
+  }
+
+  revert(ret_val);
   return m_on_finish;
 }
 
@@ -441,13 +558,16 @@ void AcquireRequest<I>::apply() {
 }
 
 template <typename I>
-void AcquireRequest<I>::revert() {
+void AcquireRequest<I>::revert(int *ret_val) {
   RWLock::WLocker snap_locker(m_image_ctx.snap_lock);
   m_image_ctx.object_map = nullptr;
   m_image_ctx.journal = nullptr;
 
   delete m_object_map;
   delete m_journal;
+
+  assert(m_error_result < 0);
+  *ret_val = m_error_result;
 }
 
 } // namespace exclusive_lock

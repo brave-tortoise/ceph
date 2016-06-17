@@ -15,6 +15,9 @@ extern void register_test_internal();
 extern void register_test_journal_entries();
 extern void register_test_journal_replay();
 extern void register_test_object_map();
+extern void register_test_mirroring();
+extern void register_test_mirroring_watcher();
+extern void register_test_consistency_groups();
 #endif // TEST_LIBRBD_INTERNALS
 
 int main(int argc, char **argv)
@@ -26,6 +29,9 @@ int main(int argc, char **argv)
   register_test_journal_entries();
   register_test_journal_replay();
   register_test_object_map();
+  register_test_mirroring();
+  register_test_mirroring_watcher();
+  register_test_consistency_groups();
 #endif // TEST_LIBRBD_INTERNALS
 
   ::testing::InitGoogleTest(&argc, argv);

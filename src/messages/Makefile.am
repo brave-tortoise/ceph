@@ -48,6 +48,8 @@ noinst_HEADERS += \
 	messages/MMDSFindInoReply.h \
 	messages/MMDSFragmentNotify.h \
 	messages/MMDSMap.h \
+	messages/MFSMap.h \
+	messages/MFSMapUser.h \
 	messages/MMDSOpenIno.h \
 	messages/MMDSOpenInoReply.h \
 	messages/MMDSResolve.h \
@@ -91,6 +93,8 @@ noinst_HEADERS += \
 	messages/MOSDPGQuery.h \
 	messages/MOSDPGRemove.h \
 	messages/MOSDPGScan.h \
+	messages/MOSDPGUpdateLogMissing.h \
+	messages/MOSDPGUpdateLogMissingReply.h \
 	messages/MOSDECSubOpWrite.h \
 	messages/MOSDECSubOpWriteReply.h \
 	messages/MOSDECSubOpRead.h \
@@ -120,5 +124,6 @@ noinst_HEADERS += \
 	messages/MStatfsReply.h \
 	messages/MTimeCheck.h \
 	messages/MWatchNotify.h \
-	messages/PaxosServiceMessage.h
+	messages/PaxosServiceMessage.h \
+	messages/MNop.h
 

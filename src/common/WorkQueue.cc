@@ -78,7 +78,7 @@ void ThreadPool::handle_conf_change(const struct md_config_t *conf,
     assert(r >= 0);
     int v = atoi(buf);
     free(buf);
-    if (v > 0) {
+    if (v >= 0) {
       _lock.Lock();
       _num_threads = v;
       start_threads();
@@ -94,8 +94,12 @@ void ThreadPool::worker(WorkThread *wt)
   ldout(cct,10) << "worker start" << dendl;
   
   std::stringstream ss;
-  ss << name << " thread " << (void*)pthread_self();
-  heartbeat_handle_d *hb = cct->get_heartbeat_map()->add_worker(ss.str());
+  char name[16] = {0};
+#if !defined(__FreeBSD__)
+  pthread_getname_np(pthread_self(), name, sizeof(name));
+#endif
+  ss << name << " thread " << name;
+  heartbeat_handle_d *hb = cct->get_heartbeat_map()->add_worker(ss.str(), pthread_self());
 
   while (!_stop) {
 
@@ -297,8 +301,12 @@ void ShardedThreadPool::shardedthreadpool_worker(uint32_t thread_index)
   ldout(cct,10) << "worker start" << dendl;
 
   std::stringstream ss;
-  ss << name << " thread " << (void*)pthread_self();
-  heartbeat_handle_d *hb = cct->get_heartbeat_map()->add_worker(ss.str());
+  char name[16] = {0};
+#if !defined(__FreeBSD__)
+  pthread_getname_np(pthread_self(), name, sizeof(name));
+#endif
+  ss << name << " thread " << name;
+  heartbeat_handle_d *hb = cct->get_heartbeat_map()->add_worker(ss.str(), pthread_self());
 
   while (!stop_threads.read()) {
     if(pause_threads.read()) {

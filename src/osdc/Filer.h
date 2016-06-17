@@ -27,6 +27,8 @@
  */
 
 
+#include <mutex>
+
 #include "include/types.h"
 
 #include "common/ceph_time.h"
@@ -50,9 +52,11 @@ class Filer {
 
   // probes
   struct Probe {
-    Mutex lock;
+    std::mutex lock;
+    typedef std::lock_guard<std::mutex> lock_guard;
+    typedef std::unique_lock<std::mutex> unique_lock;
     inodeno_t ino;
-    ceph_file_layout layout;
+    file_layout_t layout;
     snapid_t snapid;
 
     uint64_t *psize;
@@ -76,18 +80,18 @@ class Filer {
     int err;
     bool found_size;
 
-    Probe(inodeno_t i, ceph_file_layout &l, snapid_t sn,
+    Probe(inodeno_t i, file_layout_t &l, snapid_t sn,
 	  uint64_t f, uint64_t *e, ceph::real_time *m, int fl, bool fw,
 	  Context *c) :
-      lock("Filer::Probe"), ino(i), layout(l), snapid(sn),
+      ino(i), layout(l), snapid(sn),
       psize(e), pmtime(m), pumtime(nullptr), flags(fl), fwd(fw), onfinish(c),
       probing_off(f), probing_len(0),
       err(0), found_size(false) {}
 
-    Probe(inodeno_t i, ceph_file_layout &l, snapid_t sn,
+    Probe(inodeno_t i, file_layout_t &l, snapid_t sn,
 	  uint64_t f, uint64_t *e, utime_t *m, int fl, bool fw,
 	  Context *c) :
-      lock("Filer::Probe"), ino(i), layout(l), snapid(sn),
+      ino(i), layout(l), snapid(sn),
       psize(e), pmtime(nullptr), pumtime(m), flags(fl), fwd(fw),
       onfinish(c), probing_off(f), probing_len(0),
       err(0), found_size(false) {}
@@ -95,9 +99,9 @@ class Filer {
 
   class C_Probe;
 
-  void _probe(Probe *p);
+  void _probe(Probe *p, Probe::unique_lock& pl);
   bool _probed(Probe *p, const object_t& oid, uint64_t size,
-	       ceph::real_time mtime);
+	       ceph::real_time mtime, Probe::unique_lock& pl);
 
  public:
   Filer(const Filer& other);
@@ -114,7 +118,7 @@ class Filer {
   /*** async file interface.  scatter/gather as needed. ***/
 
   int read(inodeno_t ino,
-	   ceph_file_layout *layout,
+	   file_layout_t *layout,
 	   snapid_t snap,
 	   uint64_t offset,
 	   uint64_t len,
@@ -130,7 +134,7 @@ class Filer {
   }
 
   int read_trunc(inodeno_t ino,
-		 ceph_file_layout *layout,
+		 file_layout_t *layout,
 		 snapid_t snap,
 		 uint64_t offset,
 		 uint64_t len,
@@ -150,7 +154,7 @@ class Filer {
   }
 
   int write(inodeno_t ino,
-	    ceph_file_layout *layout,
+	    file_layout_t *layout,
 	    const SnapContext& snapc,
 	    uint64_t offset,
 	    uint64_t len,
@@ -168,7 +172,7 @@ class Filer {
   }
 
   int write_trunc(inodeno_t ino,
-		  ceph_file_layout *layout,
+		  file_layout_t *layout,
 		  const SnapContext& snapc,
 		  uint64_t offset,
 		  uint64_t len,
@@ -189,7 +193,7 @@ class Filer {
   }
 
   int truncate(inodeno_t ino,
-	       ceph_file_layout *layout,
+	       file_layout_t *layout,
 	       const SnapContext& snapc,
 	       uint64_t offset,
 	       uint64_t len,
@@ -228,7 +232,7 @@ class Filer {
   }
 
   int zero(inodeno_t ino,
-	   ceph_file_layout *layout,
+	   file_layout_t *layout,
 	   const SnapContext& snapc,
 	   uint64_t offset,
 	   uint64_t len,
@@ -240,7 +244,7 @@ class Filer {
     vector<ObjectExtent> extents;
     Striper::file_to_extents(cct, ino, layout, offset, len, 0, extents);
     if (extents.size() == 1) {
-      if (extents[0].offset == 0 && extents[0].length == layout->fl_object_size
+      if (extents[0].offset == 0 && extents[0].length == layout->object_size
 	  && (!keep_first || extents[0].objectno != 0))
 	objecter->remove(extents[0].oid, extents[0].oloc,
 			 snapc, mtime, flags, onack, oncommit);
@@ -254,7 +258,7 @@ class Filer {
       for (vector<ObjectExtent>::iterator p = extents.begin();
 	   p != extents.end();
 	   ++p) {
-	if (p->offset == 0 && p->length == layout->fl_object_size &&
+	if (p->offset == 0 && p->length == layout->object_size &&
 	    (!keep_first || p->objectno != 0))
 	  objecter->remove(p->oid, p->oloc,
 			   snapc, mtime, flags,
@@ -273,7 +277,7 @@ class Filer {
   }
 
   int zero(inodeno_t ino,
-	   ceph_file_layout *layout,
+	   file_layout_t *layout,
 	   const SnapContext& snapc,
 	   uint64_t offset,
 	   uint64_t len,
@@ -290,7 +294,7 @@ class Filer {
   }
   // purge range of ino.### objects
   int purge_range(inodeno_t ino,
-		  ceph_file_layout *layout,
+		  file_layout_t *layout,
 		  const SnapContext& snapc,
 		  uint64_t first_obj, uint64_t num_obj,
 		  ceph::real_time mtime,
@@ -303,7 +307,7 @@ class Filer {
    *  and whether we stop when we find data, or hole.
    */
   int probe(inodeno_t ino,
-	    ceph_file_layout *layout,
+	    file_layout_t *layout,
 	    snapid_t snapid,
 	    uint64_t start_from,
 	    uint64_t *end,
@@ -313,7 +317,7 @@ class Filer {
 	    Context *onfinish);
 
   int probe(inodeno_t ino,
-	    ceph_file_layout *layout,
+	    file_layout_t *layout,
 	    snapid_t snapid,
 	    uint64_t start_from,
 	    uint64_t *end,
@@ -325,7 +329,7 @@ class Filer {
   }
 
   int probe(inodeno_t ino,
-	    ceph_file_layout *layout,
+	    file_layout_t *layout,
 	    snapid_t snapid,
 	    uint64_t start_from,
 	    uint64_t *end,
@@ -335,7 +339,7 @@ class Filer {
 	    Context *onfinish);
 
 private:
-  int probe_impl(Probe* probe, ceph_file_layout *layout,
+  int probe_impl(Probe* probe, file_layout_t *layout,
 		 uint64_t start_from, uint64_t *end);
 };
 

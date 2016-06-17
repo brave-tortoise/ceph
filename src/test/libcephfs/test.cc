@@ -27,6 +27,9 @@
 #include <limits.h>
 #endif
 
+#include <map>
+#include <vector>
+
 TEST(LibCephFS, OpenEmptyComponent) {
 
   pid_t mypid = getpid();
@@ -63,6 +66,40 @@ TEST(LibCephFS, OpenEmptyComponent) {
   ASSERT_LT(0, fd);
 
   ASSERT_EQ(0, ceph_close(cmount, fd));
+  ceph_shutdown(cmount);
+}
+
+TEST(LibCephFS, OpenReadWrite) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(0, ceph_create(&cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  ASSERT_EQ(0, ceph_mount(cmount, "/"));
+
+  char c_path[1024];
+  sprintf(c_path, "test_open_rdwr_%d", getpid());
+  int fd = ceph_open(cmount, c_path, O_WRONLY|O_CREAT, 0666);
+  ASSERT_LT(0, fd);
+
+  const char *out_buf = "hello world";
+  size_t size = strlen(out_buf);
+  char in_buf[100];
+  ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), (int)size);
+  ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), -EBADF);
+  ASSERT_EQ(0, ceph_close(cmount, fd));
+
+  fd = ceph_open(cmount, c_path, O_RDONLY, 0);
+  ASSERT_LT(0, fd);
+  ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), -EBADF);
+  ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), (int)size);
+  ASSERT_EQ(0, ceph_close(cmount, fd));
+
+  fd = ceph_open(cmount, c_path, O_RDWR, 0);
+  ASSERT_LT(0, fd);
+  ASSERT_EQ(ceph_write(cmount, fd, out_buf, size, 0), (int)size);
+  ASSERT_EQ(ceph_read(cmount, fd, in_buf, sizeof(in_buf), 0), (int)size);
+  ASSERT_EQ(0, ceph_close(cmount, fd));
+
   ceph_shutdown(cmount);
 }
 
@@ -270,10 +307,37 @@ TEST(LibCephFS, DirLs) {
   ASSERT_TRUE(result != NULL);
   ASSERT_STREQ(result->d_name, "..");
 
-  for(i = 0; i < r; ++i)
-    ASSERT_TRUE(ceph_readdir(cmount, ls_dir) != NULL);
+  std::vector<std::string> entries;
+  std::map<std::string, int64_t> offset_map;
+  int64_t offset = ceph_telldir(cmount, ls_dir);
+  for(i = 0; i < r; ++i) {
+    result = ceph_readdir(cmount, ls_dir);
+    ASSERT_TRUE(result != NULL);
+    entries.push_back(result->d_name);
+    offset_map[result->d_name] = offset;
+    offset = ceph_telldir(cmount, ls_dir);
+  }
 
   ASSERT_TRUE(ceph_readdir(cmount, ls_dir) == NULL);
+  offset = ceph_telldir(cmount, ls_dir);
+
+  ASSERT_EQ(offset_map.size(), entries.size());
+  for(i = 0; i < r; ++i) {
+    sprintf(bazstr, "dirf%d", i);
+    ASSERT_TRUE(offset_map.count(bazstr) == 1);
+  }
+
+  // test seekdir
+  ceph_seekdir(cmount, ls_dir, offset);
+  ASSERT_TRUE(ceph_readdir(cmount, ls_dir) == NULL);
+
+  for (auto p = offset_map.begin(); p != offset_map.end(); ++p) {
+    ceph_seekdir(cmount, ls_dir, p->second);
+    result = ceph_readdir(cmount, ls_dir);
+    ASSERT_TRUE(result != NULL);
+    std::string d_name(result->d_name);
+    ASSERT_EQ(p->first, d_name);
+  }
 
   // test rewinddir
   ceph_rewinddir(cmount, ls_dir);
@@ -300,9 +364,11 @@ TEST(LibCephFS, DirLs) {
   getdents_entries = (struct dirent *)malloc(r * sizeof(*getdents_entries));
 
   int count = 0;
-  std::set<std::string> found;
-  while (count < r) {
+  std::vector<std::string> found;
+  while (true) {
     int len = ceph_getdents(cmount, ls_dir, (char *)getdents_entries, r * sizeof(*getdents_entries));
+    if (len == 0)
+      break;
     ASSERT_GT(len, 0);
     ASSERT_TRUE((len % sizeof(*getdents_entries)) == 0);
     int n = len / sizeof(*getdents_entries);
@@ -311,19 +377,16 @@ TEST(LibCephFS, DirLs) {
       ASSERT_STREQ(getdents_entries[0].d_name, ".");
       ASSERT_STREQ(getdents_entries[1].d_name, "..");
       j = 2;
-      count += n - 2;
     } else {
       j = 0;
-      count += n;
     }
+    count += n;
     for(; j < n; ++i, ++j) {
       const char *name = getdents_entries[j].d_name;
-      ASSERT_TRUE(found.count(name) == 0);
-      found.insert(name);
+      found.push_back(name);
     }
   }
-
-  ASSERT_EQ(count, r);
+  ASSERT_EQ(found, entries);
   free(getdents_entries);
 
   // test readdir_r
@@ -337,12 +400,15 @@ TEST(LibCephFS, DirLs) {
   ASSERT_STREQ(result->d_name, "..");
 
   found.clear();
-  for(i = 0; i < r; ++i) {
+  while (true) {
     struct dirent rdent;
-    ASSERT_EQ(ceph_readdir_r(cmount, ls_dir, &rdent), 1);
-    ASSERT_TRUE(found.count(rdent.d_name) ==  0);
-    found.insert(rdent.d_name);
+    int len = ceph_readdir_r(cmount, ls_dir, &rdent);
+    if (len == 0)
+      break;
+    ASSERT_EQ(len, 1);
+    found.push_back(rdent.d_name);
   }
+  ASSERT_EQ(found, entries);
 
   // test readdirplus
   ceph_rewinddir(cmount, ls_dir);
@@ -355,20 +421,23 @@ TEST(LibCephFS, DirLs) {
   ASSERT_STREQ(result->d_name, "..");
 
   found.clear();
-  for(i = 0; i < r; ++i) {
+  while (true) {
     struct dirent rdent;
     struct stat st;
     int stmask;
-    ASSERT_EQ(ceph_readdirplus_r(cmount, ls_dir, &rdent, &st, &stmask), 1);
+    int len = ceph_readdirplus_r(cmount, ls_dir, &rdent, &st, &stmask);
+    if (len == 0)
+      break;
+    ASSERT_EQ(len, 1);
     const char *name = rdent.d_name;
-    ASSERT_TRUE(found.count(name) == 0);
-    found.insert(name);
+    found.push_back(name);
     int size;
     sscanf(name, "dirf%d", &size);
     ASSERT_EQ(st.st_size, size);
     ASSERT_EQ(st.st_ino, rdent.d_ino);
     //ASSERT_EQ(st.st_mode, (mode_t)0666);
   }
+  ASSERT_EQ(found, entries);
 
   ASSERT_EQ(ceph_closedir(cmount, ls_dir), 0);
 
@@ -1280,5 +1349,28 @@ TEST(LibCephFS, GetOsdAddr) {
 
   ASSERT_EQ(0, ceph_get_osd_addr(cmount, 0, &addr));
 
+  ceph_shutdown(cmount);
+}
+
+TEST(LibCephFS, OpenNoClose) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(ceph_create(&cmount, NULL), 0);
+  ASSERT_EQ(ceph_conf_read_file(cmount, NULL), 0);
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  ASSERT_EQ(ceph_mount(cmount, "/"), 0);
+
+  pid_t mypid = getpid();
+  char str_buf[256];
+  sprintf(str_buf, "open_no_close_dir%d", mypid);
+  ASSERT_EQ(0, ceph_mkdirs(cmount, str_buf, 0777));
+
+  struct ceph_dir_result *ls_dir = NULL;
+  ASSERT_EQ(ceph_opendir(cmount, str_buf, &ls_dir), 0);
+
+  sprintf(str_buf, "open_no_close_file%d", mypid);
+  int fd = ceph_open(cmount, str_buf, O_RDONLY|O_CREAT, 0666);
+  ASSERT_LT(0, fd);
+
+  // shutdown should force close opened file/dir
   ceph_shutdown(cmount);
 }

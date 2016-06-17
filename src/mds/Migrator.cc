@@ -90,7 +90,7 @@ protected:
     return mig->mds;
   }
 public:
-  MigratorContext(Migrator *mig_) : mig(mig_) {
+  explicit MigratorContext(Migrator *mig_) : mig(mig_) {
     assert(mig != NULL);
   }
 };
@@ -145,7 +145,8 @@ void Migrator::dispatch(Message *m)
     break;
 
   default:
-    assert(0);
+    derr << "migrator unknown message " << m->get_type() << dendl;
+    assert(0 == "migrator unknown message");
   }
 }
 
@@ -1019,7 +1020,8 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
       bufferlist bl;
       cache->replicate_dentry(cur->inode->parent, it->second.peer, bl);
       dout(7) << "  added " << *cur->inode->parent << dendl;
-      cache->replicate_inode(cur->inode, it->second.peer, bl);
+      cache->replicate_inode(cur->inode, it->second.peer, bl,
+			     mds->mdsmap->get_up_features());
       dout(7) << "  added " << *cur->inode << dendl;
       bl.claim_append(tracebl);
       tracebl.claim(bl);
@@ -1234,7 +1236,8 @@ void Migrator::export_go_synced(CDir *dir, uint64_t tid)
 					      dir,   // recur start point
 					      exported_client_map,
 					      now);
-  ::encode(exported_client_map, req->client_map);
+  ::encode(exported_client_map, req->client_map,
+           mds->mdsmap->get_up_features());
 
   // add bounds to message
   set<CDir*> bounds;

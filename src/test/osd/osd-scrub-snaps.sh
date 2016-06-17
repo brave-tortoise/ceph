@@ -14,7 +14,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Library Public License for more details.
 #
-source ../qa/workunits/ceph-helpers.sh
+source $(dirname $0)/../detect-build-env-vars.sh
+source $CEPH_ROOT/qa/workunits/ceph-helpers.sh
 
 function run() {
     local dir=$1
@@ -156,6 +157,46 @@ function TEST_scrub_snaps() {
     fi
     grep 'log_channel' $dir/osd.0.log
 
+    rados list-inconsistent-pg $poolname > $dir/json || return 1
+    # Check pg count
+    test $(jq '. | length' $dir/json) = "1" || return 1
+    # Check pgid
+    test $(jq -r '.[0]' $dir/json) = $pgid || return 1
+
+    rados list-inconsistent-snapset $pgid > $dir/json || return 1
+    test $(jq '.inconsistents | length' $dir/json) = "20" || return 1
+
+    jq -c '.inconsistents | sort' > $dir/checkcsjson << EOF
+{"epoch":18,"inconsistents":[{"name":"obj1","nspace":"","locator":"","snap":1,
+"errors":["headless"]},{"name":"obj10","nspace":"","locator":"","snap":1,
+"errors":["size_mismatch"]},{"name":"obj11","nspace":"","locator":"","snap":1,
+"errors":["headless"]},{"name":"obj14","nspace":"","locator":"","snap":1,
+"errors":["size_mismatch"]},{"name":"obj6","nspace":"","locator":"","snap":1,
+"errors":["headless"]},{"name":"obj7","nspace":"","locator":"","snap":1,
+"errors":["headless"]},{"name":"obj9","nspace":"","locator":"","snap":1,
+"errors":["size_mismatch"]},{"name":"obj2","nspace":"","locator":"","snap":4,
+"errors":["headless"]},{"name":"obj5","nspace":"","locator":"","snap":4,
+"errors":["size_mismatch"]},{"name":"obj2","nspace":"","locator":"","snap":7,
+"errors":["headless"]},{"name":"obj5","nspace":"","locator":"","snap":7,
+"errors":["oi_attr_missing","headless"]},{"name":"obj11","nspace":"",
+"locator":"","snap":"head","errors":["extra_clones"],"extra clones":[1]},
+{"name":"obj12","nspace":"","locator":"","snap":"head",
+"errors":["head_mismatch"]},{"name":"obj3","nspace":"","locator":"",
+"snap":"head","errors":["size_mismatch"]},{"name":"obj5","nspace":"",
+"locator":"","snap":"head","errors":["extra_clones","clone_missing"],
+"extra clones":[7],"missing":[2,1]},{"name":"obj6","nspace":"","locator":"",
+"snap":"head","errors":["extra_clones"],"extra clones":[1]},{"name":"obj7",
+"nspace":"","locator":"","snap":"head","errors":["head_mismatch",
+"extra_clones"],"extra clones":[1]},{"name":"obj8","nspace":"","locator":"",
+"snap":"head","errors":["snapset_mismatch"]},{"name":"obj2","nspace":"",
+"locator":"","snap":"snapdir","errors":["ss_attr_missing","extra_clones"],
+"extra clones":[7,4]},{"name":"obj4","nspace":"","locator":"","snap":"snapdir",
+"errors":["clone_missing"],"missing":[7]}]}
+EOF
+
+    jq -c '.inconsistents | sort' $dir/json > $dir/csjson
+    diff $dir/csjson $dir/checkcsjson || return 1
+
     for i in `seq 1 7`
     do
         rados -p $poolname rmsnap snap$i
@@ -175,29 +216,29 @@ function TEST_scrub_snaps() {
     kill_daemons $dir || return 1
 
     declare -a err_strings
-    err_strings[0]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/2acecc8b/obj10/1 is missing in clone_overlap"
-    err_strings[1]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/666934a3/obj5/7 no '_' attr"
-    err_strings[2]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/666934a3/obj5/7 is an unexpected clone"
-    err_strings[3]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/666934a3/obj5/4 on disk size [(]4608[)] does not match object info size [(]512[)] adjusted for ondisk to [(]512[)]"
-    err_strings[4]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/666934a3/obj5/head expected clone [0-9]*/666934a3/obj5/2"
-    err_strings[5]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/666934a3/obj5/head expected clone [0-9]*/666934a3/obj5/1"
-    err_strings[6]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 [0-9]*/666934a3/obj5/head 2 missing clone[(]s[)]"
-    err_strings[7]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/d3a9faf5/obj12/head snapset.head_exists=false, but head exists"
-    err_strings[8]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/8df7eaa5/obj8/head snaps.seq not set"
-    err_strings[9]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/5c889059/obj7/head snapset.head_exists=false, but head exists"
-    err_strings[10]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/5c889059/obj7/1 is an unexpected clone"
-    err_strings[11]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/61f68bb1/obj3/head on disk size [(]3840[)] does not match object info size [(]768[)] adjusted for ondisk to [(]768[)]"
-    err_strings[12]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/83425cc4/obj6/1 is an unexpected clone"
-    err_strings[13]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/3f1ee208/obj2/snapdir no 'snapset' attr"
-    err_strings[14]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 [0-9]*/3f1ee208/obj2/7 clone ignored due to missing snapset"
-    err_strings[15]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 [0-9]*/3f1ee208/obj2/4 clone ignored due to missing snapset"
-    err_strings[16]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/a8759770/obj4/snapdir expected clone [0-9]*/a8759770/obj4/7"
-    err_strings[17]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 [0-9]*/a8759770/obj4/snapdir 1 missing clone[(]s[)]"
-    err_strings[18]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/6cf8deff/obj1/1 is an unexpected clone"
-    err_strings[19]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/e478ac7f/obj9/1 is missing in clone_size"
-    err_strings[20]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/29547577/obj11/1 is an unexpected clone"
-    err_strings[21]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 [0-9]*/94122507/obj14/1 size 1032 != clone_size 1033"
-    err_strings[22]="log_channel[(]cluster[)] log [[]ERR[]] : [0-9]*[.]0 scrub 19 errors"
+    err_strings[0]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*::obj10:.* is missing in clone_overlap"
+    err_strings[1]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*::obj5:7 no '_' attr"
+    err_strings[2]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*::obj5:7 is an unexpected clone"
+    err_strings[3]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*::obj5:4 on disk size [(]4608[)] does not match object info size [(]512[)] adjusted for ondisk to [(]512[)]"
+    err_strings[4]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj5:head expected clone .*:::obj5:2"
+    err_strings[5]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj5:head expected clone .*:::obj5:1"
+    err_strings[6]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 .*:::obj5:head 2 missing clone[(]s[)]"
+    err_strings[7]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj12:head snapset.head_exists=false, but head exists"
+    err_strings[8]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj8:head snaps.seq not set"
+    err_strings[9]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj7:head snapset.head_exists=false, but head exists"
+    err_strings[10]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj7:1 is an unexpected clone"
+    err_strings[11]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj3:head on disk size [(]3840[)] does not match object info size [(]768[)] adjusted for ondisk to [(]768[)]"
+    err_strings[12]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj6:1 is an unexpected clone"
+    err_strings[13]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj2:snapdir no 'snapset' attr"
+    err_strings[14]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj2:7 clone ignored due to missing snapset"
+    err_strings[15]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj2:4 clone ignored due to missing snapset"
+    err_strings[16]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj4:snapdir expected clone .*:::obj4:7"
+    err_strings[17]="log_channel[(]cluster[)] log [[]INF[]] : scrub [0-9]*[.]0 .*:::obj4:snapdir 1 missing clone[(]s[)]"
+    err_strings[18]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj1:1 is an unexpected clone"
+    err_strings[19]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj9:1 is missing in clone_size"
+    err_strings[20]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj11:1 is an unexpected clone"
+    err_strings[21]="log_channel[(]cluster[)] log [[]ERR[]] : scrub [0-9]*[.]0 .*:::obj14:1 size 1032 != clone_size 1033"
+    err_strings[22]="log_channel[(]cluster[)] log [[]ERR[]] : [0-9]*[.]0 scrub 21 errors"
 
     for i in `seq 0 ${#err_strings[@]}`
     do

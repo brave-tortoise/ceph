@@ -14,14 +14,9 @@
 
 #include "PaxosService.h"
 #include "common/Clock.h"
-#include "Monitor.h"
-#include "MonitorDBStore.h"
-
-
 #include "common/config.h"
+#include "include/stringify.h"
 #include "include/assert.h"
-#include "common/Formatter.h"
-
 #include "mon/MonOpRequest.h"
 
 #define dout_subsys ceph_subsys_paxos
@@ -144,26 +139,6 @@ void PaxosService::post_refresh()
   }
 }
 
-void PaxosService::remove_legacy_versions()
-{
-  dout(10) << __func__ << dendl;
-  if (!mon->store->exists(get_service_name(), "conversion_first"))
-    return;
-
-  version_t cf = mon->store->get(get_service_name(), "conversion_first");
-  version_t fc = get_first_committed();
-
-  dout(10) << __func__ << " conversion_first " << cf
-	   << " first committed " << fc << dendl;
-
-  MonitorDBStore::TransactionRef t(new MonitorDBStore::Transaction);
-  if (cf < fc) {
-    trim(t, cf, fc);
-  }
-  t->erase(get_service_name(), "conversion_first");
-  mon->store->apply_transaction(t);
-}
-
 bool PaxosService::should_propose(double& delay)
 {
   // simple default policy: quick startup, then some damping.
@@ -278,8 +253,6 @@ void PaxosService::_active()
   }
   dout(10) << "_active" << dendl;
 
-  remove_legacy_versions();
-
   // create pending state?
   if (mon->is_leader() && is_active()) {
     dout(7) << "_active creating new pending" << dendl;
@@ -388,6 +361,9 @@ void PaxosService::trim(MonitorDBStore::TransactionRef t,
   if (g_conf->mon_compact_on_trim) {
     dout(20) << " compacting prefix " << get_service_name() << dendl;
     t->compact_range(get_service_name(), stringify(from - 1), stringify(to));
+    t->compact_range(get_service_name(),
+		     mon->store->combine_strings(full_prefix_name, from - 1),
+		     mon->store->combine_strings(full_prefix_name, to));
   }
 }
 

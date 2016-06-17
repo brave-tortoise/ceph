@@ -13,8 +13,6 @@
  */
 
 #include "common/BackTrace.h"
-#include "common/perf_counters.h"
-#include "common/config.h"
 #include "common/debug.h"
 #include "global/pidfile.h"
 #include "global/signal_handler.h"
@@ -91,14 +89,21 @@ static void handle_fatal_signal(int signum)
   // case, SA_RESETHAND specifies that the default signal handler--
   // presumably dump core-- will handle it.
   char buf[1024];
+  char pthread_name[16] = {0}; //limited by 16B include terminating null byte.
+#if !defined(__FreeBSD__)
+  int r = pthread_getname_np(pthread_self(), pthread_name, sizeof(pthread_name));
+  (void)r;
+#endif
 #if defined(__sun)
   char message[SIG2STR_MAX];
   sig2str(signum,message);
   snprintf(buf, sizeof(buf), "*** Caught signal (%s) **\n "
-	    "in thread %llx\n", message, (unsigned long long)pthread_self());
+	    "in thread %llx thread_name:%s\n", message, (unsigned long long)pthread_self(),
+	    pthread_name);
 #else
   snprintf(buf, sizeof(buf), "*** Caught signal (%s) **\n "
-	    "in thread %llx\n", sig_str(signum), (unsigned long long)pthread_self());
+	    "in thread %llx thread_name:%s\n", sig_str(signum), (unsigned long long)pthread_self(),
+	    pthread_name);
 #endif
   dout_emergency(buf);
   pidfile_remove();
@@ -174,7 +179,7 @@ struct SignalHandler : public Thread {
   };
 
   /// all handlers
-  safe_handler *handlers[32];
+  safe_handler *handlers[32] = {nullptr};
 
   /// to protect the handlers array
   Mutex lock;
@@ -182,9 +187,6 @@ struct SignalHandler : public Thread {
   SignalHandler()
     : stop(false), lock("SignalHandler::lock")
   {
-    for (unsigned i = 0; i < 32; i++)
-      handlers[i] = NULL;
-
     // create signal pipe
     int r = pipe(pipefd);
     assert(r == 0);
@@ -192,7 +194,7 @@ struct SignalHandler : public Thread {
     assert(r == 0);
 
     // create thread
-    create("sginal_handler");
+    create("signal_handler");
   }
 
   ~SignalHandler() {

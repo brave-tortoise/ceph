@@ -12,6 +12,7 @@
  *
  */
 
+#include "common/admin_socket.h"
 #include "common/ceph_argparse.h"
 #include "common/ceph_context.h"
 #include "common/ceph_crypto.h"
@@ -34,7 +35,8 @@
 #define STRINGIFY(x) _STR(x)
 
 CephContext *common_preinit(const CephInitParameters &iparams,
-			  enum code_environment_t code_env, int flags)
+			    enum code_environment_t code_env, int flags,
+			    const char *data_dir_option)
 {
   // set code environment
   ANNOTATE_BENIGN_RACE_SIZED(&g_code_env, sizeof(g_code_env), "g_code_env");
@@ -48,6 +50,9 @@ CephContext *common_preinit(const CephInitParameters &iparams,
 
   // Set up our entity name.
   conf->name = iparams.name;
+
+  if (data_dir_option)
+    conf->data_dir_option = data_dir_option;
 
   // Set some defaults based on code type
   switch (code_env) {
@@ -119,6 +124,12 @@ void common_init_finish(CephContext *cct)
 {
   cct->init_crypto();
 
-  if (!(cct->get_init_flags() & CINIT_FLAG_NO_DAEMON_ACTIONS))
+  int flags = cct->get_init_flags();
+  if (!(flags & CINIT_FLAG_NO_DAEMON_ACTIONS))
     cct->start_service_thread();
+
+  if ((flags & CINIT_FLAG_DEFER_DROP_PRIVILEGES) &&
+      (cct->get_set_uid() || cct->get_set_gid())) {
+    cct->get_admin_socket()->chown(cct->get_set_uid(), cct->get_set_gid());
+  }
 }

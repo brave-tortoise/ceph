@@ -11,6 +11,8 @@
 #include "librbd/image/CloseRequest.h"
 #include "librbd/image/RefreshRequest.h"
 #include "librbd/image/SetSnapRequest.h"
+#include <boost/algorithm/string/predicate.hpp>
+#include "include/assert.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -21,30 +23,17 @@ namespace image {
 
 namespace {
 
-template <typename I>
-class C_RegisterWatch : public Context {
-public:
-  I &image_ctx;
-  Context *on_finish;
+static uint64_t MAX_METADATA_ITEMS = 128;
 
-  C_RegisterWatch(I &image_ctx, Context *on_finish)
-    : image_ctx(image_ctx), on_finish(on_finish) {
-  }
-
-  virtual void finish(int r) {
-    assert(r == 0);
-    on_finish->complete(image_ctx.register_watch());
-  }
-};
-
-} // anonymous namespace
+}
 
 using util::create_context_callback;
 using util::create_rados_ack_callback;
 
 template <typename I>
 OpenRequest<I>::OpenRequest(I *image_ctx, Context *on_finish)
-  : m_image_ctx(image_ctx), m_on_finish(on_finish), m_error_result(0) {
+  : m_image_ctx(image_ctx), m_on_finish(on_finish), m_error_result(0),
+    m_last_metadata_key(ImageCtx::METADATA_CONF_PREFIX) {
 }
 
 template <typename I>
@@ -78,8 +67,13 @@ Context *OpenRequest<I>::handle_v1_detect_header(int *result) {
     }
     send_close_image(*result);
   } else {
+    ldout(cct, 1) << "RBD image format 1 is deprecated. "
+                  << "Please copy this image to image format 2." << dendl;
+
     m_image_ctx->old_format = true;
     m_image_ctx->header_oid = util::old_header_name(m_image_ctx->name);
+    m_image_ctx->apply_metadata({});
+
     send_register_watch();
   }
   return nullptr;
@@ -102,7 +96,7 @@ void OpenRequest<I>::send_v2_detect_header() {
                                    comp, &op, &m_out_bl);
     comp->release();
   } else {
-    send_v2_get_immutable_metadata();
+    send_v2_get_name();
   }
 }
 
@@ -141,7 +135,7 @@ void OpenRequest<I>::send_v2_get_id() {
                                     comp, &op, &m_out_bl);
     comp->release();
   } else {
-    send_v2_get_immutable_metadata();
+    send_v2_get_name();
   }
 }
 
@@ -161,6 +155,42 @@ Context *OpenRequest<I>::handle_v2_get_id(int *result) {
   } else {
     send_v2_get_immutable_metadata();
   }
+  return nullptr;
+}
+
+template <typename I>
+void OpenRequest<I>::send_v2_get_name() {
+  CephContext *cct = m_image_ctx->cct;
+  ldout(cct, 10) << this << " " << __func__ << dendl;
+
+  librados::ObjectReadOperation op;
+  cls_client::dir_get_name_start(&op, m_image_ctx->id);
+
+  using klass = OpenRequest<I>;
+  librados::AioCompletion *comp = create_rados_ack_callback<
+    klass, &klass::handle_v2_get_name>(this);
+  m_out_bl.clear();
+  m_image_ctx->md_ctx.aio_operate(RBD_DIRECTORY, comp, &op, &m_out_bl);
+  comp->release();
+}
+
+template <typename I>
+Context *OpenRequest<I>::handle_v2_get_name(int *result) {
+  CephContext *cct = m_image_ctx->cct;
+  ldout(cct, 10) << __func__ << ": r=" << *result << dendl;
+
+  if (*result == 0) {
+    bufferlist::iterator it = m_out_bl.begin();
+    *result = cls_client::dir_get_name_finish(&it, &m_image_ctx->name);
+  }
+  if (*result < 0) {
+    lderr(cct) << "failed to retreive name: "
+               << cpp_strerror(*result) << dendl;
+    send_close_image(*result);
+  } else {
+    send_v2_get_immutable_metadata();
+  }
+
   return nullptr;
 }
 
@@ -241,9 +271,66 @@ Context *OpenRequest<I>::handle_v2_get_stripe_unit_count(int *result) {
     lderr(cct) << "failed to read striping metadata: " << cpp_strerror(*result)
                << dendl;
     send_close_image(*result);
-  } else {
-    send_register_watch();
+    return nullptr;
   }
+
+  m_image_ctx->init_layout();
+
+  send_v2_apply_metadata();
+  return nullptr;
+}
+
+template <typename I>
+void OpenRequest<I>::send_v2_apply_metadata() {
+  CephContext *cct = m_image_ctx->cct;
+  ldout(cct, 10) << this << " " << __func__ << ": "
+                 << "start_key=" << m_last_metadata_key << dendl;
+
+  librados::ObjectReadOperation op;
+  cls_client::metadata_list_start(&op, m_last_metadata_key, MAX_METADATA_ITEMS);
+
+  using klass = OpenRequest<I>;
+  librados::AioCompletion *comp =
+    create_rados_ack_callback<klass, &klass::handle_v2_apply_metadata>(this);
+  m_out_bl.clear();
+  m_image_ctx->md_ctx.aio_operate(m_image_ctx->header_oid, comp, &op,
+                                  &m_out_bl);
+  comp->release();
+}
+
+template <typename I>
+Context *OpenRequest<I>::handle_v2_apply_metadata(int *result) {
+  CephContext *cct = m_image_ctx->cct;
+  ldout(cct, 10) << this << " " << __func__ << ": r=" << *result << dendl;
+
+  std::map<std::string, bufferlist> metadata;
+  if (*result == 0) {
+    bufferlist::iterator it = m_out_bl.begin();
+    *result = cls_client::metadata_list_finish(&it, &metadata);
+  }
+
+  if (*result == -EOPNOTSUPP || *result == -EIO) {
+    ldout(cct, 10) << "config metadata not supported by OSD" << dendl;
+  } else if (*result < 0) {
+    lderr(cct) << "failed to retrieve metadata: " << cpp_strerror(*result)
+               << dendl;
+    send_close_image(*result);
+    return nullptr;
+  }
+
+  if (!metadata.empty()) {
+    m_metadata.insert(metadata.begin(), metadata.end());
+    m_last_metadata_key = metadata.rbegin()->first;
+    if (boost::starts_with(m_last_metadata_key,
+                           ImageCtx::METADATA_CONF_PREFIX)) {
+      send_v2_apply_metadata();
+      return nullptr;
+    }
+  }
+
+  m_image_ctx->apply_metadata(m_metadata);
+
+  send_register_watch();
   return nullptr;
 }
 
@@ -251,19 +338,18 @@ template <typename I>
 void OpenRequest<I>::send_register_watch() {
   m_image_ctx->init();
 
-  if (!m_image_ctx->read_only) {
-    CephContext *cct = m_image_ctx->cct;
-    ldout(cct, 10) << this << " " << __func__ << dendl;
-
-    // no librados async version of watch
-    using klass = OpenRequest<I>;
-    Context *ctx = new C_RegisterWatch<I>(
-      *m_image_ctx,
-      create_context_callback<klass, &klass::handle_register_watch>(this));
-    m_image_ctx->op_work_queue->queue(ctx);
-  } else {
+  if (m_image_ctx->read_only) {
     send_refresh();
+    return;
   }
+
+  CephContext *cct = m_image_ctx->cct;
+  ldout(cct, 10) << this << " " << __func__ << dendl;
+
+  using klass = OpenRequest<I>;
+  Context *ctx = create_context_callback<
+    klass, &klass::handle_register_watch>(this);
+  m_image_ctx->register_watch(ctx);
 }
 
 template <typename I>
@@ -288,7 +374,7 @@ void OpenRequest<I>::send_refresh() {
 
   using klass = OpenRequest<I>;
   RefreshRequest<I> *ctx = RefreshRequest<I>::create(
-    *m_image_ctx,
+    *m_image_ctx, false,
     create_context_callback<klass, &klass::handle_refresh>(this));
   ctx->send();
 }

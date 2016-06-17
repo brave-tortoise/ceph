@@ -14,23 +14,17 @@
 
 #include "MonmapMonitor.h"
 #include "Monitor.h"
-#include "MonitorDBStore.h"
-
 #include "messages/MMonCommand.h"
 #include "messages/MMonJoin.h"
 
-#include "common/Timer.h"
 #include "common/ceph_argparse.h"
 #include "common/errno.h"
-#include "mon/MDSMonitor.h"
-#include "mon/OSDMonitor.h"
-#include "mon/PGMonitor.h"
-
 #include <sstream>
 #include "common/config.h"
 #include "common/cmdparse.h"
-#include "include/str_list.h"
+
 #include "include/assert.h"
+#include "include/stringify.h"
 
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
@@ -240,10 +234,6 @@ bool MonmapMonitor::preprocess_command(MonOpRequestRef op)
     if (p != mon->monmap)
        delete p;
   }
-  else if (prefix == "mon add")
-    return false;
-  else if (prefix == "mon remove")
-    return false;
 
 reply:
   if (r != -1) {
@@ -418,7 +408,8 @@ bool MonmapMonitor::prepare_command(MonOpRequestRef op)
     dout(0) << __func__ << " proposing new mon." << name << dendl;
     goto reply;
 
-  } else if (prefix == "mon remove") {
+  } else if (prefix == "mon remove" ||
+             prefix == "mon rm") {
     string name;
     cmd_getval(g_ceph_context, cmdmap, "name", name);
     if (!monmap.contains(name)) {
@@ -528,7 +519,8 @@ void MonmapMonitor::tick()
 }
 
 void MonmapMonitor::get_health(list<pair<health_status_t, string> >& summary,
-			       list<pair<health_status_t, string> > *detail) const
+			       list<pair<health_status_t, string> > *detail,
+			       CephContext *cct) const
 {
   int max = mon->monmap->size();
   int actual = mon->get_quorum().size();
@@ -580,18 +572,5 @@ int MonmapMonitor::get_monmap(bufferlist &bl)
             << cpp_strerror(err) << dendl;
     return err;
   }
-  return 0;
-}
-
-int MonmapMonitor::get_monmap(MonMap &m)
-{
-  dout(10) << __func__ << dendl;
-  bufferlist monmap_bl;
-
-  int err = get_monmap(monmap_bl);
-  if (err < 0) {
-    return err;
-  }
-  m.decode(monmap_bl);
   return 0;
 }

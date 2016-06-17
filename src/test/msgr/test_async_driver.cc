@@ -272,7 +272,7 @@ class Worker : public Thread {
 
  public:
   EventCenter center;
-  Worker(CephContext *c): cct(c), done(false), center(c) {
+  explicit Worker(CephContext *c): cct(c), done(false), center(c) {
     center.init(100);
   }
   void stop() {
@@ -280,7 +280,7 @@ class Worker : public Thread {
     center.wakeup();
   }
   void* entry() {
-    center.set_owner(pthread_self());
+    center.set_owner();
     while (!done)
       center.process_events(1000000);
     return 0;

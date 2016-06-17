@@ -22,18 +22,11 @@
 #include "messages/MAuth.h"
 #include "messages/MAuthReply.h"
 #include "messages/MMonGlobalID.h"
-
-#include "common/Timer.h"
-#include "common/config.h"
-#include "common/cmdparse.h"
+#include "msg/Messenger.h"
 
 #include "auth/AuthServiceHandler.h"
 #include "auth/KeyRing.h"
-
-#include "osd/osd_types.h"
-
 #include "include/assert.h"
-#include "include/str_list.h"
 
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
@@ -44,7 +37,7 @@ static ostream& _prefix(std::ostream *_dout, Monitor *mon, version_t v) {
 		<< ").auth v" << v << " ";
 }
 
-ostream& operator<<(ostream& out, AuthMonitor& pm)
+ostream& operator<<(ostream &out, const AuthMonitor &pm)
 {
   return out << "auth";
 }
@@ -537,6 +530,7 @@ bool AuthMonitor::preprocess_command(MonOpRequestRef op)
   cmd_getval(g_ceph_context, cmdmap, "prefix", prefix);
   if (prefix == "auth add" ||
       prefix == "auth del" ||
+      prefix == "auth rm" ||
       prefix == "auth get-or-create" ||
       prefix == "auth get-or-create-key" ||
       prefix == "auth import" ||
@@ -990,7 +984,8 @@ bool AuthMonitor::prepare_command(MonOpRequestRef op)
     wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
-  } else if (prefix == "auth del" && !entity_name.empty()) {
+  } else if ((prefix == "auth del" || prefix == "auth rm") &&
+             !entity_name.empty()) {
     KeyServerData::Incremental auth_inc;
     auth_inc.name = entity;
     if (!mon->key_server.contains(auth_inc.name)) {

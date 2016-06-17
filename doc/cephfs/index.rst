@@ -49,7 +49,8 @@ least one :term:`Ceph Metadata Server` running.
 	:maxdepth: 1
 
 	Add/Remove MDS <../../rados/deployment/ceph-deploy-mds>
-	MDS Configuration <mds-config-ref>
+	MDS failover and standby configuration <standby>
+	MDS Configuration Settings <mds-config-ref>
 	Journaler Configuration <journaler>
 	Manpage ceph-mds <../../man/8/ceph-mds>
 
@@ -81,7 +82,9 @@ authentication keyring.
 .. toctree:: 
 	:maxdepth: 1
 
+    Administrative commands <administration>
 	POSIX compatibility <posix>
+	Experimental Features <experimental-features>
         CephFS Quotas <quota>
 	Using Ceph with Hadoop <hadoop>
 	libcephfs <../../api/libcephfs-java/>
@@ -92,6 +95,7 @@ authentication keyring.
 	Troubleshooting <troubleshooting>
 	Disaster recovery <disaster-recovery>
 	Client authentication <client-auth>
+	Upgrading old filesystems <upgrading>
 
 .. raw:: html
 

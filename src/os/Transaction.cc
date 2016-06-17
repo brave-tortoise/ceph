@@ -323,42 +323,24 @@ void ObjectStore::Transaction::_build_actions_from_tbl()
       }
       break;
 
+    case Transaction::OP_TRY_RENAME:
+      {
+	coll_t cid;
+	ghobject_t oldoid;
+	ghobject_t newoid;
+
+	::decode(cid, p);
+	::decode(oldoid, p);
+	::decode(newoid, p);
+
+	try_rename(cid, oldoid, newoid);
+      }
+      break;
+
     case Transaction::OP_COLL_SETATTR:
-      {
-	coll_t cid;
-	string name;
-	bufferlist bl;
-
-	::decode(cid, p);
-	::decode(name, p);
-	::decode(bl, p);
-
-	collection_setattr(cid, name, bl);
-      }
-      break;
-
     case Transaction::OP_COLL_SETATTRS:
-      {
-	coll_t cid;
-	map<string,bufferptr> aset;
-
-	::decode(cid, p);
-	::decode(aset, p);
-
-	collection_setattrs(cid, aset);
-      }
-      break;
-
     case Transaction::OP_COLL_RMATTR:
-      {
-	coll_t cid;
-	string name;
-
-	::decode(cid, p);
-	::decode(name, p);
-
-	collection_rmattr(cid, name);
-      }
+      assert(0 == "collection attr methods have been removed");
       break;
 
     case Transaction::OP_STARTSYNC:
@@ -492,7 +474,7 @@ void ObjectStore::Transaction::_build_actions_from_tbl()
 	::decode(expected_object_size, p);
 	::decode(expected_write_size, p);
 
-	set_alloc_hint(cid, oid, expected_object_size, expected_write_size);
+	set_alloc_hint(cid, oid, expected_object_size, expected_write_size, 0);
       }
       break;
 
@@ -908,6 +890,17 @@ void ObjectStore::Transaction::dump(ceph::Formatter *f)
       }
       break;
 
+    case Transaction::OP_TRY_RENAME:
+      {
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t old_oid = i.get_oid(op->oid);
+        ghobject_t new_oid = i.get_oid(op->dest_oid);
+	f->dump_string("op_name", "op_coll_move_rename");
+	f->dump_stream("collection") << cid;
+	f->dump_stream("old_oid") << old_oid;
+	f->dump_stream("new_oid") << new_oid;
+      }
+	
     case Transaction::OP_SETALLOCHINT:
       {
         coll_t cid = i.get_cid(op->cid);
@@ -977,9 +970,6 @@ void ObjectStore::Transaction::generate_test_instances(list<ObjectStore::Transac
   t->create_collection(c, 12);
   t->collection_move_rename(c, o2, c2, o3);
   t->remove_collection(c);
-  t->collection_setattr(c, string("this"), bl);
-  t->collection_rmattr(c, string("foo"));
-  t->collection_setattrs(c, m);
   o.push_back(t);  
 }
 

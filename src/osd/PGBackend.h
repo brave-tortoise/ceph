@@ -18,14 +18,22 @@
 #ifndef PGBACKEND_H
 #define PGBACKEND_H
 
-#include "OSDMap.h"
-#include "PGLog.h"
 #include "osd_types.h"
 #include "common/WorkQueue.h"
 #include "include/Context.h"
 #include "os/ObjectStore.h"
 #include "common/LogClient.h"
 #include <string>
+
+namespace Scrub {
+  class Store;
+}
+struct shard_info_wrapper;
+
+//forward declaration
+class OSDMap;
+class PGLog;
+typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
 
  /**
   * PGBackend
@@ -43,6 +51,7 @@
  protected:
    ObjectStore *store;
    const coll_t coll;
+   ObjectStore::CollectionHandle &ch;
  public:	
    /**
     * Provides interfaces for PGBackend callbacks
@@ -60,7 +69,6 @@
       */
      virtual void on_local_recover(
        const hobject_t &oid,
-       const object_stat_sum_t &stat_diff,
        const ObjectRecoveryInfo &recovery_info,
        ObjectContextRef obc,
        ObjectStore::Transaction *t
@@ -70,7 +78,10 @@
       * Called when transaction recovering oid is durable and
       * applied on all replicas
       */
-     virtual void on_global_recover(const hobject_t &oid) = 0;
+     virtual void on_global_recover(
+       const hobject_t &oid,
+       const object_stat_sum_t &stat_diff
+       ) = 0;
 
      /**
       * Called when peer is recovered
@@ -102,11 +113,11 @@
 
      virtual void send_message(int to_osd, Message *m) = 0;
      virtual void queue_transaction(
-       ObjectStore::Transaction *t,
+       ObjectStore::Transaction&& t,
        OpRequestRef op = OpRequestRef()
        ) = 0;
      virtual void queue_transactions(
-       list<ObjectStore::Transaction*>& tls,
+       vector<ObjectStore::Transaction>& tls,
        OpRequestRef op = OpRequestRef()
        ) = 0;
      virtual epoch_t get_epoch() const = 0;
@@ -178,7 +189,7 @@
        const eversion_t &trim_to,
        const eversion_t &trim_rollback_to,
        bool transaction_applied,
-       ObjectStore::Transaction *t) = 0;
+       ObjectStore::Transaction &t) = 0;
 
      virtual void update_peer_last_complete_ondisk(
        pg_shard_t fromosd,
@@ -207,7 +218,6 @@
      virtual uint64_t min_peer_features() const = 0;
      virtual bool sort_bitwise() const = 0;
 
-     virtual bool transaction_use_tbl() = 0;
      virtual hobject_t get_temp_recovery_object(eversion_t version,
 						snapid_t snap) = 0;
 
@@ -230,9 +240,11 @@
    };
    Listener *parent;
    Listener *get_parent() const { return parent; }
-   PGBackend(Listener *l, ObjectStore *store, coll_t coll) :
+   PGBackend(Listener *l, ObjectStore *store, coll_t coll,
+	     ObjectStore::CollectionHandle &ch) :
      store(store),
      coll(coll),
+     ch(ch),
      parent(l) {}
    bool is_primary() const { return get_parent()->pgb_is_primary(); }
    OSDMapRef get_osdmap() const { return get_parent()->pgb_get_osdmap(); }
@@ -391,7 +403,8 @@
      virtual void set_alloc_hint(
        const hobject_t &hoid,
        uint64_t expected_object_size,
-       uint64_t expected_write_size
+       uint64_t expected_write_size,
+       uint32_t flags
        ) = 0;
 
      /// Optional, not supported on ec-pool
@@ -462,6 +475,8 @@
      virtual uint64_t get_bytes_written() const = 0;
      virtual ~PGTransaction() {}
    };
+   using PGTransactionUPtr = std::unique_ptr<PGTransaction>;
+
    /// Get implementation specific empty transaction
    virtual PGTransaction *get_transaction() = 0;
 
@@ -469,7 +484,7 @@
    virtual void submit_transaction(
      const hobject_t &hoid,               ///< [in] object
      const eversion_t &at_version,        ///< [in] version
-     PGTransaction *t,                    ///< [in] trans to execute
+     PGTransactionUPtr &&t,               ///< [in] trans to execute (move)
      const eversion_t &trim_to,           ///< [in] trim log to here
      const eversion_t &trim_rollback_to,  ///< [in] trim rollback info to here
      const vector<pg_log_entry_t> &log_entries, ///< [in] log entries for t
@@ -483,6 +498,11 @@
      OpRequestRef op                      ///< [in] op
      ) = 0;
 
+
+   void try_stash(
+     const hobject_t &hoid,
+     version_t v,
+     ObjectStore::Transaction *t);
 
    void rollback(
      const hobject_t &hoid,
@@ -503,6 +523,12 @@
 
    /// Unstash object to rollback stash
    void rollback_stash(
+     const hobject_t &hoid,
+     version_t old_version,
+     ObjectStore::Transaction *t);
+
+   /// Unstash object to rollback stash
+   void rollback_try_stash(
      const hobject_t &hoid,
      version_t old_version,
      ObjectStore::Transaction *t);
@@ -555,8 +581,8 @@
 		pair<bufferlist*, Context*> > > &to_read,
      Context *on_complete, bool fast_read = false) = 0;
 
-   virtual bool scrub_supported() { return false; }
-   virtual bool auto_repair_supported() const { return false; }
+   virtual bool scrub_supported() = 0;
+   virtual bool auto_repair_supported() const = 0;
    void be_scan_list(
      ScrubMap &map, const vector<hobject_t> &ls, bool deep, uint32_t seed,
      ThreadPool::TPHandle &handle);
@@ -564,39 +590,39 @@
      pg_shard_t auth_shard,
      const ScrubMap::object &auth,
      const object_info_t& auth_oi,
-     bool okseed,
      const ScrubMap::object &candidate,
+     shard_info_wrapper& shard_error,
      ostream &errorstream);
    map<pg_shard_t, ScrubMap *>::const_iterator be_select_auth_object(
      const hobject_t &obj,
      const map<pg_shard_t,ScrubMap*> &maps,
-     bool okseed,
      object_info_t *auth_oi);
    void be_compare_scrubmaps(
      const map<pg_shard_t,ScrubMap*> &maps,
-     bool okseed,   ///< true if scrub digests have same seed our oi digests
      bool repair,
      map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> &missing,
      map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> &inconsistent,
      map<hobject_t, list<pg_shard_t>, hobject_t::BitwiseComparator> &authoritative,
      map<hobject_t, pair<uint32_t,uint32_t>, hobject_t::BitwiseComparator> &missing_digest,
      int &shallow_errors, int &deep_errors,
+     Scrub::Store *store,
      const spg_t& pgid,
      const vector<int> &acting,
      ostream &errorstream);
    virtual uint64_t be_get_ondisk_size(
-     uint64_t logical_size) { assert(0); return 0; }
+     uint64_t logical_size) = 0;
    virtual void be_deep_scrub(
      const hobject_t &poid,
      uint32_t seed,
      ScrubMap::object &o,
-     ThreadPool::TPHandle &handle) { assert(0); }
+     ThreadPool::TPHandle &handle) = 0;
 
    static PGBackend *build_pg_backend(
      const pg_pool_t &pool,
      const OSDMapRef curmap,
      Listener *l,
      coll_t coll,
+     ObjectStore::CollectionHandle &ch,
      ObjectStore *store,
      CephContext *cct);
  };

@@ -32,19 +32,13 @@ using namespace std;
 #include "osd/OSDMap.h"
 
 #include "PaxosService.h"
-#include "Session.h"
 
 class Monitor;
 class PGMap;
-
-#include "messages/MOSDBoot.h"
-#include "messages/MMonCommand.h"
-#include "messages/MOSDMap.h"
-#include "messages/MPoolOp.h"
+class MonSession;
+class MOSDMap;
 
 #include "erasure-code/ErasureCodeInterface.h"
-
-#include "common/TrackedOp.h"
 #include "mon/MonOpRequest.h"
 
 #define OSD_METADATA_PREFIX "osd_metadata"
@@ -55,7 +49,7 @@ struct failure_reporter_t {
   MonOpRequestRef op;       ///< failure op request
 
   failure_reporter_t() {}
-  failure_reporter_t(utime_t s) : failed_since(s) {}
+  explicit failure_reporter_t(utime_t s) : failed_since(s) {}
   ~failure_reporter_t() { }
 };
 
@@ -134,7 +128,7 @@ private:
   SimpleLRU<version_t, bufferlist> inc_osd_cache;
   SimpleLRU<version_t, bufferlist> full_osd_cache;
 
-  void check_failures(utime_t now);
+  bool check_failures(utime_t now);
   bool check_failure(utime_t now, int target_osd, failure_info_t& fi);
 
   // map thrashing
@@ -226,10 +220,18 @@ public:
   //            @c Monitor::send_reply() can mark_event with it.
   void send_incremental(epoch_t first, MonSession *session, bool onetime,
 			MonOpRequestRef req = MonOpRequestRef());
-private:
-  int reweight_by_utilization(int oload, std::string& out_str, bool by_pg,
-			      const set<int64_t> *pools);
 
+private:
+  int reweight_by_utilization(int oload,
+			      double max_change,
+			      int max_osds,
+			      bool by_pg,
+			      const set<int64_t> *pools,
+			      bool no_increasing,
+			      bool dry_run,
+			      std::stringstream *ss,
+			      std::string *out_str,
+			      Formatter *f);
   void print_utilization(ostream &out, Formatter *f, bool tree) const;
 
   bool check_source(PaxosServiceMessage *m, uuid_d fsid);
@@ -386,7 +388,6 @@ private:
   bool preprocess_remove_snaps(MonOpRequestRef op);
   bool prepare_remove_snaps(MonOpRequestRef op);
 
-  CephContext *cct;
   OpTracker op_tracker;
 
   int load_metadata(int osd, map<string, string>& m, ostream *err);
@@ -399,7 +400,8 @@ private:
   int parse_osd_id(const char *s, stringstream *pss);
 
   void get_health(list<pair<health_status_t,string> >& summary,
-		  list<pair<health_status_t,string> > *detail) const;
+		  list<pair<health_status_t,string> > *detail,
+		  CephContext *cct) const override;
   bool preprocess_command(MonOpRequestRef op);
   bool prepare_command(MonOpRequestRef op);
   bool prepare_command_impl(MonOpRequestRef op, map<string,cmd_vartype>& cmdmap);
@@ -410,7 +412,6 @@ private:
 
   void handle_osd_timeouts(const utime_t &now,
 			   std::map<int,utime_t> &last_osd_report);
-  void mark_all_down();
 
   void send_latest(MonOpRequestRef op, epoch_t start=0);
   void send_latest_now_nodelete(MonOpRequestRef op, epoch_t start=0) {

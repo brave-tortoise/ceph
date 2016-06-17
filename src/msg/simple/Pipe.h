@@ -27,6 +27,8 @@ class SimpleMessenger;
 class IncomingQueue;
 class DispatchQueue;
 
+static const int SM_IOV_MAX = (IOV_MAX >= 1024 ? IOV_MAX / 4 : IOV_MAX);
+
   /**
    * The Pipe is the most complex SimpleMessenger component. It gets
    * two threads, one each for reading and writing on a socket it's handed
@@ -46,7 +48,7 @@ class DispatchQueue;
     class Reader : public Thread {
       Pipe *pipe;
     public:
-      Reader(Pipe *p) : pipe(p) {}
+      explicit Reader(Pipe *p) : pipe(p) {}
       void *entry() { pipe->reader(); return 0; }
     } reader_thread;
 
@@ -57,7 +59,7 @@ class DispatchQueue;
     class Writer : public Thread {
       Pipe *pipe;
     public:
-      Writer(Pipe *p) : pipe(p) {}
+      explicit Writer(Pipe *p) : pipe(p) {}
       void *entry() { pipe->writer(); return 0; }
     } writer_thread;
 
@@ -81,7 +83,7 @@ class DispatchQueue;
       bool stop_fast_dispatching_flag; // we need to stop fast dispatching
 
     public:
-      DelayedDelivery(Pipe *p)
+      explicit DelayedDelivery(Pipe *p)
 	: pipe(p),
 	  delay_lock("Pipe::DelayedDelivery::delay_lock"), flush_count(0),
 	  active_flush(false),
@@ -175,7 +177,7 @@ class DispatchQueue;
 
   private:
     int sd;
-    struct iovec msgvec[IOV_MAX];
+    struct iovec msgvec[SM_IOV_MAX];
 #if !defined(MSG_NOSIGNAL) && !defined(SO_NOSIGPIPE)
     sigset_t sigpipe_mask;
     bool sigpipe_pending;

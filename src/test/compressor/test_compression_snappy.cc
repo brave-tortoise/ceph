@@ -26,8 +26,8 @@
 TEST(SnappyCompressor, compress_decompress)
 {
   SnappyCompressor sp;
-  EXPECT_EQ(sp.get_method_name(), "snappy");
-  char* test = "This is test text";
+  EXPECT_EQ(sp.get_type(), "snappy");
+  const char* test = "This is test text";
   int len = strlen(test);
   bufferlist in, out;
   in.append(test, len);
@@ -35,6 +35,45 @@ TEST(SnappyCompressor, compress_decompress)
   EXPECT_EQ(res, 0);
   bufferlist after;
   res = sp.decompress(out, after);
+  EXPECT_EQ(res, 0);
+
+  after.clear();
+  size_t compressed_len = out.length();
+  out.append_zero(12);
+  auto it = out.begin();
+  res = sp.decompress(it, compressed_len, after);
+  EXPECT_EQ(res, 0);
+}
+
+TEST(SnappyCompressor, sharded_input_decompress)
+{
+  const size_t small_prefix_size=3;
+
+  SnappyCompressor sp;
+  EXPECT_EQ(sp.get_type(), "snappy");
+  string test(128*1024,0);
+  int len = test.size();
+  bufferlist in, out;
+  in.append(test.c_str(), len);
+  int res = sp.compress(in, out);
+  EXPECT_EQ(res, 0);
+  EXPECT_GT(out.length(), small_prefix_size);
+  
+  bufferlist out2, tmp;
+  tmp.substr_of(out, 0, small_prefix_size );
+  out2.append( tmp );
+  size_t left = out.length()-small_prefix_size;
+  size_t offs = small_prefix_size;
+  while( left > 0 ){
+    size_t shard_size = MIN( 2048, left ); 
+    tmp.substr_of(out, offs, shard_size );
+    out2.append( tmp );
+    left -= shard_size;
+    offs += shard_size;
+  }
+
+  bufferlist after;
+  res = sp.decompress(out2, after);
   EXPECT_EQ(res, 0);
 }
 
@@ -44,8 +83,6 @@ int main(int argc, char **argv) {
 
   global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
-
-  g_conf->set_val("compression_dir", ".libs", false, false);
 
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -34,9 +34,9 @@ public:
   bool is_refresh_required() const;
 
   int refresh();
-  void refresh(Context *on_finish);
   int refresh_if_required();
-  int refresh_if_required(const RWLock &owner_lock);
+  void refresh(Context *on_finish);
+  void acquire_lock_refresh(Context *on_finish);
 
   void snap_set(const std::string &snap_name, Context *on_finish);
 
@@ -60,10 +60,11 @@ private:
 
   struct Action {
     ActionType action_type;
-    uint64_t refresh_seq;
+    uint64_t refresh_seq = 0;
+    bool refresh_acquiring_lock = false;
     std::string snap_name;
 
-    Action(ActionType action_type) : action_type(action_type), refresh_seq(0) {
+    Action(ActionType action_type) : action_type(action_type) {
     }
     inline bool operator==(const Action &action) const {
       if (action_type != action.action_type) {
@@ -71,7 +72,8 @@ private:
       }
       switch (action_type) {
       case ACTION_TYPE_REFRESH:
-        return refresh_seq == action.refresh_seq;
+        return (refresh_seq == action.refresh_seq &&
+                refresh_acquiring_lock == action.refresh_acquiring_lock);
       case ACTION_TYPE_SET_SNAP:
         return snap_name == action.snap_name;
       default:
@@ -96,21 +98,23 @@ private:
   bool is_transition_state() const;
   bool is_closed() const;
 
-  void append_context(const Action &action, Context *context);
-  void execute_next_action();
-  void execute_action(const Action &action, Context *context);
-  void complete_action(State next_state, int r);
+  void refresh(bool acquiring_lock, Context *on_finish);
 
-  void send_open();
+  void append_context(const Action &action, Context *context);
+  void execute_next_action_unlock();
+  void execute_action_unlock(const Action &action, Context *context);
+  void complete_action_unlock(State next_state, int r);
+
+  void send_open_unlock();
   void handle_open(int r);
 
-  void send_close();
+  void send_close_unlock();
   void handle_close(int r);
 
-  void send_refresh();
+  void send_refresh_unlock();
   void handle_refresh(int r);
 
-  void send_set_snap();
+  void send_set_snap_unlock();
   void handle_set_snap(int r);
 
 };

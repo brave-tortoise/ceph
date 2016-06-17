@@ -17,7 +17,7 @@ Description
 ===========
 
 **rbd** is a utility for manipulating rados block device (RBD) images,
-used by the Linux rbd driver and the rbd storage driver for Qemu/KVM.
+used by the Linux rbd driver and the rbd storage driver for QEMU/KVM.
 RBD images are simple block devices that are striped over objects and
 stored in a RADOS object store. The size of the objects the image is
 striped over must be a power of two.
@@ -56,9 +56,9 @@ Parameters
 
    Specifies which object layout to use. The default is 1.
 
-   * format 1 - Use the original format for a new rbd image. This format is
-     understood by all versions of librbd and the kernel rbd module, but
-     does not support newer features like cloning.
+   * format 1 - (deprecated) Use the original format for a new rbd image. This
+     format is understood by all versions of librbd and the kernel rbd module,
+     but does not support newer features like cloning.
 
    * format 2 - Use the second rbd format, which is supported by
      librbd and kernel since version 3.11 (except for striping). This adds
@@ -158,6 +158,10 @@ Parameters
    dramatically improve performance since the differences can be computed
    by examining the in-memory object map instead of querying RADOS for each
    object within the image.
+
+.. option:: --limit
+
+   Specifies the limit for the number of snapshots permitted.
 
 Commands
 ========
@@ -312,6 +316,13 @@ Commands
   in different pools than the parent snapshot.)
 
   This requires image format 2.
+
+:command:`snap limit set` [--limit] *limit* *image-spec*
+  Set a limit for the number of snapshots allowed on an image.
+
+:command:`snap limit clear` *image-spec*
+  Remove any previously set limit on the number of snapshots allowed on
+  an image.
 
 :command:`map` [-o | --options *map-options* ] [--read-only] *image-spec* | *snap-spec*
   Maps the specified image to a block device via the rbd kernel module.

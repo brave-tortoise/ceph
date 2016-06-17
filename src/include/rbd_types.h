@@ -59,11 +59,10 @@
 #define RBD_LOCK_NAME		"rbd_lock"
 
 /**
- * rbd_pool_settings object in each pool contains pool-specific settings
- * for configuring features such as async image mirroring to other Ceph
- * clusters.
+ * rbd_mirroring object in each pool contains pool-specific settings
+ * for configuring mirroring.
  */
-#define RBD_POOL_SETTINGS       "rbd_pool_settings"
+#define RBD_MIRRORING       "rbd_mirroring"
 
 #define RBD_MAX_OBJ_NAME_SIZE	96
 #define RBD_MAX_BLOCK_NAME_SIZE 24
@@ -74,6 +73,10 @@
 #define RBD_HEADER_TEXT		"<<< Rados Block Device Image >>>\n"
 #define RBD_HEADER_SIGNATURE	"RBD"
 #define RBD_HEADER_VERSION	"001.005"
+
+#define RBD_GROUP_HEADER_PREFIX "rbd_group_header."
+
+#define RBD_GROUP_DIRECTORY "rbd_group_directory"
 
 struct rbd_info {
 	__le64 max_id;
@@ -102,6 +105,5 @@ struct rbd_obj_header_ondisk {
 	__le64 snap_names_len;
 	struct rbd_obj_snap_ondisk snaps[0];
 } __attribute__((packed));
-
 
 #endif

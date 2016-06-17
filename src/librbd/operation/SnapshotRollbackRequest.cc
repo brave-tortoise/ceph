@@ -222,7 +222,10 @@ Context *SnapshotRollbackRequest<I>::handle_rollback_objects(int *result) {
   CephContext *cct = image_ctx.cct;
   ldout(cct, 5) << this << " " << __func__ << ": r=" << *result << dendl;
 
-  if (*result < 0) {
+  if (*result == -ERESTART) {
+    ldout(cct, 5) << "snapshot rollback operation interrupted" << dendl;
+    return this->create_context_finisher();
+  } else if (*result < 0) {
     lderr(cct) << "failed to rollback objects: " << cpp_strerror(*result)
                << dendl;
     return this->create_context_finisher();
@@ -279,6 +282,7 @@ Context *SnapshotRollbackRequest<I>::send_invalidate_cache() {
   CephContext *cct = image_ctx.cct;
   ldout(cct, 5) << this << " " << __func__ << dendl;
 
+  RWLock::RLocker owner_lock(image_ctx.owner_lock);
   Context *ctx = create_context_callback<
     SnapshotRollbackRequest<I>,
     &SnapshotRollbackRequest<I>::handle_invalidate_cache>(this);

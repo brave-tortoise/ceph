@@ -15,7 +15,9 @@
 #ifndef CEPH_LIB_H
 #define CEPH_LIB_H
 
+#if defined(__linux__)
 #include <features.h>
+#endif
 #include <utime.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -28,9 +30,9 @@
 extern "C" {
 #endif
 
-#define LIBCEPHFS_VER_MAJOR 0
-#define LIBCEPHFS_VER_MINOR 94
-#define LIBCEPHFS_VER_EXTRA 0
+#define LIBCEPHFS_VER_MAJOR 10
+#define LIBCEPHFS_VER_MINOR 0
+#define LIBCEPHFS_VER_EXTRA 2
 
 #define LIBCEPHFS_VERSION(maj, min, extra) ((maj << 16) + (min << 8) + extra)
 #define LIBCEPHFS_VERSION_CODE LIBCEPHFS_VERSION(LIBCEPHFS_VER_MAJOR, LIBCEPHFS_VER_MINOR, LIBCEPHFS_VER_EXTRA)
@@ -157,6 +159,19 @@ int ceph_create(struct ceph_mount_info **cmount, const char * const id);
  * @returns 0 on success, negative error code on failure
  */
 int ceph_create_with_context(struct ceph_mount_info **cmount, struct CephContext *conf);
+
+
+typedef void *rados_t;
+
+/**
+ * Create a mount handle from a rados_t, for using libcephfs in the
+ * same process as librados.
+ *
+ * @param cmount the mount info handle to initialize
+ * @param cluster reference to already-initialized librados handle
+ * @returns 0 on success, negative error code on failure
+ */
+int ceph_create_from_rados(struct ceph_mount_info **cmount, rados_t cluster);
 
 /**
  * Initialize the filesystem client (but do not mount the filesystem yet)
@@ -547,7 +562,7 @@ int ceph_link(struct ceph_mount_info *cmount, const char *existing, const char *
  *
  * @param cmount the ceph mount handle to use for creating the link.
  * @param path the path to the symlink to read
- * @param buf the buffer to hold the the path of the file that the symlink points to.
+ * @param buf the buffer to hold the path of the file that the symlink points to.
  * @param size the length of the buffer
  * @returns number of bytes copied on success or negative error code on failure
  */
@@ -1421,6 +1436,10 @@ int ceph_ll_create(struct ceph_mount_info *cmount, struct Inode *parent,
 		   const char *name, mode_t mode, int flags,
 		   struct stat *attr, struct Inode **out, Fh **fhp,
 		   int uid, int gid);
+int ceph_ll_mknod(struct ceph_mount_info *cmount, struct Inode *parent,
+		  const char *name, mode_t mode, dev_t rdev,
+		  struct stat *attr, struct Inode **out,
+		  int uid, int gid);
 int ceph_ll_mkdir(struct ceph_mount_info *cmount, struct Inode *parent,
 		  const char *name, mode_t mode, struct stat *attr,
 		  Inode **out, int uid, int gid);

@@ -2,13 +2,11 @@
 #define CEPH_CLASSHANDLER_H
 
 #include "include/types.h"
-
 #include "objclass/objclass.h"
-
-#include "common/Cond.h"
 #include "common/Mutex.h"
-#include "common/ceph_context.h"
 
+//forward declaration
+class CephContext;
 
 class ClassHandler
 {
@@ -107,7 +105,7 @@ private:
   int _load_class(ClassData *cls);
 
 public:
-  ClassHandler(CephContext *cct_) : cct(cct_), mutex("ClassHandler") {}
+  explicit ClassHandler(CephContext *cct_) : cct(cct_), mutex("ClassHandler") {}
   
   int open_all_classes();
 

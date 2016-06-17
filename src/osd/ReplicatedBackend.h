@@ -17,8 +17,7 @@
 
 #include "OSD.h"
 #include "PGBackend.h"
-#include "osd_types.h"
-#include "../include/memory.h"
+#include "include/memory.h"
 
 struct C_ReplicatedBackend_OnPullComplete;
 class ReplicatedBackend : public PGBackend {
@@ -33,6 +32,7 @@ public:
   ReplicatedBackend(
     PGBackend::Listener *pg,
     coll_t coll,
+    ObjectStore::CollectionHandle &ch,
     ObjectStore *store,
     CephContext *cct);
 
@@ -85,7 +85,7 @@ public:
   class RPCReadPred : public IsPGReadablePredicate {
     pg_shard_t whoami;
   public:
-    RPCReadPred(pg_shard_t whoami) : whoami(whoami) {}
+    explicit RPCReadPred(pg_shard_t whoami) : whoami(whoami) {}
     bool operator()(const set<pg_shard_t> &have) const {
       return have.count(whoami);
     }
@@ -346,7 +346,7 @@ public:
   void submit_transaction(
     const hobject_t &hoid,
     const eversion_t &at_version,
-    PGTransaction *t,
+    PGTransactionUPtr &&t,
     const eversion_t &trim_to,
     const eversion_t &trim_rollback_to,
     const vector<pg_log_entry_t> &log_entries,
@@ -360,7 +360,6 @@ public:
     );
 
 private:
-  template<typename T, int MSGTYPE>
   Message * generate_subop(
     const hobject_t &soid,
     const eversion_t &at_version,
@@ -373,7 +372,7 @@ private:
     const vector<pg_log_entry_t> &log_entries,
     boost::optional<pg_hit_set_history_t> &hset_history,
     InProgressOp *op,
-    ObjectStore::Transaction *op_t,
+    ObjectStore::Transaction &op_t,
     pg_shard_t peer,
     const pg_info_t &pinfo);
   void issue_op(
@@ -388,14 +387,11 @@ private:
     const vector<pg_log_entry_t> &log_entries,
     boost::optional<pg_hit_set_history_t> &hset_history,
     InProgressOp *op,
-    ObjectStore::Transaction *op_t);
+    ObjectStore::Transaction &op_t);
   void op_applied(InProgressOp *op);
   void op_commit(InProgressOp *op);
-  template<typename T, int MSGTYPE>
   void sub_op_modify_reply(OpRequestRef op);
   void sub_op_modify(OpRequestRef op);
-  template<typename T, int MSGTYPE>
-  void sub_op_modify_impl(OpRequestRef op);
 
   struct RepModify {
     OpRequestRef op;
@@ -404,12 +400,10 @@ private:
     eversion_t last_complete;
     epoch_t epoch_started;
 
-    uint64_t bytes_written;
-
     ObjectStore::Transaction opt, localt;
     
     RepModify() : applied(false), committed(false), ackerosd(-1),
-		  epoch_started(0), bytes_written(0) {}
+		  epoch_started(0) {}
   };
   typedef ceph::shared_ptr<RepModify> RepModifyRef;
 
@@ -434,6 +428,8 @@ private:
   void sub_op_modify_applied(RepModifyRef rm);
   void sub_op_modify_commit(RepModifyRef rm);
   bool scrub_supported() { return true; }
+  bool auto_repair_supported() const { return false; }
+
 
   void be_deep_scrub(
     const hobject_t &obj,

@@ -19,6 +19,7 @@ const static struct rgw_http_errors RGW_HTTP_ERRORS[] = {
     { STATUS_NO_CONTENT, 204, "NoContent" },
     { STATUS_PARTIAL_CONTENT, 206, "" },
     { ERR_PERMANENT_REDIRECT, 301, "PermanentRedirect" },
+    { ERR_WEBSITE_REDIRECT, 301, "WebsiteRedirect" },
     { STATUS_REDIRECT, 303, "" },
     { ERR_NOT_MODIFIED, 304, "NotModified" },
     { EINVAL, 400, "InvalidArgument" },
@@ -35,6 +36,7 @@ const static struct rgw_http_errors RGW_HTTP_ERRORS[] = {
     { ERR_TOO_SMALL, 400, "EntityTooSmall" },
     { ERR_TOO_MANY_BUCKETS, 400, "TooManyBuckets" },
     { ERR_MALFORMED_XML, 400, "MalformedXML" },
+    { ERR_AMZ_CONTENT_SHA256_MISMATCH, 400, "XAmzContentSHA256Mismatch" },
     { ERR_LENGTH_REQUIRED, 411, "MissingContentLength" },
     { EACCES, 403, "AccessDenied" },
     { EPERM, 403, "AccessDenied" },
@@ -45,6 +47,7 @@ const static struct rgw_http_errors RGW_HTTP_ERRORS[] = {
     { ERR_QUOTA_EXCEEDED, 403, "QuotaExceeded" },
     { ENOENT, 404, "NoSuchKey" },
     { ERR_NO_SUCH_BUCKET, 404, "NoSuchBucket" },
+    { ERR_NO_SUCH_WEBSITE_CONFIGURATION, 404, "NoSuchWebsiteConfiguration" },
     { ERR_NO_SUCH_UPLOAD, 404, "NoSuchUpload" },
     { ERR_NOT_FOUND, 404, "Not Found"},
     { ERR_METHOD_NOT_ALLOWED, 405, "MethodNotAllowed" },
@@ -56,6 +59,7 @@ const static struct rgw_http_errors RGW_HTTP_ERRORS[] = {
     { ERR_INVALID_SECRET_KEY, 400, "InvalidSecretKey"},
     { ERR_INVALID_KEY_TYPE, 400, "InvalidKeyType"},
     { ERR_INVALID_CAP, 400, "InvalidCapability"},
+    { ERR_INVALID_TENANT_NAME, 400, "InvalidTenantName" },
     { ENOTEMPTY, 409, "BucketNotEmpty" },
     { ERR_PRECONDITION_FAILED, 412, "PreconditionFailed" },
     { ERANGE, 416, "InvalidRange" },
@@ -63,6 +67,7 @@ const static struct rgw_http_errors RGW_HTTP_ERRORS[] = {
     { ERR_LOCKED, 423, "Locked" },
     { ERR_INTERNAL_ERROR, 500, "InternalError" },
     { ERR_NOT_IMPLEMENTED, 501, "NotImplemented" },
+    { ERR_SERVICE_UNAVAILABLE, 503, "ServiceUnavailable"}
 };
 
 const static struct rgw_http_errors RGW_HTTP_SWIFT_ERRORS[] = {
@@ -71,7 +76,8 @@ const static struct rgw_http_errors RGW_HTTP_SWIFT_ERRORS[] = {
     { ERR_USER_SUSPENDED, 401, "UserSuspended" },
     { ERR_INVALID_UTF8, 412, "Invalid UTF8" },
     { ERR_BAD_URL, 412, "Bad URL" },
-    { ERR_NOT_SLO_MANIFEST, 400, "Not an SLO manifest" }
+    { ERR_NOT_SLO_MANIFEST, 400, "Not an SLO manifest" },
+    { ERR_QUOTA_EXCEEDED, 413, "QuotaExceeded" }
 };
 
 struct rgw_http_status_code {
@@ -90,6 +96,7 @@ const static struct rgw_http_status_code http_codes[] = {
   { 207, "Multi Status" },
   { 208, "Already Reported" },
   { 300, "Multiple Choices" },
+  { 301, "Moved Permanently" },
   { 302, "Found" },
   { 303, "See Other" },
   { 304, "Not Modified" },
@@ -138,6 +145,8 @@ static inline int rgw_http_error_to_errno(int http_err)
   if (http_err >= 200 && http_err <= 299)
     return 0;
   switch (http_err) {
+    case 304:
+      return -ERR_NOT_MODIFIED;
     case 400:
       return -EINVAL;
     case 401:
@@ -146,6 +155,8 @@ static inline int rgw_http_error_to_errno(int http_err)
         return -EACCES;
     case 404:
         return -ENOENT;
+    case 409:
+        return -ENOTEMPTY;
     default:
         return -EIO;
   }

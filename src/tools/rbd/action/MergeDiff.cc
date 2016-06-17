@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "include/compat.h"
 #include "tools/rbd/ArgumentTypes.h"
 #include "tools/rbd/Shell.h"
 #include "tools/rbd/Utils.h"
@@ -377,7 +378,7 @@ static int do_merge_diff(const char *first, const char *second,
 done:
   if (pd > 2)
     close(pd);
-  if (sd > 2)
+  if (sd)
     close(sd);
   if (fd > 2)
     close(fd);

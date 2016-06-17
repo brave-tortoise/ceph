@@ -35,7 +35,7 @@ class SessionMapIOContext : public MDSIOContextBase
     SessionMap *sessionmap;
     MDSRank *get_mds() {return sessionmap->mds;}
   public:
-    SessionMapIOContext(SessionMap *sessionmap_) : sessionmap(sessionmap_) {
+    explicit SessionMapIOContext(SessionMap *sessionmap_) : sessionmap(sessionmap_) {
       assert(sessionmap != NULL);
     }
 };
@@ -253,7 +253,7 @@ void SessionMap::load(MDSInternalContextBase *onload)
 class C_IO_SM_LoadLegacy : public SessionMapIOContext {
 public:
   bufferlist bl;
-  C_IO_SM_LoadLegacy(SessionMap *cm) : SessionMapIOContext(cm) {}
+  explicit C_IO_SM_LoadLegacy(SessionMap *cm) : SessionMapIOContext(cm) {}
   void finish(int r) {
     sessionmap->_load_legacy_finish(r, bl);
   }
@@ -372,7 +372,7 @@ void SessionMap::save(MDSInternalContextBase *onsave, version_t needv)
 
       // Serialize V
       bufferlist bl;
-      session->info.encode(bl);
+      session->info.encode(bl, mds->mdsmap->get_up_features());
 
       // Add to RADOS op
       to_set[k.str()] = bl;
@@ -710,7 +710,7 @@ void SessionMap::save_if_dirty(const std::set<entity_name_t> &tgt_sessions,
 
     // Serialize V
     bufferlist bl;
-    session->info.encode(bl);
+    session->info.encode(bl, mds->mdsmap->get_up_features());
 
     // Add to RADOS op
     to_set[k.str()] = bl;
@@ -842,9 +842,9 @@ void Session::decode(bufferlist::iterator &p)
   _update_human_name();
 }
 
-bool Session::check_access(CInode *in, unsigned mask,
-			   int caller_uid, int caller_gid,
-			   int new_uid, int new_gid)
+int Session::check_access(CInode *in, unsigned mask,
+			  int caller_uid, int caller_gid,
+			  int new_uid, int new_gid)
 {
   string path;
   CInode *diri = NULL;
@@ -860,12 +860,20 @@ bool Session::check_access(CInode *in, unsigned mask,
   if (path.length())
     path = path.substr(1);    // drop leading /
 
-  if (auth_caps.is_capable(path, in->inode.uid, in->inode.gid, in->inode.mode,
-			   caller_uid, caller_gid, mask,
-			   new_uid, new_gid)) {
-    return true;
+  if (in->inode.is_dir() &&
+      in->inode.has_layout() &&
+      in->inode.layout.pool_ns.length() &&
+      !connection->has_feature(CEPH_FEATURE_FS_FILE_LAYOUT_V2)) {
+    dout(10) << __func__ << " client doesn't support FS_FILE_LAYOUT_V2" << dendl;
+    return -EIO;
   }
-  return false;
+
+  if (!auth_caps.is_capable(path, in->inode.uid, in->inode.gid, in->inode.mode,
+			    caller_uid, caller_gid, mask,
+			    new_uid, new_gid)) {
+    return -EACCES;
+  }
+  return 0;
 }
 
 int SessionFilter::parse(

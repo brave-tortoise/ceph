@@ -15,14 +15,13 @@
 #include <sstream>
 #include "Paxos.h"
 #include "Monitor.h"
-#include "MonitorDBStore.h"
-
 #include "messages/MMonPaxos.h"
 
 #include "common/config.h"
 #include "include/assert.h"
 #include "include/stringify.h"
-#include "common/Formatter.h"
+#include "common/Timer.h"
+#include "messages/PaxosServiceMessage.h"
 
 #define dout_subsys ceph_subsys_paxos
 #undef dout_prefix
@@ -357,7 +356,7 @@ bool Paxos::store_state(MMonPaxos *m)
     // ignore everything if values start in the future.
     dout(10) << "store_state ignoring all values, they start at " << start->first
 	     << " > last_committed+1" << dendl;
-    start = m->values.end();
+    return false;
   }
 
   // push forward the start position on the message's values iterator, up until
@@ -425,24 +424,7 @@ bool Paxos::store_state(MMonPaxos *m)
     changed = true;
   }
 
-  remove_legacy_versions();
-
   return changed;
-}
-
-void Paxos::remove_legacy_versions()
-{
-  if (get_store()->exists(get_name(), "conversion_first")) {
-    MonitorDBStore::TransactionRef t(new MonitorDBStore::Transaction);
-    version_t v = get_store()->get(get_name(), "conversion_first");
-    dout(10) << __func__ << " removing pre-conversion paxos states from " << v
-	     << " until " << first_committed << dendl;
-    for (; v < first_committed; ++v) {
-      t->erase(get_name(), v);
-    }
-    t->erase(get_name(), "conversion_first");
-    get_store()->apply_transaction(t);
-  }
 }
 
 void Paxos::_sanity_check_store()
@@ -809,7 +791,7 @@ void Paxos::accept_timeout()
 
 struct C_Committed : public Context {
   Paxos *paxos;
-  C_Committed(Paxos *p) : paxos(p) {}
+  explicit C_Committed(Paxos *p) : paxos(p) {}
   void finish(int r) {
     assert(r >= 0);
     Mutex::Locker l(paxos->mon->lock);
@@ -900,8 +882,6 @@ void Paxos::commit_finish()
 
   // get ready for a new round.
   new_value.clear();
-
-  remove_legacy_versions();
 
   // WRITING -> REFRESH
   // among other things, this lets do_refresh() -> mon->bootstrap() know

@@ -49,6 +49,7 @@
 
 #include "include/rados/librados.hpp"
 #include "include/rbd/librbd.hpp"
+#include "include/xlist.h"
 
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
@@ -186,11 +187,13 @@ private:
 
     if (ret < 0) {
       ctx->reply.error = htonl(-ret);
-    } else if ((ctx->command == NBD_CMD_WRITE || ctx->command == NBD_CMD_READ)
-	       && ret != static_cast<int>(ctx->request.len)) {
-      derr << __func__ << ": " << *ctx << ": unexpected return value: " << ret
-	   << " (" << ctx->request.len << " expected)" << dendl;
-      ctx->reply.error = htonl(EIO);
+    } else if ((ctx->command == NBD_CMD_READ) &&
+                ret < static_cast<int>(ctx->request.len)) {
+      int pad_byte_count = static_cast<int> (ctx->request.len) - ret;
+      ctx->data.append_zero(pad_byte_count);
+      dout(20) << __func__ << ": " << *ctx << ": Pad byte count: " 
+               << pad_byte_count << dendl;
+      ctx->reply.error = 0;
     } else {
       ctx->reply.error = htonl(0);
     }
@@ -751,13 +754,22 @@ static int rbd_nbd(int argc, const char *argv[])
               CINIT_FLAG_UNPRIVILEGED_DAEMON_DEFAULTS);
 
   std::vector<const char*>::iterator i;
+  std::ostringstream err;
 
   for (i = args.begin(); i != args.end(); ) {
     if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
       usage();
       return 0;
     } else if (ceph_argparse_witharg(args, i, &devpath, "--device", (char *)NULL)) {
-    } else if (ceph_argparse_witharg(args, i, &nbds_max, cerr, "--nbds_max", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &nbds_max, err, "--nbds_max", (char *)NULL)) {
+      if (!err.str().empty()) {
+        cerr << err.str() << std::endl;
+        return EXIT_FAILURE;
+      }
+      if (nbds_max < 0) {
+        cerr << "rbd-nbd: Invalid argument for nbds_max!" << std::endl;
+        return EXIT_FAILURE;
+      }
     } else if (ceph_argparse_flag(args, i, "--read-only", (char *)NULL)) {
       readonly = true;
     } else {

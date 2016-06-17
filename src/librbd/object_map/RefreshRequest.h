@@ -26,20 +26,27 @@ public:
 private:
   /**
    * @verbatim
-   *                         (other errors)
-   * <start> -----> LOAD * * * * * * * > INVALIDATE ------------\
-   *                  |    *                                    |
-   *                  |    * (-EINVAL or too small)             |
-   *                  |    * * * * * * > INVALIDATE_AND_RESIZE  |
-   *                  |                      |              *   |
-   *                  |                      |              *   |
-   *                  |                      v              *   |
-   *                  |                    RESIZE           *   |
-   *                  |                      |              *   |
-   *                  |                      |  * * * * * * *   |
-   *                  |                      |  *               |
-   *                  |                      v  v               |
-   *                  \-----------------> <finish> <------------/
+   *
+   * <start> -----> LOCK (skip if snapshot)
+   *    *             |
+   *    *             v  (other errors)
+   *    *           LOAD * * * * * * * > INVALIDATE ------------\
+   *    *             |    *                                    |
+   *    *             |    * (-EINVAL or too small)             |
+   *    *             |    * * * * * * > INVALIDATE_AND_RESIZE  |
+   *    *             |                      |              *   |
+   *    *             |                      |              *   |
+   *    *             |                      v              *   |
+   *    *             |                    RESIZE           *   |
+   *    *             |                      |              *   |
+   *    *             |                      |  * * * * * * *   |
+   *    *             |                      |  *               |
+   *    *             |                      v  v               |
+   *    *             \--------------------> LOCK <-------------/
+   *    *                                     |
+   *    v                                     v
+   * INVALIDATE_AND_CLOSE ---------------> <finish>
+   *
    * @endverbatim
    */
 
@@ -53,6 +60,9 @@ private:
   bool m_truncate_on_disk_object_map;
   bufferlist m_out_bl;
 
+  void send_lock();
+  Context *handle_lock(int *ret_val);
+
   void send_load();
   Context *handle_load(int *ret_val);
 
@@ -64,6 +74,9 @@ private:
 
   void send_resize();
   Context *handle_resize(int *ret_val);
+
+  void send_invalidate_and_close();
+  Context *handle_invalidate_and_close(int *ret_val);
 
   void apply();
 };

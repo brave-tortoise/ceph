@@ -4,9 +4,11 @@
 #ifndef CEPH_TEST_LIBRBD_MOCK_IMAGE_CTX_H
 #define CEPH_TEST_LIBRBD_MOCK_IMAGE_CTX_H
 
+#include "include/rados/librados.hpp"
 #include "test/librbd/mock/MockAioImageRequestWQ.h"
 #include "test/librbd/mock/MockContextWQ.h"
 #include "test/librbd/mock/MockExclusiveLock.h"
+#include "test/librbd/mock/MockImageState.h"
 #include "test/librbd/mock/MockImageWatcher.h"
 #include "test/librbd/mock/MockJournal.h"
 #include "test/librbd/mock/MockObjectMap.h"
@@ -16,6 +18,7 @@
 #include "common/WorkQueue.h"
 #include "librbd/ImageCtx.h"
 #include "gmock/gmock.h"
+#include <string>
 
 namespace librbd {
 
@@ -24,31 +27,54 @@ template <typename> class ResizeRequest;
 }
 
 struct MockImageCtx {
+  static MockImageCtx *s_instance;
+  static MockImageCtx *create(const std::string &image_name,
+                              const std::string &image_id,
+                              const char *snap, librados::IoCtx& p,
+                              bool read_only) {
+    assert(s_instance != nullptr);
+    return s_instance;
+  }
+
   MockImageCtx(librbd::ImageCtx &image_ctx)
     : image_ctx(&image_ctx),
       cct(image_ctx.cct),
+      snap_name(image_ctx.snap_name),
       snap_id(image_ctx.snap_id),
+      snap_exists(image_ctx.snap_exists),
       snapc(image_ctx.snapc),
       snaps(image_ctx.snaps),
       snap_info(image_ctx.snap_info),
+      snap_ids(image_ctx.snap_ids),
       object_cacher(image_ctx.object_cacher),
       old_format(image_ctx.old_format),
       read_only(image_ctx.read_only),
+      lockers(image_ctx.lockers),
+      exclusive_locked(image_ctx.exclusive_locked),
+      lock_tag(image_ctx.lock_tag),
       owner_lock("owner_lock"),
       md_lock("md_lock"),
+      cache_lock("cache_lock"),
       snap_lock("snap_lock"),
       parent_lock("parent_lock"),
       object_map_lock("object_map_lock"),
       async_ops_lock("async_ops_lock"),
+      order(image_ctx.order),
       size(image_ctx.size),
       features(image_ctx.features),
+      flags(image_ctx.flags),
+      stripe_unit(image_ctx.stripe_unit),
+      stripe_count(image_ctx.stripe_count),
+      object_prefix(image_ctx.object_prefix),
       header_oid(image_ctx.header_oid),
       id(image_ctx.id),
+      name(image_ctx.name),
       parent_md(image_ctx.parent_md),
       layout(image_ctx.layout),
       aio_work_queue(new MockAioImageRequestWQ()),
       op_work_queue(new MockContextWQ()),
       parent(NULL), operations(new MockOperations()),
+      state(new MockImageState()),
       image_watcher(NULL), object_map(NULL),
       exclusive_lock(NULL), journal(NULL),
       concurrent_management_ops(image_ctx.concurrent_management_ops),
@@ -75,6 +101,7 @@ struct MockImageCtx {
     image_ctx->md_ctx.aio_flush();
     image_ctx->data_ctx.aio_flush();
     image_ctx->op_work_queue->drain();
+    delete state;
     delete operations;
     delete image_watcher;
     delete op_work_queue;
@@ -95,9 +122,12 @@ struct MockImageCtx {
     ctx.wait();
   }
 
+  MOCK_METHOD0(init_layout, void());
+
   MOCK_CONST_METHOD1(get_object_name, std::string(uint64_t));
   MOCK_CONST_METHOD0(get_current_size, uint64_t());
   MOCK_CONST_METHOD1(get_image_size, uint64_t(librados::snap_t));
+  MOCK_CONST_METHOD1(get_object_count, uint64_t(librados::snap_t));
   MOCK_CONST_METHOD1(get_snap_id, librados::snap_t(std::string in_snap_name));
   MOCK_CONST_METHOD1(get_snap_info, const SnapInfo*(librados::snap_t));
   MOCK_CONST_METHOD2(get_parent_spec, int(librados::snap_t in_snap_id,
@@ -120,42 +150,66 @@ struct MockImageCtx {
   MOCK_METHOD1(shut_down_cache, void(Context *));
 
   MOCK_CONST_METHOD1(test_features, bool(uint64_t test_features));
+  MOCK_CONST_METHOD2(test_features, bool(uint64_t test_features,
+                                         const RWLock &in_snap_lock));
 
   MOCK_METHOD1(cancel_async_requests, void(Context*));
 
+  MOCK_METHOD0(create_exclusive_lock, MockExclusiveLock*());
   MOCK_METHOD1(create_object_map, MockObjectMap*(uint64_t));
   MOCK_METHOD0(create_journal, MockJournal*());
+
+  MOCK_METHOD0(notify_update, void());
+  MOCK_METHOD1(notify_update, void(Context *));
+
+  MOCK_CONST_METHOD0(get_journal_policy, journal::Policy*());
 
   ImageCtx *image_ctx;
   CephContext *cct;
 
+  std::string snap_name;
   uint64_t snap_id;
+  bool snap_exists;
+
   ::SnapContext snapc;
   std::vector<librados::snap_t> snaps;
   std::map<librados::snap_t, SnapInfo> snap_info;
+  std::map<std::string, librados::snap_t> snap_ids;
 
   ObjectCacher *object_cacher;
 
   bool old_format;
   bool read_only;
 
+  std::map<rados::cls::lock::locker_id_t,
+           rados::cls::lock::locker_info_t> lockers;
+  bool exclusive_locked;
+  std::string lock_tag;
+
   librados::IoCtx md_ctx;
   librados::IoCtx data_ctx;
 
   RWLock owner_lock;
   RWLock md_lock;
+  Mutex cache_lock;
   RWLock snap_lock;
   RWLock parent_lock;
   RWLock object_map_lock;
   Mutex async_ops_lock;
 
+  uint8_t order;
   uint64_t size;
   uint64_t features;
+  uint64_t flags;
+  uint64_t stripe_unit;
+  uint64_t stripe_count;
+  std::string object_prefix;
   std::string header_oid;
   std::string id;
+  std::string name;
   parent_info parent_md;
 
-  ceph_file_layout layout;
+  file_layout_t layout;
 
   xlist<operation::ResizeRequest<MockImageCtx>*> resize_reqs;
   xlist<AsyncRequest<MockImageCtx>*> async_requests;
@@ -169,6 +223,7 @@ struct MockImageCtx {
 
   MockImageCtx *parent;
   MockOperations *operations;
+  MockImageState *state;
 
   MockImageWatcher *image_watcher;
   MockObjectMap *object_map;

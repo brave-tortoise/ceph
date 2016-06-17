@@ -11,40 +11,36 @@
 #include "kv/KeyValueDB.h"
 
 class FreelistManager {
-  std::string prefix;
-  std::mutex lock;
-  uint64_t total_free;
-
-  std::map<uint64_t, uint64_t> kv_free;    ///< mirrors our kv values in the db
-
-  void _audit();
-  void _dump();
-
 public:
-  FreelistManager() :
-    total_free(0) {
+  FreelistManager() {}
+  virtual ~FreelistManager() {}
+
+  static FreelistManager *create(
+    string type,
+    KeyValueDB *db,
+    string prefix);
+
+  static void setup_merge_operators(KeyValueDB *db);
+
+  virtual int create(uint64_t size, KeyValueDB::Transaction txn) {
+    release(0, size, txn);
+    return 0;
   }
 
-  int init(KeyValueDB *kvdb, std::string prefix);
-  void shutdown();
+  virtual int init() = 0;
+  virtual void shutdown() = 0;
 
-  void dump();
+  virtual void dump() = 0;
 
-  uint64_t get_total_free() {
-    std::lock_guard<std::mutex> l(lock);
-    return total_free;
-  }
+  virtual void enumerate_reset() = 0;
+  virtual bool enumerate_next(uint64_t *offset, uint64_t *length) = 0;
 
-  const std::map<uint64_t,uint64_t>& get_freelist() {
-    return kv_free;
-  }
-
-  int allocate(
+  virtual void allocate(
     uint64_t offset, uint64_t length,
-    KeyValueDB::Transaction txn);
-  int release(
+    KeyValueDB::Transaction txn) = 0;
+  virtual void release(
     uint64_t offset, uint64_t length,
-    KeyValueDB::Transaction txn);
+    KeyValueDB::Transaction txn) = 0;
 };
 
 

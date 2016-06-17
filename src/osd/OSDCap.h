@@ -42,6 +42,7 @@ static const __u8 OSD_CAP_ANY   = 0xff;          // *
 struct osd_rwxa_t {
   __u8 val;
 
+  // cppcheck-suppress noExplicitConstructor
   osd_rwxa_t(__u8 v = 0) : val(v) {}
   osd_rwxa_t& operator=(__u8 v) {
     val = v;
@@ -60,9 +61,10 @@ struct OSDCapSpec {
   std::string class_allow;
 
   OSDCapSpec() : allow(0) {}
-  OSDCapSpec(osd_rwxa_t v) : allow(v) {}
-  OSDCapSpec(std::string n) : allow(0), class_name(n) {}
-  OSDCapSpec(std::string n, std::string a) : allow(0), class_name(n), class_allow(a) {}
+  explicit OSDCapSpec(osd_rwxa_t v) : allow(v) {}
+  explicit OSDCapSpec(std::string n) : allow(0), class_name(std::move(n)) {}
+  OSDCapSpec(std::string n, std::string a) :
+    allow(0), class_name(std::move(n)), class_allow(std::move(a)) {}
 
   bool allow_all() const {
     return allow == OSD_CAP_ANY;
@@ -119,7 +121,7 @@ struct OSDCap {
   std::vector<OSDCapGrant> grants;
 
   OSDCap() {}
-  OSDCap(std::vector<OSDCapGrant> g) : grants(g) {}
+  explicit OSDCap(std::vector<OSDCapGrant> g) : grants(std::move(g)) {}
 
   bool allow_all() const;
   void set_allow_all();

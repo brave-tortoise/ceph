@@ -17,16 +17,16 @@
 
 #include "OSD.h"
 #include "PGBackend.h"
-#include "osd_types.h"
-#include <boost/optional/optional_io.hpp>
 #include "erasure-code/ErasureCodeInterface.h"
-#include "ECTransaction.h"
-#include "ECMsgTypes.h"
 #include "ECUtil.h"
-#include "messages/MOSDECSubOpWrite.h"
-#include "messages/MOSDECSubOpWriteReply.h"
-#include "messages/MOSDECSubOpRead.h"
-#include "messages/MOSDECSubOpReadReply.h"
+#include "ECTransaction.h"
+
+//forward declaration
+struct ECSubWrite;
+struct ECSubWriteReply;
+struct ECSubRead;
+struct ECSubReadReply;
+class ECTransaction;
 
 struct RecoveryMessages;
 class ECBackend : public PGBackend {
@@ -95,7 +95,7 @@ public:
   void submit_transaction(
     const hobject_t &hoid,
     const eversion_t &at_version,
-    PGTransaction *t,
+    PGTransactionUPtr &&t,
     const eversion_t &trim_to,
     const eversion_t &trim_rollback_to,
     const vector<pg_log_entry_t> &log_entries,
@@ -137,7 +137,7 @@ public:
   struct ClientAsyncReadStatus {
     bool complete;
     Context *on_complete;
-    ClientAsyncReadStatus(Context *on_complete)
+    explicit ClientAsyncReadStatus(Context *on_complete)
     : complete(false), on_complete(on_complete) {}
   };
   list<ClientAsyncReadStatus> in_progress_client_reads;
@@ -359,7 +359,7 @@ public:
     osd_reqid_t reqid;
     OpRequestRef client_op;
 
-    ECTransaction *t;
+    std::unique_ptr<ECTransaction> t;
 
     set<hobject_t, hobject_t::BitwiseComparator> temp_added;
     set<hobject_t, hobject_t::BitwiseComparator> temp_cleared;
@@ -369,7 +369,6 @@ public:
 
     map<hobject_t, ECUtil::HashInfoRef, hobject_t::BitwiseComparator> unstable_hash_infos;
     ~Op() {
-      delete t;
       delete on_local_applied_sync;
       delete on_all_applied;
       delete on_all_commit;
@@ -412,7 +411,7 @@ public:
     set<int> want;
     ErasureCodeInterfaceRef ec_impl;
   public:
-    ECRecPred(ErasureCodeInterfaceRef ec_impl) : ec_impl(ec_impl) {
+    explicit ECRecPred(ErasureCodeInterfaceRef ec_impl) : ec_impl(ec_impl) {
       for (unsigned i = 0; i < ec_impl->get_chunk_count(); ++i) {
 	want.insert(i);
       }
@@ -466,6 +465,7 @@ public:
   ECBackend(
     PGBackend::Listener *pg,
     coll_t coll,
+    ObjectStore::CollectionHandle &ch,
     ObjectStore *store,
     CephContext *cct,
     ErasureCodeInterfaceRef ec_impl,

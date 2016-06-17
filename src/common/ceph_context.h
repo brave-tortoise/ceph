@@ -25,6 +25,7 @@
 #include "include/atomic.h"
 #include "common/cmdparse.h"
 #include "include/Spinlock.h"
+#include "crush/CrushLocation.h"
 #include <boost/noncopyable.hpp>
 
 class AdminSocket;
@@ -84,6 +85,7 @@ public:
   /* Get the module type (client, mon, osd, mds, etc.) */
   uint32_t get_module_type() const;
 
+  void set_init_flags(int flags);
   int get_init_flags() const;
 
   /* Get the PerfCountersCollection of this CephContext */
@@ -153,6 +155,28 @@ public:
     return _plugin_registry;
   }
 
+  void set_uid_gid(uid_t u, gid_t g) {
+    _set_uid = u;
+    _set_gid = g;
+  }
+  uid_t get_set_uid() const {
+    return _set_uid;
+  }
+  gid_t get_set_gid() const {
+    return _set_gid;
+  }
+
+  void set_uid_gid_strings(std::string u, std::string g) {
+    _set_uid_string = u;
+    _set_gid_string = g;
+  }
+  std::string get_set_uid_string() const {
+    return _set_uid_string;
+  }
+  std::string get_set_gid_string() const {
+    return _set_gid_string;
+  }
+
 private:
   struct SingletonWrapper : boost::noncopyable {
     virtual ~SingletonWrapper() {}
@@ -178,6 +202,11 @@ private:
   uint32_t _module_type;
 
   int _init_flags;
+
+  uid_t _set_uid; ///< uid to drop privs to
+  gid_t _set_gid; ///< gid to drop privs to
+  std::string _set_uid_string;
+  std::string _set_gid_string;
 
   bool _crypto_inited;
 
@@ -218,6 +247,10 @@ private:
   PluginRegistry *_plugin_registry;
 
   md_config_obs_t *_lockdep_obs;
+
+public:
+  CrushLocation crush_location;
+private:
 
   enum {
     l_cct_first,

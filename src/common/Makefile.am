@@ -3,10 +3,12 @@ libcommon_internal_la_SOURCES = \
 	common/DecayCounter.cc \
 	common/LogClient.cc \
 	common/LogEntry.cc \
+	common/Graylog.cc \
 	common/PrebufferedStreambuf.cc \
 	common/SloppyCRCMap.cc \
 	common/BackTrace.cc \
 	common/perf_counters.cc \
+	common/mutex_debug.cc \
 	common/Mutex.cc \
 	common/OutputDataSocket.cc \
 	common/admin_socket.cc \
@@ -21,12 +23,14 @@ libcommon_internal_la_SOURCES = \
 	common/Finisher.cc \
 	common/environment.cc\
 	common/assert.cc \
+	xxHash/xxhash.c \
 	common/run_cmd.cc \
 	common/WorkQueue.cc \
 	common/ConfUtils.cc \
 	common/MemoryModel.cc \
 	common/armor.c \
 	common/fd.cc \
+	common/fs_types.cc \
 	common/safe_io.c \
 	common/snap_types.cc \
 	common/str_list.cc \
@@ -45,6 +49,7 @@ libcommon_internal_la_SOURCES = \
 	common/simple_spin.cc \
 	common/Thread.cc \
 	common/Formatter.cc \
+	common/HTMLFormatter.cc \
 	common/HeartbeatMap.cc \
 	common/config.cc \
 	common/utf8.c \
@@ -70,7 +75,10 @@ libcommon_internal_la_SOURCES = \
 	common/Cycles.cc \
 	common/ContextCompletion.cc \
 	common/TracepointProvider.cc \
-	common/PluginRegistry.cc
+	common/PluginRegistry.cc \
+	common/scrub_types.cc \
+	common/blkdev.cc \
+	common/dns_resolve.cc
 
 common/PluginRegistry.cc: ./ceph_ver.h
 
@@ -85,7 +93,7 @@ endif
 
 if LINUX
 libcommon_internal_la_SOURCES += \
-	common/linux_version.c 
+	common/linux_version.c
 endif
 
 if SOLARIS
@@ -96,12 +104,6 @@ endif
 if AIX
 libcommon_internal_la_SOURCES += \
         common/aix_errno.cc
-endif
-
-# used by RBD and FileStore
-if LINUX
-libcommon_internal_la_SOURCES += \
-	common/blkdev.cc
 endif
 
 if ENABLE_XIO
@@ -119,9 +121,12 @@ libcommon_internal_la_SOURCES += \
 	osd/ECMsgTypes.cc \
 	osd/HitSet.cc \
 	mds/MDSMap.cc \
+	mds/FSMap.cc \
+	mds/FSMapUser.cc \
 	mds/inode_backtrace.cc \
 	mds/mdstypes.cc \
 	mds/flock.cc
+
 LIBCOMMON_DEPS += libcommon_internal.la
 noinst_LTLIBRARIES += libcommon_internal.la
 
@@ -151,7 +156,10 @@ noinst_HEADERS += \
 	common/sctp_crc32.h \
 	common/crc32c_intel_baseline.h \
 	common/crc32c_intel_fast.h \
-	common/crc32c_aarch64.h
+	common/crc32c_aarch64.h \
+	common/cohort_lru.h \
+	common/sstring.hh \
+	xxHash/xxhash.h
 
 
 # important; libmsg before libauth!
@@ -160,7 +168,9 @@ LIBCOMMON_DEPS += \
 	$(LIBCOMPRESSOR) \
 	$(LIBMSG) $(LIBAUTH) \
 	$(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) $(LIBARCH) \
-	$(BOOST_RANDOM_LIBS)
+	$(BOOST_RANDOM_LIBS) \
+	$(RESOLV_LIBS) \
+	-luuid
 
 if LINUX
 LIBCOMMON_DEPS += -lrt -lblkid
@@ -172,14 +182,18 @@ noinst_LTLIBRARIES += libcommon.la
 
 noinst_HEADERS += \
 	common/BackTrace.h \
+	common/Checksummer.h \
 	common/RefCountedObj.h \
 	common/HeartbeatMap.h \
 	common/LogClient.h \
 	common/LogEntry.h \
+	common/Graylog.h \
 	common/Preforker.h \
 	common/SloppyCRCMap.h \
 	common/WorkQueue.h \
+	common/OpQueue.h \
 	common/PrioritizedQueue.h \
+	common/WeightedPriorityQueue.h \
 	common/ceph_argparse.h \
 	common/ceph_context.h \
 	common/xattr.h \
@@ -205,6 +219,7 @@ noinst_HEADERS += \
 	common/DecayCounter.h \
 	common/Finisher.h \
 	common/Formatter.h \
+	common/HTMLFormatter.h \
 	common/perf_counters.h \
 	common/OutputDataSocket.h \
 	common/admin_socket.h \
@@ -266,8 +281,13 @@ noinst_HEADERS += \
 	common/TracepointProvider.h \
 	common/event_socket.h \
 	common/PluginRegistry.h \
+	common/scrub_types.h \
 	common/ceph_time.h \
-	common/ceph_timer.h
+	common/ceph_timer.h \
+	common/align.h \
+	common/mutex_debug.h \
+	common/shunique_lock.h \
+	common/dns_resolve.h
 
 if ENABLE_XIO
 noinst_HEADERS += \

@@ -73,7 +73,7 @@ class LevelDBStore : public KeyValueDB {
   class CompactThread : public Thread {
     LevelDBStore *db;
   public:
-    CompactThread(LevelDBStore *d) : db(d) {}
+    explicit CompactThread(LevelDBStore *d) : db(d) {}
     void *entry() {
       db->compact_thread_entry();
       return NULL;
@@ -185,7 +185,7 @@ public:
   public:
     leveldb::WriteBatch bat;
     LevelDBStore *db;
-    LevelDBTransactionImpl(LevelDBStore *db) : db(db) {}
+    explicit LevelDBTransactionImpl(LevelDBStore *db) : db(db) {}
     void set(
       const string &prefix,
       const string &k,
@@ -199,8 +199,7 @@ public:
   };
 
   KeyValueDB::Transaction get_transaction() {
-    return ceph::shared_ptr< LevelDBTransactionImpl >(
-      new LevelDBTransactionImpl(this));
+    return std::make_shared<LevelDBTransactionImpl>(this);
   }
 
   int submit_transaction(KeyValueDB::Transaction t);
@@ -220,7 +219,7 @@ public:
   protected:
     boost::scoped_ptr<leveldb::Iterator> dbiter;
   public:
-    LevelDBWholeSpaceIteratorImpl(leveldb::Iterator *iter) :
+    explicit LevelDBWholeSpaceIteratorImpl(leveldb::Iterator *iter) :
       dbiter(iter) { }
     virtual ~LevelDBWholeSpaceIteratorImpl() { }
 
@@ -402,11 +401,8 @@ err:
 
 protected:
   WholeSpaceIterator _get_iterator() {
-    return ceph::shared_ptr<KeyValueDB::WholeSpaceIteratorImpl>(
-      new LevelDBWholeSpaceIteratorImpl(
-	db->NewIterator(leveldb::ReadOptions())
-      )
-    );
+    return std::make_shared<LevelDBWholeSpaceIteratorImpl>(
+	db->NewIterator(leveldb::ReadOptions()));
   }
 
   WholeSpaceIterator _get_snapshot_iterator() {
@@ -416,10 +412,9 @@ protected:
     snapshot = db->GetSnapshot();
     options.snapshot = snapshot;
 
-    return ceph::shared_ptr<KeyValueDB::WholeSpaceIteratorImpl>(
-      new LevelDBSnapshotIteratorImpl(db.get(), snapshot,
-	db->NewIterator(options))
-    );
+    return std::make_shared<LevelDBSnapshotIteratorImpl>(
+        db.get(), snapshot,
+	db->NewIterator(options));
   }
 
 };

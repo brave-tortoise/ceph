@@ -107,7 +107,7 @@ which are as follows:
 :command:`region get`
   Show region info.
 
-:command:`regions list`
+:command:`region list`
   List all regions set on this cluster.
 
 :command:`region set`
@@ -158,10 +158,6 @@ which are as follows:
 
 :command:`usage trim`
   Trim usage information (with optional user and date range).
-
-:command:`temp remove`
-  Remove temporary objects that were created up to specified date
-  (and optional time).
 
 :command:`gc list`
   Dump expired garbage collection objects (specify --include-all to list all
@@ -217,6 +213,12 @@ which are as follows:
 
 :command:`replicalog delete`
   Delete replica metadata log entry.
+
+:command:`orphans find`
+  Init and run search for leaked rados objects
+
+:command:`orphans finish`
+  Clean up search for leaked rados objects
 
 
 Options
@@ -399,6 +401,18 @@ Quota Options
 .. option:: --quota-scope
 
 	Scope of quota (bucket, user).
+
+
+Orphans Search Options
+======================
+
+.. option:: --pool
+
+	Data pool to scan for leaked rados objects
+
+.. option:: --num-shards
+
+	Number of shards to use for keeping the temporary scan info
 
 
 Examples

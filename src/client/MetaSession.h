@@ -6,11 +6,9 @@
 
 #include "include/types.h"
 #include "include/utime.h"
-#include "msg/msg_types.h"
+#include "msg/Message.h"
 #include "include/xlist.h"
-
-#include "messages/MClientCapRelease.h"
-#include "mds/MDSMap.h"
+#include "mds/mdstypes.h"
 
 struct Cap;
 struct Inode;
@@ -47,6 +45,7 @@ struct MetaSession {
   xlist<MetaRequest*> requests;
   xlist<MetaRequest*> unsafe_requests;
   std::set<ceph_tid_t> flushing_caps_tids;
+  std::set<ceph_tid_t> kicked_flush_tids;
 
   Cap *s_cap_iterator;
 

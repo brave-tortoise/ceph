@@ -127,6 +127,26 @@ enum {
 };
 /** @} */
 
+/**
+ * @name Alloc hint flags
+ * Flags for rados_write_op_alloc_hint2() and rados_set_alloc_hint2()
+ * indicating future IO patterns.
+ * @{
+ */
+enum {
+  LIBRADOS_ALLOC_HINT_SEQUENTIAL_WRITE = 1,
+  LIBRADOS_ALLOC_HINT_RANDOM_WRITE = 2,
+  LIBRADOS_ALLOC_HINT_FLAG_SEQUENTIAL_READ = 4,
+  LIBRADOS_ALLOC_HINT_FLAG_RANDOM_READ = 8,
+  LIBRADOS_ALLOC_HINT_FLAG_APPEND_ONLY = 16,
+  LIBRADOS_ALLOC_HINT_FLAG_IMMUTABLE = 32,
+  LIBRADOS_ALLOC_HINT_FLAG_SHORTLIVED = 64,
+  LIBRADOS_ALLOC_HINT_FLAG_LONGLIVED = 128,
+  LIBRADOS_ALLOC_HINT_FLAG_COMPRESSIBLE = 256,
+  LIBRADOS_ALLOC_HINT_FLAG_INCOMPRESSIBLE = 512,
+};
+/** @} */
+
 /*
  * snap id contants
  */
@@ -283,8 +303,8 @@ struct rados_cluster_stat_t {
  *   rados_write_op_assert_version()
  * - Creating objects: rados_write_op_create()
  * - IO on objects: rados_write_op_append(), rados_write_op_write(), rados_write_op_zero
- *   rados_write_op_write_full(), rados_write_op_remove, rados_write_op_truncate(),
- *   rados_write_op_zero()
+ *   rados_write_op_write_full(), rados_write_op_writesame(), rados_write_op_remove,
+ *   rados_write_op_truncate(), rados_write_op_zero()
  * - Hints: rados_write_op_set_alloc_hint()
  * - Performing the operation: rados_write_op_operate(), rados_aio_write_op_operate()
  */
@@ -613,6 +633,25 @@ CEPH_RADOS_API int rados_wait_for_latest_osdmap(rados_t cluster);
  * @returns length of the buffer we would need to list all pools
  */
 CEPH_RADOS_API int rados_pool_list(rados_t cluster, char *buf, size_t len);
+
+/**
+ * List inconsistent placement groups of the given pool
+ *
+ * Gets a list of inconsistent placement groups as NULL-terminated strings.
+ * The placement group names will be placed in the supplied buffer one after
+ * another. After the last name, there will be two 0 types in a row.
+ *
+ * If len is too short to fit all the placement group entries we need, we  will
+ * fill as much as we can.
+ *
+ * @param cluster cluster handle
+ * @param pool pool ID
+ * @param buf output buffer
+ * @param len output buffer length
+ * @returns length of the buffer we would need to list all pools
+ */
+CEPH_RADOS_API int rados_inconsistent_pg_list(rados_t cluster, int64_t pool,
+					      char *buf, size_t len);
 
 /**
  * Get a configuration handle for a rados cluster handle
@@ -994,6 +1033,8 @@ CEPH_RADOS_API int rados_object_list(rados_ioctx_t io,
     const rados_object_list_cursor start,
     const rados_object_list_cursor finish,
     const size_t result_size,
+    const char *filter_buf,
+    const size_t filter_buf_len,
     rados_object_list_item *results,
     rados_object_list_cursor *next);
 
@@ -1311,6 +1352,24 @@ CEPH_RADOS_API int rados_write(rados_ioctx_t io, const char *oid,
  */
 CEPH_RADOS_API int rados_write_full(rados_ioctx_t io, const char *oid,
                                     const char *buf, size_t len);
+
+/**
+ * Write the same *data_len* bytes from *buf* multiple times into the
+ * *oid* object. *write_len* bytes are written in total, which must be
+ * a multiple of *data_len*. The value of *write_len* and *data_len*
+ * must be <= UINT_MAX/2.
+ *
+ * @param io the io context in which the write will occur
+ * @param oid name of the object
+ * @param buf data to write
+ * @param data_len length of the data, in bytes
+ * @param write_len the total number of bytes to write
+ * @param off byte offset in the object to begin writing at
+ * @returns 0 on success, negative error code on failure
+ */
+CEPH_RADOS_API int rados_writesame(rados_ioctx_t io, const char *oid,
+                                   const char *buf, size_t data_len,
+                                   size_t write_len, uint64_t off);
 
 /**
  * Efficiently copy a portion of one object to another
@@ -1798,6 +1857,22 @@ CEPH_RADOS_API int rados_aio_is_safe_and_cb(rados_completion_t c);
 CEPH_RADOS_API int rados_aio_get_return_value(rados_completion_t c);
 
 /**
+ * Get the internal object version of the target of an asychronous operation
+ *
+ * The return value is set when the operation is complete or safe,
+ * whichever comes first.
+ *
+ * @pre The operation is safe or complete
+ *
+ * @note BUG: complete callback may never be called when the safe
+ * message is received before the complete message
+ *
+ * @param c async operation to inspect
+ * @returns version number of the asychronous operation's target
+ */
+CEPH_RADOS_API uint64_t rados_aio_get_version(rados_completion_t c);
+
+/**
  * Release a completion
  *
  * Call this when you no longer need the completion. It may not be
@@ -1867,6 +1942,29 @@ CEPH_RADOS_API int rados_aio_append(rados_ioctx_t io, const char *oid,
 CEPH_RADOS_API int rados_aio_write_full(rados_ioctx_t io, const char *oid,
 			                rados_completion_t completion,
 			                const char *buf, size_t len);
+
+/**
+ * Asychronously write the same buffer multiple times
+ *
+ * Queues the writesame and returns.
+ *
+ * The return value of the completion will be 0 on success, negative
+ * error code on failure.
+ *
+ * @param io the io context in which the write will occur
+ * @param oid name of the object
+ * @param completion what to do when the writesame is safe and complete
+ * @param buf data to write
+ * @param data_len length of the data, in bytes
+ * @param write_len the total number of bytes to write
+ * @param off byte offset in the object to begin writing at
+ * @returns 0 on success, -EROFS if the io context specifies a snap_seq
+ * other than LIBRADOS_SNAP_HEAD
+ */
+CEPH_RADOS_API int rados_aio_writesame(rados_ioctx_t io, const char *oid,
+			               rados_completion_t completion,
+			               const char *buf, size_t data_len,
+				       size_t write_len, uint64_t off);
 
 /**
  * Asychronously remove an object
@@ -2086,6 +2184,34 @@ CEPH_RADOS_API int rados_watch2(rados_ioctx_t io, const char *o, uint64_t *cooki
 				void *arg);
 
 /**
+ * Asynchronous register an interest in an object
+ *
+ * A watch operation registers the client as being interested in
+ * notifications on an object. OSDs keep track of watches on
+ * persistent storage, so they are preserved across cluster changes by
+ * the normal recovery process. If the client loses its connection to
+ * the primary OSD for a watched object, the watch will be removed
+ * after 30 seconds. Watches are automatically reestablished when a new
+ * connection is made, or a placement group switches OSDs.
+ *
+ * @note BUG: watch timeout should be configurable
+ *
+ * @param io the pool the object is in
+ * @param o the object to watch
+ * @param completion what to do when operation has been attempted
+ * @param handle where to store the internal id assigned to this watch
+ * @param watchcb what to do when a notify is received on this object
+ * @param watcherrcb what to do when the watch session encounters an error
+ * @param arg opaque value to pass to the callback
+ * @returns 0 on success, negative error code on failure
+ */
+CEPH_RADOS_API int rados_aio_watch(rados_ioctx_t io, const char *o,
+				   rados_completion_t completion, uint64_t *handle,
+				   rados_watchcb2_t watchcb,
+				   rados_watcherrcb_t watcherrcb,
+				   void *arg);
+
+/**
  * Check on the status of a watch
  *
  * Return the number of milliseconds since the watch was last confirmed.
@@ -2126,6 +2252,20 @@ CEPH_RADOS_API int rados_unwatch(rados_ioctx_t io, const char *o, uint64_t cooki
  * @returns 0 on success, negative error code on failure
  */
 CEPH_RADOS_API int rados_unwatch2(rados_ioctx_t io, uint64_t cookie);
+
+/**
+ * Asynchronous unregister an interest in an object
+ *
+ * Once this completes, no more notifies will be sent to us for this
+ * watch. This should be called to clean up unneeded watchers.
+ *
+ * @param io the pool the object is in
+ * @param completion what to do when operation has been attempted
+ * @param cookie which watch to unregister
+ * @returns 0 on success, negative error code on failure
+ */
+CEPH_RADOS_API int rados_aio_unwatch(rados_ioctx_t io, uint64_t cookie,
+                                     rados_completion_t completion);
 
 /**
  * Sychronously notify watchers of an object
@@ -2231,6 +2371,21 @@ CEPH_RADOS_API int rados_notify_ack(rados_ioctx_t io, const char *o,
  * @param cluster the cluster handle
  */
 CEPH_RADOS_API int rados_watch_flush(rados_t cluster);
+/**
+ * Flush watch/notify callbacks
+ *
+ * This call will be nonblock, and the completion will be called
+ * until all pending watch/notify callbacks have been executed and
+ * the queue is empty.  It should usually be called after shutting
+ * down any watches before shutting down the ioctx or
+ * librados to ensure that any callbacks do not misuse the ioctx (for
+ * example by calling rados_notify_ack after the ioctx has been
+ * destroyed).
+ *
+ * @param cluster the cluster handle
+ * @param completion what to do when operation has been attempted
+ */
+CEPH_RADOS_API int rados_aio_watch_flush(rados_t cluster, rados_completion_t completion);
 
 /** @} Watch/Notify */
 
@@ -2279,6 +2434,25 @@ CEPH_RADOS_API int rados_cache_unpin(rados_ioctx_t io, const char *o);
 CEPH_RADOS_API int rados_set_alloc_hint(rados_ioctx_t io, const char *o,
                                         uint64_t expected_object_size,
                                         uint64_t expected_write_size);
+
+/**
+ * Set allocation hint for an object
+ *
+ * This is an advisory operation, it will always succeed (as if it was
+ * submitted with a LIBRADOS_OP_FLAG_FAILOK flag set) and is not
+ * guaranteed to do anything on the backend.
+ *
+ * @param io the pool the object is in
+ * @param o the name of the object
+ * @param expected_object_size expected size of the object, in bytes
+ * @param expected_write_size expected size of writes to the object, in bytes
+ * @param flags hints about future IO patterns
+ * @returns 0 on success, negative error code on failure
+ */
+CEPH_RADOS_API int rados_set_alloc_hint2(rados_ioctx_t io, const char *o,
+					 uint64_t expected_object_size,
+					 uint64_t expected_write_size,
+					 uint32_t flags);
 
 /** @} Hints */
 
@@ -2433,6 +2607,20 @@ CEPH_RADOS_API void rados_write_op_write_full(rados_write_op_t write_op,
                                               size_t len);
 
 /**
+ * Write the same buffer multiple times
+ * @param write_op operation to add this action to
+ * @param buffer bytes to write
+ * @param data_len length of buffer
+ * @param write_len total number of bytes to write, as a multiple of @data_len
+ * @param offset offset to write to
+ */
+CEPH_RADOS_API void rados_write_op_writesame(rados_write_op_t write_op,
+                                             const char *buffer,
+                                             size_t data_len,
+                                             size_t write_len,
+                                             uint64_t offset);
+
+/**
  * Append to end of object.
  * @param write_op operation to add this action to
  * @param buffer bytes to write
@@ -2528,6 +2716,19 @@ CEPH_RADOS_API void rados_write_op_set_alloc_hint(rados_write_op_t write_op,
                                                   uint64_t expected_write_size);
 
 /**
+ * Set allocation hint for an object
+ *
+ * @param write_op operation to add this action to
+ * @param expected_object_size expected size of the object, in bytes
+ * @param expected_write_size expected size of writes to the object, in bytes
+ * @param flags hints about future IO patterns
+ */
+CEPH_RADOS_API void rados_write_op_set_alloc_hint2(rados_write_op_t write_op,
+						   uint64_t expected_object_size,
+						   uint64_t expected_write_size,
+						   uint32_t flags);
+
+/**
  * Perform a write operation synchronously
  * @param write_op operation to perform
  * @param io the ioctx that the object is in
@@ -2540,6 +2741,21 @@ CEPH_RADOS_API int rados_write_op_operate(rados_write_op_t write_op,
 			                  const char *oid,
 			                  time_t *mtime,
 			                  int flags);
+/**
+ * Perform a write operation synchronously
+ * @param write_op operation to perform
+ * @param io the ioctx that the object is in
+ * @param oid the object id
+ * @param mtime the time to set the mtime to, NULL for the current time
+ * @param flags flags to apply to the entire operation (LIBRADOS_OPERATION_*)
+ */
+
+CEPH_RADOS_API int rados_write_op_operate2(rados_write_op_t write_op,
+                                           rados_ioctx_t io,
+                                           const char *oid,
+                                           struct timespec *mtime,
+                                           int flags);
+
 /**
  * Perform a write operation asynchronously
  * @param write_op operation to perform

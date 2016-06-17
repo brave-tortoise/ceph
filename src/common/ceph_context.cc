@@ -27,6 +27,7 @@
 #include "common/errno.h"
 #include "common/lockdep.h"
 #include "common/Formatter.h"
+#include "common/Graylog.h"
 #include "log/Log.h"
 #include "auth/Crypto.h"
 #include "include/str_list.h"
@@ -46,7 +47,7 @@ namespace {
 
 class LockdepObs : public md_config_obs_t {
 public:
-  LockdepObs(CephContext *cct) : m_cct(cct), m_registered(false) {
+  explicit LockdepObs(CephContext *cct) : m_cct(cct), m_registered(false) {
   }
   virtual ~LockdepObs() {
     if (m_registered) {
@@ -80,7 +81,7 @@ private:
 class CephContextServiceThread : public Thread
 {
 public:
-  CephContextServiceThread(CephContext *cct)
+  explicit CephContextServiceThread(CephContext *cct)
     : _lock("CephContextServiceThread::_lock"),
       _reopen_logs(false), _exit_thread(false), _cct(cct)
   {
@@ -149,7 +150,7 @@ class LogObs : public md_config_obs_t {
   ceph::log::Log *log;
 
 public:
-  LogObs(ceph::log::Log *l) : log(l) {}
+  explicit LogObs(ceph::log::Log *l) : log(l) {}
 
   const char** get_tracked_conf_keys() const {
     static const char *KEYS[] = {
@@ -160,6 +161,12 @@ public:
       "err_to_syslog",
       "log_to_stderr",
       "err_to_stderr",
+      "log_to_graylog",
+      "err_to_graylog",
+      "log_graylog_host",
+      "log_graylog_port",
+      "fsid",
+      "host",
       NULL
     };
     return KEYS;
@@ -186,11 +193,37 @@ public:
     }
 
     if (changed.count("log_max_new")) {
+
       log->set_max_new(conf->log_max_new);
     }
 
     if (changed.count("log_max_recent")) {
       log->set_max_recent(conf->log_max_recent);
+    }
+
+    // graylog
+    if (changed.count("log_to_graylog") || changed.count("err_to_graylog")) {
+      int l = conf->log_to_graylog ? 99 : (conf->err_to_graylog ? -1 : -2);
+      log->set_graylog_level(l, l);
+
+      if (conf->log_to_graylog || conf->err_to_graylog) {
+	log->start_graylog();
+      } else if (! (conf->log_to_graylog && conf->err_to_graylog)) {
+	log->stop_graylog();
+      }
+    }
+
+    if (log->graylog() && (changed.count("log_graylog_host") || changed.count("log_graylog_port"))) {
+      log->graylog()->set_destination(conf->log_graylog_host, conf->log_graylog_port);
+    }
+
+    // metadata
+    if (log->graylog() && changed.count("host")) {
+      log->graylog()->set_hostname(conf->host);
+    }
+
+    if (log->graylog() && changed.count("fsid")) {
+      log->graylog()->set_fsid(conf->fsid);
     }
   }
 };
@@ -201,11 +234,12 @@ class CephContextObs : public md_config_obs_t {
   CephContext *cct;
 
 public:
-  CephContextObs(CephContext *cct) : cct(cct) {}
+  explicit CephContextObs(CephContext *cct) : cct(cct) {}
 
   const char** get_tracked_conf_keys() const {
     static const char *KEYS[] = {
       "enable_experimental_unrecoverable_data_corrupting_features",
+      "crush_location",
       NULL
     };
     return KEYS;
@@ -213,13 +247,20 @@ public:
 
   void handle_conf_change(const md_config_t *conf,
                           const std::set <std::string> &changed) {
-    ceph_spin_lock(&cct->_feature_lock);
-    get_str_set(conf->enable_experimental_unrecoverable_data_corrupting_features,
-		cct->_experimental_features);
-    ceph_spin_unlock(&cct->_feature_lock);
-    if (!cct->_experimental_features.empty())
-      lderr(cct) << "WARNING: the following dangerous and experimental features are enabled: "
-		 << cct->_experimental_features << dendl;
+    if (changed.count(
+	  "enable_experimental_unrecoverable_data_corrupting_features")) {
+      ceph_spin_lock(&cct->_feature_lock);
+      get_str_set(
+	conf->enable_experimental_unrecoverable_data_corrupting_features,
+	cct->_experimental_features);
+      ceph_spin_unlock(&cct->_feature_lock);
+      if (!cct->_experimental_features.empty())
+	lderr(cct) << "WARNING: the following dangerous and experimental features are enabled: "
+		   << cct->_experimental_features << dendl;
+    }
+    if (changed.count("crush_location")) {
+      cct->crush_location.update_from_conf();
+    }
   }
 };
 
@@ -264,7 +305,7 @@ class CephContextHook : public AdminSocketHook {
   CephContext *m_cct;
 
 public:
-  CephContextHook(CephContext *cct) : m_cct(cct) {}
+  explicit CephContextHook(CephContext *cct) : m_cct(cct) {}
 
   bool call(std::string command, cmdmap_t& cmdmap, std::string format,
 	    bufferlist& out) {
@@ -299,12 +340,17 @@ void CephContext::do_command(std::string command, cmdmap_t& cmdmap,
   }
   else if (command == "perf reset") {
     std::string var;
+    string section = command;
+    f->open_object_section(section.c_str());
     if (!cmd_getval(this, cmdmap, "var", var)) {
       f->dump_string("error", "syntax error: 'perf reset <var>'");
     } else {
      if(!_perf_counters_collection->reset(var))
         f->dump_stream("error") << "Not find: " << var;
+     else
+       f->dump_string("success", command + ' ' + var);
     }
+    f->close_section();
   }
   else {
     string section = command;
@@ -406,6 +452,10 @@ CephContext::CephContext(uint32_t module_type_, int init_flags_)
     _log(NULL),
     _module_type(module_type_),
     _init_flags(init_flags_),
+    _set_uid(0),
+    _set_gid(0),
+    _set_uid_string(),
+    _set_gid_string(),
     _crypto_inited(false),
     _service_thread(NULL),
     _log_obs(NULL),
@@ -417,6 +467,7 @@ CephContext::CephContext(uint32_t module_type_, int init_flags_)
     _crypto_aes(NULL),
     _plugin_registry(NULL),
     _lockdep_obs(NULL),
+    crush_location(this),
     _cct_perf(NULL)
 {
   ceph_spin_init(&_service_thread_lock);
@@ -604,6 +655,11 @@ uint32_t CephContext::get_module_type() const
   return _module_type;
 }
 
+void CephContext::set_init_flags(int flags)
+{
+  _init_flags = flags;
+}
+
 int CephContext::get_init_flags() const
 {
   return _init_flags;
@@ -617,8 +673,8 @@ PerfCountersCollection *CephContext::get_perfcounters_collection()
 void CephContext::enable_perf_counter()
 {
   PerfCountersBuilder plb(this, "cct", l_cct_first, l_cct_last);
-  plb.add_u64_counter(l_cct_total_workers, "total_workers", "Total workers");
-  plb.add_u64_counter(l_cct_unhealthy_workers, "unhealthy_workers", "Unhealthy workers");
+  plb.add_u64(l_cct_total_workers, "total_workers", "Total workers");
+  plb.add_u64(l_cct_unhealthy_workers, "unhealthy_workers", "Unhealthy workers");
   PerfCounters *perf_tmp = plb.create_perf_counters();
 
   ceph_spin_lock(&_cct_perf_lock);

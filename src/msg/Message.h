@@ -116,6 +116,8 @@
 
 #define MSG_OSD_REPOP         112
 #define MSG_OSD_REPOPREPLY    113
+#define MSG_OSD_PG_UPDATE_LOG_MISSING  114
+#define MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY  115
 
 
 // *** MDS ***
@@ -231,7 +233,7 @@ public:
     Message *m;
     friend class Message;
   public:
-    CompletionHook(Message *_m) : m(_m) {}
+    explicit CompletionHook(Message *_m) : m(_m) {}
     virtual void set_message(Message *_m) { m = _m; }
   };
 
@@ -444,10 +446,10 @@ public:
     return get_source_inst();
   }
   entity_name_t get_orig_source() const {
-    return get_orig_source_inst().name;
+    return get_source();
   }
   entity_addr_t get_orig_source_addr() const {
-    return get_orig_source_inst().addr;
+    return get_source_addr();
   }
 
   // virtual bits
@@ -468,7 +470,7 @@ extern Message *decode_message(CephContext *cct, int crcflags,
 			       ceph_msg_header &header,
 			       ceph_msg_footer& footer, bufferlist& front,
 			       bufferlist& middle, bufferlist& data);
-inline ostream& operator<<(ostream& out, Message& m) {
+inline ostream& operator<<(ostream &out, const Message &m) {
   m.print(out);
   if (m.get_header().version)
     out << " v" << m.get_header().version;

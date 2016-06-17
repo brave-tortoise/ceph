@@ -49,7 +49,14 @@ public:
   virtual void close() = 0;  ///< close an open journal
 
   virtual void flush() = 0;
-  virtual void throttle() = 0;
+
+  /**
+   * reserve_throttle_and_backoff
+   *
+   * Implementation may throttle or backoff based on ops
+   * reserved here but not yet released using committed_thru.
+   */
+  virtual void reserve_throttle_and_backoff(uint64_t count) = 0;
 
   virtual int dump(ostream& out) { return -EOPNOTSUPP; }
 
@@ -72,7 +79,7 @@ public:
 
   virtual bool should_commit_now() = 0;
 
-  virtual int prepare_entry(list<ObjectStore::Transaction*>& tls, bufferlist* tbl) = 0;
+  virtual int prepare_entry(vector<ObjectStore::Transaction>& tls, bufferlist* tbl) = 0;
 
   // reads/recovery
 

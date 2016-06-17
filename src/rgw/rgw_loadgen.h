@@ -24,7 +24,9 @@ struct RGWLoadGenRequestEnv {
   int sign(RGWAccessKey& access_key);
 };
 
-class RGWLoadGenIO : public RGWClientIO
+/* XXX does RGWLoadGenIO actually want to perform stream/HTTP I/O,
+ * or (e.g) are these NOOPs? */
+class RGWLoadGenIO : public RGWStreamIO
 {
   uint64_t left_to_read;
   RGWLoadGenRequestEnv *req;
@@ -40,9 +42,8 @@ public:
   int complete_request();
   int send_content_length(uint64_t len);
 
-  RGWLoadGenIO(RGWLoadGenRequestEnv *_re) : left_to_read(0), req(_re) {}
+  explicit RGWLoadGenIO(RGWLoadGenRequestEnv *_re) : left_to_read(0), req(_re) {}
   void flush();
 };
-
 
 #endif

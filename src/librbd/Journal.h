@@ -8,42 +8,32 @@
 #include "include/atomic.h"
 #include "include/Context.h"
 #include "include/interval_set.h"
-#include "include/unordered_map.h"
 #include "include/rados/librados.hpp"
 #include "common/Mutex.h"
 #include "journal/Future.h"
 #include "journal/ReplayEntry.h"
 #include "journal/ReplayHandler.h"
+#include "librbd/journal/Types.h"
+#include "librbd/journal/TypeTraits.h"
 #include <algorithm>
 #include <iosfwd>
 #include <list>
 #include <string>
+#include <unordered_map>
 
 class Context;
+class ContextWQ;
+class SafeTimer;
 namespace journal {
 class Journaler;
 }
 
 namespace librbd {
 
-class AioCompletion;
 class AioObjectRequest;
 class ImageCtx;
 
-namespace journal {
-
-class EventEntry;
-template <typename> class Replay;
-
-template <typename ImageCtxT>
-struct TypeTraits {
-  typedef ::journal::Journaler Journaler;
-  typedef ::journal::Future Future;
-  typedef ::journal::ReplayEntry ReplayEntry;
-};
-
-} // namespace journal
-
+namespace journal { template <typename> class Replay; }
 
 template <typename ImageCtxT = ImageCtx>
 class Journal {
@@ -92,6 +82,10 @@ public:
     STATE_CLOSED
   };
 
+  static const std::string IMAGE_CLIENT_ID;
+  static const std::string LOCAL_MIRROR_UUID;
+  static const std::string ORPHAN_MIRROR_UUID;
+
   typedef std::list<AioObjectRequest *> AioObjectRequests;
 
   Journal(ImageCtxT &image_ctx);
@@ -100,9 +94,19 @@ public:
   static bool is_journal_supported(ImageCtxT &image_ctx);
   static int create(librados::IoCtx &io_ctx, const std::string &image_id,
 		    uint8_t order, uint8_t splay_width,
-		    const std::string &object_pool);
+		    const std::string &object_pool, bool non_primary,
+                    const std::string &primary_mirror_uuid);
   static int remove(librados::IoCtx &io_ctx, const std::string &image_id);
   static int reset(librados::IoCtx &io_ctx, const std::string &image_id);
+
+  static int is_tag_owner(ImageCtxT *image_ctx, bool *is_tag_owner);
+  static int is_tag_owner(librados::IoCtx& io_ctx, std::string& image_id,
+                          bool *is_tag_owner);
+  static int get_tag_owner(ImageCtxT *image_ctx, std::string *mirror_uuid);
+  static int get_tag_owner(librados::IoCtx& io_ctx, std::string& image_id,
+                           std::string *mirror_uuid);
+  static int request_resync(ImageCtxT *image_ctx);
+  static int promote(ImageCtxT *image_ctx);
 
   bool is_journal_ready() const;
   bool is_journal_replaying() const;
@@ -112,8 +116,23 @@ public:
   void open(Context *on_finish);
   void close(Context *on_finish);
 
-  uint64_t append_io_event(AioCompletion *aio_comp,
-                           journal::EventEntry &&event_entry,
+  bool is_tag_owner() const;
+  journal::TagData get_tag_data() const;
+  int demote();
+
+  void allocate_local_tag(Context *on_finish);
+  void allocate_tag(const std::string &mirror_uuid,
+                    const std::string &predecessor_mirror_uuid,
+                    bool predecessor_commit_valid, uint64_t predecessor_tag_tid,
+                    uint64_t predecessor_entry_tid, Context *on_finish);
+
+  void flush_commit_position(Context *on_finish);
+
+  uint64_t append_write_event(uint64_t offset, size_t length,
+                              const bufferlist &bl,
+                              const AioObjectRequests &requests,
+                              bool flush_entry);
+  uint64_t append_io_event(journal::EventEntry &&event_entry,
                            const AioObjectRequests &requests,
                            uint64_t offset, size_t length,
                            bool flush_entry);
@@ -135,6 +154,10 @@ public:
     return op_tid;
   }
 
+  void start_external_replay(journal::Replay<ImageCtxT> **journal_replay,
+                             Context *on_finish);
+  void stop_external_replay();
+
 private:
   ImageCtxT &m_image_ctx;
 
@@ -144,12 +167,13 @@ private:
   typedef typename TypeTraits::Future Future;
   typedef typename TypeTraits::ReplayEntry ReplayEntry;
 
+  typedef std::list<bufferlist> Bufferlists;
   typedef std::list<Context *> Contexts;
+  typedef std::list<Future> Futures;
   typedef interval_set<uint64_t> ExtentInterval;
 
   struct Event {
-    Future future;
-    AioCompletion *aio_comp = nullptr;
+    Futures futures;
     AioObjectRequests aio_object_requests;
     Contexts on_safe_contexts;
     ExtentInterval pending_extents;
@@ -159,16 +183,17 @@ private:
 
     Event() {
     }
-    Event(const Future &_future, AioCompletion *_aio_comp,
-          const AioObjectRequests &_requests, uint64_t offset, size_t length)
-      : future(_future), aio_comp(_aio_comp), aio_object_requests(_requests) {
+    Event(const Futures &_futures, const AioObjectRequests &_requests,
+          uint64_t offset, size_t length)
+      : futures(_futures), aio_object_requests(_requests) {
       if (length > 0) {
         pending_extents.insert(offset, length);
       }
     }
   };
 
-  typedef ceph::unordered_map<uint64_t, Event> Events;
+  typedef std::unordered_map<uint64_t, Event> Events;
+  typedef std::unordered_map<uint64_t, Future> TidToFutures;
 
   struct C_IOEventSafe : public Context {
     Journal *journal;
@@ -186,16 +211,17 @@ private:
   struct C_OpEventSafe : public Context {
     Journal *journal;
     uint64_t tid;
-    Future future;
-    Context *on_safe;
+    Future op_start_future;
+    Future op_finish_future;
 
-    C_OpEventSafe(Journal *journal, uint64_t tid, const Future &future,
-                  Context *on_safe)
-      : journal(journal), tid(tid), future(future), on_safe(on_safe) {
+    C_OpEventSafe(Journal *journal, uint64_t tid, const Future &op_start_future,
+                  const Future &op_finish_future)
+      : journal(journal), tid(tid), op_start_future(op_start_future),
+        op_finish_future(op_finish_future) {
     }
 
     virtual void finish(int r) {
-      journal->handle_op_event_safe(r, tid, future, on_safe);
+      journal->handle_op_event_safe(r, tid, op_start_future, op_finish_future);
     }
   };
 
@@ -231,9 +257,17 @@ private:
     }
   };
 
+  ContextWQ *m_work_queue = nullptr;
+  SafeTimer *m_timer = nullptr;
+  Mutex *m_timer_lock = nullptr;
+
   Journaler *m_journaler;
   mutable Mutex m_lock;
   State m_state;
+  uint64_t m_max_append_size = 0;
+  uint64_t m_tag_class = 0;
+  uint64_t m_tag_tid = 0;
+  journal::TagData m_tag_data;
 
   int m_error_result;
   Contexts m_wait_for_state_contexts;
@@ -246,11 +280,17 @@ private:
   Events m_events;
 
   atomic_t m_op_tid;
+  TidToFutures m_op_futures;
 
+  bool m_processing_entry = false;
   bool m_blocking_writes;
 
   journal::Replay<ImageCtxT> *m_journal_replay;
 
+  uint64_t append_io_events(journal::EventType event_type,
+                            const Bufferlists &bufferlists,
+                            const AioObjectRequests &requests,
+                            uint64_t offset, size_t length, bool flush_entry);
   Future wait_event(Mutex &lock, uint64_t tid, Context *on_safe);
 
   void create_journaler();
@@ -259,23 +299,30 @@ private:
 
   void complete_event(typename Events::iterator it, int r);
 
+  void start_append();
+
   void handle_initialized(int r);
+  void handle_get_tags(int r);
 
   void handle_replay_ready();
   void handle_replay_complete(int r);
   void handle_replay_process_ready(int r);
   void handle_replay_process_safe(ReplayEntry replay_entry, int r);
 
+  void handle_start_external_replay(int r,
+                                    journal::Replay<ImageCtxT> **journal_replay,
+                                    Context *on_finish);
+
   void handle_flushing_restart(int r);
-  void handle_flushing_replay(int r);
+  void handle_flushing_replay();
 
   void handle_recording_stopped(int r);
 
   void handle_journal_destroyed(int r);
 
   void handle_io_event_safe(int r, uint64_t tid);
-  void handle_op_event_safe(int r, uint64_t tid, const Future &future,
-                            Context *on_safe);
+  void handle_op_event_safe(int r, uint64_t tid, const Future &op_start_future,
+                            const Future &op_finish_future);
 
   void stop_recording();
 

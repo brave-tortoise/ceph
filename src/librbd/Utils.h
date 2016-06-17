@@ -5,6 +5,7 @@
 #define CEPH_LIBRBD_UTILS_H
 
 #include "include/rados/librados.hpp"
+#include "include/rbd_types.h"
 #include "include/Context.h"
 #include <type_traits>
 
@@ -21,6 +22,13 @@ namespace detail {
 template <typename T>
 void rados_callback(rados_completion_t c, void *arg) {
   reinterpret_cast<T*>(arg)->complete(rados_aio_get_return_value(c));
+}
+
+template <typename T, void(T::*MF)(int)>
+void rados_callback(rados_completion_t c, void *arg) {
+  T *obj = reinterpret_cast<T*>(arg);
+  int r = rados_aio_get_return_value(c);
+  (obj->*MF)(r);
 }
 
 template <typename T, Context*(T::*MF)(int*), bool destroy>
@@ -86,15 +94,24 @@ struct C_AsyncCallback : public Context {
 
 } // namespace detail
 
+const std::string group_header_name(const std::string &group_id);
 const std::string id_obj_name(const std::string &name);
 const std::string header_name(const std::string &image_id);
 const std::string old_header_name(const std::string &image_name);
 std::string unique_lock_name(const std::string &name, void *address);
 
+librados::AioCompletion *create_rados_ack_callback(Context *on_finish);
+
 template <typename T>
 librados::AioCompletion *create_rados_ack_callback(T *obj) {
   return librados::Rados::aio_create_completion(
     obj, &detail::rados_callback<T>, nullptr);
+}
+
+template <typename T, void(T::*MF)(int)>
+librados::AioCompletion *create_rados_ack_callback(T *obj) {
+  return librados::Rados::aio_create_completion(
+    obj, &detail::rados_callback<T, MF>, nullptr);
 }
 
 template <typename T, Context*(T::*MF)(int*), bool destroy=true>
@@ -107,6 +124,12 @@ template <typename T>
 librados::AioCompletion *create_rados_safe_callback(T *obj) {
   return librados::Rados::aio_create_completion(
     obj, nullptr, &detail::rados_callback<T>);
+}
+
+template <typename T, void(T::*MF)(int)>
+librados::AioCompletion *create_rados_safe_callback(T *obj) {
+  return librados::Rados::aio_create_completion(
+    obj, nullptr, &detail::rados_callback<T, MF>);
 }
 
 template <typename T, Context*(T::*MF)(int*), bool destroy=true>

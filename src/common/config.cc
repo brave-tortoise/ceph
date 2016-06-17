@@ -35,6 +35,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#if defined(__FreeBSD__)
+/* FreeBSD/Clang requires basename() whereas Linux preffers the version in <string.h> */
+#include <libgen.h>
+#endif
 
 /* Don't use standard Ceph logging in this file.
  * We can't use logging until it's initialized, and a lot of the necessary
@@ -56,18 +60,7 @@ using std::pair;
 using std::set;
 using std::string;
 
-const char *CEPH_CONF_FILE_DEFAULT = "/etc/ceph/$cluster.conf, ~/.ceph/$cluster.conf, $cluster.conf";
-
-// file layouts
-struct ceph_file_layout g_default_file_layout = {
- fl_stripe_unit: init_le32(1<<22),
- fl_stripe_count: init_le32(1),
- fl_object_size: init_le32(1<<22),
- fl_cas_hash: init_le32(0),
- fl_object_stripe_unit: init_le32(0),
- fl_unused: init_le32(-1),
- fl_pg_pool : init_le32(-1),
-};
+const char *CEPH_CONF_FILE_DEFAULT = "$data_dir/config, /etc/ceph/$cluster.conf, ~/.ceph/$cluster.conf, $cluster.conf";
 
 #define _STR(x) #x
 #define STRINGIFY(x) _STR(x)
@@ -121,7 +114,7 @@ int ceph_resolve_file_search(const std::string& filename_list,
 }
 
 md_config_t::md_config_t()
-  : cluster("ceph"),
+  : cluster(""),
 
 #define OPTION_OPT_INT(name, def_val) name(def_val),
 #define OPTION_OPT_LONGLONG(name, def_val) name((1LL) * def_val),
@@ -199,13 +192,22 @@ void md_config_t::remove_observer(md_config_obs_t* observer_)
 }
 
 int md_config_t::parse_config_files(const char *conf_files,
-				    std::deque<std::string> *parse_errors,
 				    std::ostream *warnings,
 				    int flags)
 {
   Mutex::Locker l(lock);
+
   if (internal_safe_to_start_threads)
     return -ENOSYS;
+
+  if (!cluster.size() && !conf_files) {
+    /*
+     * set the cluster name to 'ceph' when neither cluster name nor
+     * configuration file are specified.
+     */
+    cluster = "ceph";
+  }
+
   if (!conf_files) {
     const char *c = getenv("CEPH_CONF");
     if (c) {
@@ -217,13 +219,30 @@ int md_config_t::parse_config_files(const char *conf_files,
       conf_files = CEPH_CONF_FILE_DEFAULT;
     }
   }
+
   std::list<std::string> cfl;
   get_str_list(conf_files, cfl);
-  return parse_config_files_impl(cfl, parse_errors, warnings);
+
+  auto p = cfl.begin();
+  while (p != cfl.end()) {
+    // expand $data_dir?
+    string &s = *p;
+    if (s.find("$data_dir") != string::npos) {
+      if (data_dir_option.length()) {
+	list<config_option*> stack;
+	expand_meta(s, NULL, stack, warnings);
+	p++;
+      } else {
+	cfl.erase(p++);  // ignore this item
+      }
+    } else {
+      ++p;
+    }
+  }
+  return parse_config_files_impl(cfl, warnings);
 }
 
 int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_files,
-					 std::deque<std::string> *parse_errors,
 					 std::ostream *warnings)
 {
   assert(lock.is_locked());
@@ -234,7 +253,7 @@ int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_file
     cf.clear();
     string fn = *c;
     expand_meta(fn, warnings);
-    int ret = cf.parse_file(fn.c_str(), parse_errors, warnings);
+    int ret = cf.parse_file(fn.c_str(), &parse_errors, warnings);
     if (ret == 0)
       break;
     else if (ret != -ENOENT)
@@ -242,6 +261,26 @@ int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_file
   }
   if (c == conf_files.end())
     return -EINVAL;
+
+  if (cluster.size() == 0) {
+    /*
+     * If cluster name is not set yet, use the prefix of the
+     * basename of configuration file as cluster name.
+     */
+    const char *fn = c->c_str();
+    std::string name(basename(fn));
+    int pos = name.find(".conf");
+    if (pos < 0) {
+      /*
+       * If the configuration file does not follow $cluster.conf
+       * convention, we do the last try and assign the cluster to
+       * 'ceph'.
+       */
+      cluster = "ceph";
+    } else {
+      cluster = name.substr(0, pos);      
+    }
+  }
 
   std::vector <std::string> my_sections;
   _get_my_sections(my_sections);
@@ -285,15 +324,14 @@ int md_config_t::parse_config_files_impl(const std::list<std::string> &conf_file
   }
   if (!old_style_section_names.empty()) {
     ostringstream oss;
-    oss << "ERROR! old-style section name(s) found: ";
+    cerr << "ERROR! old-style section name(s) found: ";
     string sep;
     for (std::deque < std::string >::const_iterator os = old_style_section_names.begin();
 	 os != old_style_section_names.end(); ++os) {
-      oss << sep << *os;
+      cerr << sep << *os;
       sep = ", ";
     }
-    oss << ". Please use the new style section names that include a period.";
-    parse_errors->push_back(oss.str());
+    cerr << ". Please use the new style section names that include a period.";
   }
   return 0;
 }
@@ -563,7 +601,11 @@ int md_config_t::parse_injectargs(std::vector<const char*>& args,
 void md_config_t::apply_changes(std::ostream *oss)
 {
   Mutex::Locker l(lock);
-  _apply_changes(oss);
+  /*
+   * apply changes until the cluster name is assigned
+   */
+  if (cluster.size())
+    _apply_changes(oss);
 }
 
 bool md_config_t::_internal_field(const string& s)
@@ -608,13 +650,14 @@ void md_config_t::_apply_changes(std::ostream *oss)
     }
   }
 
+  changed.clear();
+
   // Make any pending observer callbacks
   for (rev_obs_map_t::const_iterator r = robs.begin(); r != robs.end(); ++r) {
     md_config_obs_t *obs = r->first;
     obs->handle_conf_change(this, r->second);
   }
 
-  changed.clear();
 }
 
 void md_config_t::call_all_observers()
@@ -956,7 +999,7 @@ int md_config_t::set_val_raw(const char *val, const config_option *opt)
       return 0;
     case OPT_U32: {
       std::string err;
-      int f = strict_si_cast<int>(val, &err);
+      int f = strict_si_cast<uint32_t>(val, &err);
       if (!err.empty())
 	return -EINVAL;
       *(uint32_t*)opt->conf_ptr(this) = f;
@@ -987,8 +1030,10 @@ int md_config_t::set_val_raw(const char *val, const config_option *opt)
   return -ENOSYS;
 }
 
-static const char *CONF_METAVARIABLES[] =
-  { "cluster", "type", "name", "host", "num", "id", "pid", "cctid" };
+static const char *CONF_METAVARIABLES[] = {
+  "data_dir", // put this first: it may contain some of the others
+  "cluster", "type", "name", "host", "num", "id", "pid", "cctid"
+};
 static const int NUM_CONF_METAVARIABLES =
       (sizeof(CONF_METAVARIABLES) / sizeof(CONF_METAVARIABLES[0]));
 
@@ -1102,7 +1147,20 @@ bool md_config_t::expand_meta(std::string &origval,
 	  out += stringify(getpid());
 	else if (var == "cctid")
 	  out += stringify((unsigned long long)this);
-	else
+	else if (var == "data_dir") {
+	  if (data_dir_option.length()) {
+	    char *vv = NULL;
+	    _get_val(data_dir_option.c_str(), &vv, -1);
+	    string tmp = vv;
+	    free(vv);
+	    expand_meta(tmp, NULL, stack, oss);
+	    out += tmp;
+	  } else {
+	    // this isn't really right, but it'll result in a mangled
+	    // non-existent path that will fail any search list
+	    out += "$data_dir";
+	  }
+	} else
 	  assert(0); // unreachable
 	expanded = true;
       }
@@ -1172,4 +1230,9 @@ void md_config_t::diff(
     if (strcmp(local_val, other_val))
       diff->insert(make_pair(opt->name, make_pair(local_val, other_val)));
   }
+}
+
+void md_config_t::complain_about_parse_errors(CephContext *cct)
+{
+  ::complain_about_parse_errors(cct, &parse_errors);
 }

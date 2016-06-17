@@ -80,8 +80,32 @@ int read_string(int fd, unsigned max, std::string *out) {
 }
 
 int extract_spec(const std::string &spec, std::string *pool_name,
-                 std::string *image_name, std::string *snap_name) {
-  boost::regex pattern("^(?:([^/@]+)/)?([^/@]+)(?:@([^/@]+))?$");
+                 std::string *image_name, std::string *snap_name,
+                 SpecValidation spec_validation) {
+  if (!g_ceph_context->_conf->rbd_validate_names) {
+    spec_validation = SPEC_VALIDATION_NONE;
+  }
+
+  boost::regex pattern;
+  switch (spec_validation) {
+  case SPEC_VALIDATION_FULL:
+    // disallow "/" and "@" in image and snap name
+    pattern = "^(?:([^/@]+)/)?([^/@]+)(?:@([^/@]+))?$";
+    break;
+  case SPEC_VALIDATION_SNAP:
+    // disallow "/" and "@" in snap name
+    pattern = "^(?:([^/]+)/)?([^@]+)(?:@([^/@]+))?$";
+    break;
+  case SPEC_VALIDATION_NONE:
+    // relaxed pattern assumes pool is before first "/" and snap
+    // name is after first "@"
+    pattern = "^(?:([^/]+)/)?([^@]+)(?:@(.+))?$";
+    break;
+  default:
+    assert(false);
+    break;
+  }
+
   boost::smatch match;
   if (!boost::regex_match(spec, match, pattern)) {
     std::cerr << "rbd: invalid spec '" << spec << "'" << std::endl;
@@ -97,6 +121,28 @@ int extract_spec(const std::string &spec, std::string *pool_name,
   if (snap_name != nullptr && match[3].matched) {
     *snap_name = match[3];
   }
+  return 0;
+}
+
+int extract_group_spec(const std::string &spec,
+		       std::string *pool_name,
+		       std::string *group_name) {
+  boost::regex pattern;
+  pattern = "^(?:([^/]+)/)?(.+)?$";
+
+  boost::smatch match;
+  if (!boost::regex_match(spec, match, pattern)) {
+    std::cerr << "rbd: invalid spec '" << spec << "'" << std::endl;
+    return -EINVAL;
+  }
+
+  if (pool_name != nullptr && match[1].matched) {
+    *pool_name = match[1];
+  }
+  if (group_name != nullptr) {
+    *group_name = match[2];
+  }
+
   return 0;
 }
 
@@ -132,6 +178,50 @@ std::string get_pool_name(const po::variables_map &vm,
   return pool_name;
 }
 
+int get_pool_group_names(const po::variables_map &vm,
+			 at::ArgumentModifier mod,
+			 size_t *spec_arg_index,
+			 std::string *pool_name,
+			 std::string *group_name) {
+  std::string pool_key = (mod == at::ARGUMENT_MODIFIER_DEST ?
+    at::DEST_POOL_NAME : at::POOL_NAME);
+  std::string group_key = (mod == at::ARGUMENT_MODIFIER_DEST ?
+    at::DEST_GROUP_NAME : at::GROUP_NAME);
+
+  if (vm.count(pool_key) && pool_name != nullptr) {
+    *pool_name = vm[pool_key].as<std::string>();
+  }
+  if (vm.count(group_key) && group_name != nullptr) {
+    *group_name = vm[group_key].as<std::string>();
+  }
+
+  int r;
+  if (group_name != nullptr && spec_arg_index != nullptr &&
+      group_name->empty()) {
+    std::string spec = get_positional_argument(vm, (*spec_arg_index)++);
+    if (!spec.empty()) {
+      r = extract_group_spec(spec, pool_name, group_name);
+      if (r < 0) {
+        return r;
+      }
+    }
+  }
+
+  if (pool_name->empty()) {
+    *pool_name = at::DEFAULT_POOL_NAME;
+  }
+
+  if (group_name != nullptr && group_name->empty()) {
+    std::string prefix = at::get_description_prefix(mod);
+    std::cerr << "rbd: "
+              << (mod == at::ARGUMENT_MODIFIER_DEST ? prefix : std::string())
+              << "group name was not specified" << std::endl;
+    return -EINVAL;
+  }
+
+  return 0;
+}
+
 int get_pool_image_snapshot_names(const po::variables_map &vm,
                                   at::ArgumentModifier mod,
                                   size_t *spec_arg_index,
@@ -139,11 +229,14 @@ int get_pool_image_snapshot_names(const po::variables_map &vm,
                                   std::string *image_name,
                                   std::string *snap_name,
                                   SnapshotPresence snapshot_presence,
+                                  SpecValidation spec_validation,
                                   bool image_required) {
   std::string pool_key = (mod == at::ARGUMENT_MODIFIER_DEST ?
     at::DEST_POOL_NAME : at::POOL_NAME);
   std::string image_key = (mod == at::ARGUMENT_MODIFIER_DEST ?
     at::DEST_IMAGE_NAME : at::IMAGE_NAME);
+  std::string snap_key = (mod == at::ARGUMENT_MODIFIER_DEST ?
+	at::DEST_SNAPSHOT_NAME : at::SNAPSHOT_NAME);
 
   if (vm.count(pool_key) && pool_name != nullptr) {
     *pool_name = vm[pool_key].as<std::string>();
@@ -151,24 +244,27 @@ int get_pool_image_snapshot_names(const po::variables_map &vm,
   if (vm.count(image_key) && image_name != nullptr) {
     *image_name = vm[image_key].as<std::string>();
   }
-  if (vm.count(at::SNAPSHOT_NAME) && snap_name != nullptr &&
-      mod != at::ARGUMENT_MODIFIER_DEST) {
-    *snap_name = vm[at::SNAPSHOT_NAME].as<std::string>();
-  }
+  if (vm.count(snap_key) && snap_name != nullptr) {
+     *snap_name = vm[snap_key].as<std::string>();
+   }
 
+  int r;
   if (image_name != nullptr && !image_name->empty()) {
     // despite the separate pool and snapshot name options,
     // we can also specify them via the image option
     std::string image_name_copy(*image_name);
-    extract_spec(image_name_copy, pool_name, image_name, snap_name);
+    r = extract_spec(image_name_copy, pool_name, image_name, snap_name,
+                     spec_validation);
+    if (r < 0) {
+      return r;
+    }
   }
 
-  int r;
   if (image_name != nullptr && spec_arg_index != nullptr &&
       image_name->empty()) {
     std::string spec = get_positional_argument(vm, (*spec_arg_index)++);
     if (!spec.empty()) {
-      r = extract_spec(spec, pool_name, image_name, snap_name);
+      r = extract_spec(spec, pool_name, image_name, snap_name, spec_validation);
       if (r < 0) {
         return r;
       }
@@ -220,26 +316,35 @@ int get_pool_journal_names(const po::variables_map &vm,
     image_name = vm[image_key].as<std::string>();
   }
 
+  int r;
   if (journal_name != nullptr && !journal_name->empty()) {
     // despite the separate pool option,
     // we can also specify them via the journal option
     std::string journal_name_copy(*journal_name);
-    extract_spec(journal_name_copy, pool_name, journal_name, nullptr);
+    r = extract_spec(journal_name_copy, pool_name, journal_name, nullptr,
+                     SPEC_VALIDATION_FULL);
+    if (r < 0) {
+      return r;
+    }
   }
 
   if (!image_name.empty()) {
     // despite the separate pool option,
     // we can also specify them via the image option
     std::string image_name_copy(image_name);
-    extract_spec(image_name_copy, pool_name, &image_name, nullptr);
+    r = extract_spec(image_name_copy, pool_name, &image_name, nullptr,
+                     SPEC_VALIDATION_NONE);
+    if (r < 0) {
+      return r;
+    }
   }
 
-  int r;
   if (journal_name != nullptr && spec_arg_index != nullptr &&
       journal_name->empty()) {
     std::string spec = get_positional_argument(vm, (*spec_arg_index)++);
     if (!spec.empty()) {
-      r = extract_spec(spec, pool_name, journal_name, nullptr);
+      r = extract_spec(spec, pool_name, journal_name, nullptr,
+                       SPEC_VALIDATION_FULL);
       if (r < 0) {
         return r;
       }
@@ -388,6 +493,9 @@ int get_image_options(const boost::program_options::variables_map &vm,
       format_specified = true;
     } else {
       format = g_conf->rbd_default_format;
+    }
+    if (format == 1) {
+      std::cerr << "rbd: image format 1 is deprecated" << std::endl;
     }
 
     if (features_specified && features != 0) {
@@ -591,7 +699,7 @@ int init_and_open_image(const std::string &pool_name,
   return 0;
 }
 
-int snap_set(librbd::Image &image, const std::string snap_name) {
+int snap_set(librbd::Image &image, const std::string &snap_name) {
   int r = image.snap_set(snap_name.c_str());
   if (r < 0) {
     std::cerr << "error setting snapshot context: " << cpp_strerror(r)
@@ -613,6 +721,56 @@ std::string image_id(librbd::Image& image) {
   prefix[RBD_MAX_BLOCK_NAME_SIZE] = '\0';
 
   return string(prefix + strlen(RBD_DATA_PREFIX));
+}
+
+std::string mirror_image_state(librbd::mirror_image_state_t state) {
+  switch (state) {
+    case RBD_MIRROR_IMAGE_DISABLING:
+      return "disabling";
+    case RBD_MIRROR_IMAGE_ENABLED:
+      return "enabled";
+    case RBD_MIRROR_IMAGE_DISABLED:
+      return "disabled";
+    default:
+      return "unknown";
+  }
+}
+
+std::string mirror_image_status_state(librbd::mirror_image_status_state_t state) {
+  switch (state) {
+  case MIRROR_IMAGE_STATUS_STATE_UNKNOWN:
+    return "unknown";
+  case MIRROR_IMAGE_STATUS_STATE_ERROR:
+    return "error";
+  case MIRROR_IMAGE_STATUS_STATE_SYNCING:
+    return "syncing";
+  case MIRROR_IMAGE_STATUS_STATE_STARTING_REPLAY:
+    return "starting_replay";
+  case MIRROR_IMAGE_STATUS_STATE_REPLAYING:
+    return "replaying";
+  case MIRROR_IMAGE_STATUS_STATE_STOPPING_REPLAY:
+    return "stopping_replay";
+  case MIRROR_IMAGE_STATUS_STATE_STOPPED:
+    return "stopped";
+  default:
+    return "unknown (" + stringify(static_cast<uint32_t>(state)) + ")";
+  }
+}
+
+std::string mirror_image_status_state(librbd::mirror_image_status_t status) {
+  return (status.up ? "up+" : "down+") +
+    mirror_image_status_state(status.state);
+}
+
+std::string timestr(time_t t) {
+  struct tm tm;
+
+  localtime_r(&t, &tm);
+
+  char buf[32];
+  strftime(buf, sizeof(buf), "%F %T", &tm);
+
+  return buf;
 }
 
 } // namespace utils

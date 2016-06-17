@@ -69,8 +69,9 @@ static int do_show_info(const char *imgname, librbd::Image& image,
   librbd::image_info_t info;
   std::string parent_pool, parent_name, parent_snapname;
   uint8_t old_format;
-  uint64_t overlap, features, flags;
+  uint64_t overlap, features, flags, snap_limit;
   bool snap_protected = false;
+  librbd::mirror_image_info_t mirror_image;
   int r;
 
   r = image.stat(info, sizeof(info));
@@ -99,6 +100,17 @@ static int do_show_info(const char *imgname, librbd::Image& image,
     if (r < 0)
       return r;
   }
+
+  if (features & RBD_FEATURE_JOURNALING) {
+    r = image.mirror_image_get_info(&mirror_image, sizeof(mirror_image));
+    if (r < 0) {
+      return r;
+    }
+  }
+
+  r = image.snap_get_limit(&snap_limit);
+  if (r < 0)
+    return r;
 
   char prefix[RBD_MAX_BLOCK_NAME_SIZE + 1];
   strncpy(prefix, info.block_name_prefix, RBD_MAX_BLOCK_NAME_SIZE);
@@ -142,6 +154,14 @@ static int do_show_info(const char *imgname, librbd::Image& image,
     }
   }
 
+  if (snap_limit < UINT64_MAX) {
+    if (f) {
+      f->dump_unsigned("snapshot_limit", snap_limit);
+    } else {
+      std::cout << "\tsnapshot_limit: " << snap_limit << std::endl;
+    }
+  }
+
   // parent info, if present
   if ((image.parent_info(&parent_pool, &parent_name, &parent_snapname) == 0) &&
       parent_name.length() > 0) {
@@ -179,6 +199,28 @@ static int do_show_info(const char *imgname, librbd::Image& image,
     }
   }
 
+  if (features & RBD_FEATURE_JOURNALING) {
+    if (f) {
+      f->open_object_section("mirroring");
+      f->dump_string("state",
+          utils::mirror_image_state(mirror_image.state));
+      if (mirror_image.state != RBD_MIRROR_IMAGE_DISABLED) {
+        f->dump_string("global_id", mirror_image.global_id);
+        f->dump_bool("primary", mirror_image.primary);
+      }
+      f->close_section();
+    } else {
+      std::cout << "\tmirroring state: "
+                << utils::mirror_image_state(mirror_image.state) << std::endl;
+      if (mirror_image.state != RBD_MIRROR_IMAGE_DISABLED) {
+        std::cout << "\tmirroring global id: " << mirror_image.global_id
+                  << std::endl
+                  << "\tmirroring primary: "
+                  << (mirror_image.primary ? "true" : "false") <<std::endl;
+      }
+    }
+  }
+
   if (f) {
     f->close_section();
     f->flush(std::cout);
@@ -201,7 +243,8 @@ int execute(const po::variables_map &vm) {
   std::string snap_name;
   int r = utils::get_pool_image_snapshot_names(
     vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
-    &snap_name, utils::SNAPSHOT_PRESENCE_PERMITTED);
+    &snap_name, utils::SNAPSHOT_PRESENCE_PERMITTED,
+    utils::SPEC_VALIDATION_NONE);
   if (r < 0) {
     return r;
   }

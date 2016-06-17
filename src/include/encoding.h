@@ -160,6 +160,11 @@ WRITE_INTTYPE_ENCODER(int16_t, le16)
     ENCODE_DUMP_PRE(); c.encode(bl, features); ENCODE_DUMP_POST(cl); }	\
   inline void decode(cl &c, bufferlist::iterator &p) { c.decode(p); }
 
+#define WRITE_CLASS_ENCODER_OPTIONAL_FEATURES(cl)				\
+  inline void encode(const cl &c, bufferlist &bl, uint64_t features = 0) {	\
+    ENCODE_DUMP_PRE(); c.encode(bl, features); ENCODE_DUMP_POST(cl); }	\
+  inline void decode(cl &c, bufferlist::iterator &p) { c.decode(p); }
+
 
 // string
 inline void encode(const std::string& s, bufferlist& bl, uint64_t features=0)
@@ -233,8 +238,8 @@ inline void decode(buffer::ptr& bp, bufferlist::iterator& p)
   p.copy(len, s);
 
   if (len) {
-    if (s.buffers().size() == 1)
-      bp = s.buffers().front();
+    if (s.get_num_buffers() == 1)
+      bp = s.front();
     else
       bp = buffer::copy(s.c_str(), s.length());
   }
@@ -368,6 +373,14 @@ inline void decode(std::pair<A,B> &pa, bufferlist::iterator &p)
 template<class T>
 inline void encode(const std::list<T>& ls, bufferlist& bl)
 {
+  __u32 n = (__u32)(ls.size());  // c++11 std::list::size() is O(1)
+  encode(n, bl);
+  for (typename std::list<T>::const_iterator p = ls.begin(); p != ls.end(); ++p)
+    encode(*p, bl);
+}
+template<class T>
+inline void encode(const std::list<T>& ls, bufferlist& bl, uint64_t features)
+{
   // should i pre- or post- count?
   if (!ls.empty()) {
     unsigned pos = bl.length();
@@ -375,7 +388,7 @@ inline void encode(const std::list<T>& ls, bufferlist& bl)
     encode(n, bl);
     for (typename std::list<T>::const_iterator p = ls.begin(); p != ls.end(); ++p) {
       n++;
-      encode(*p, bl);
+      encode(*p, bl, features);
     }
     ceph_le32 en;
     en = n;
@@ -384,7 +397,7 @@ inline void encode(const std::list<T>& ls, bufferlist& bl)
     __u32 n = (__u32)(ls.size());    // FIXME: this is slow on a list.
     encode(n, bl);
     for (typename std::list<T>::const_iterator p = ls.begin(); p != ls.end(); ++p)
-      encode(*p, bl);
+      encode(*p, bl, features);
   }
 }
 template<class T>
@@ -403,24 +416,18 @@ inline void decode(std::list<T>& ls, bufferlist::iterator& p)
 template<class T>
 inline void encode(const std::list<ceph::shared_ptr<T> >& ls, bufferlist& bl)
 {
-  // should i pre- or post- count?
-  if (!ls.empty()) {
-    unsigned pos = bl.length();
-    unsigned n = 0;
-    encode(n, bl);
-    for (typename std::list<ceph::shared_ptr<T> >::const_iterator p = ls.begin(); p != ls.end(); ++p) {
-      n++;
-      encode(**p, bl);
-    }
-    ceph_le32 en;
-    en = n;
-    bl.copy_in(pos, sizeof(en), (char*)&en);
-  } else {
-    __u32 n = (__u32)(ls.size());    // FIXME: this is slow on a list.
-    encode(n, bl);
-    for (typename std::list<ceph::shared_ptr<T> >::const_iterator p = ls.begin(); p != ls.end(); ++p)
-      encode(**p, bl);
-  }
+  __u32 n = (__u32)(ls.size());  // c++11 std::list::size() is O(1)
+  encode(n, bl);
+  for (typename std::list<ceph::shared_ptr<T> >::const_iterator p = ls.begin(); p != ls.end(); ++p)
+    encode(**p, bl);
+}
+template<class T>
+inline void encode(const std::list<ceph::shared_ptr<T> >& ls, bufferlist& bl, uint64_t features)
+{
+  __u32 n = (__u32)(ls.size());  // c++11 std::list::size() is O(1)
+  encode(n, bl);
+  for (typename std::list<ceph::shared_ptr<T> >::const_iterator p = ls.begin(); p != ls.end(); ++p)
+    encode(**p, bl, features);
 }
 template<class T>
 inline void decode(std::list<ceph::shared_ptr<T> >& ls, bufferlist::iterator& p)
@@ -429,7 +436,7 @@ inline void decode(std::list<ceph::shared_ptr<T> >& ls, bufferlist::iterator& p)
   decode(n, p);
   ls.clear();
   while (n--) {
-    ceph::shared_ptr<T> v(new T);
+    ceph::shared_ptr<T> v(std::make_shared<T>());
     decode(*v, p);
     ls.push_back(v);
   }
@@ -578,6 +585,18 @@ inline void decode_nohead(int len, std::vector<T>& v, bufferlist::iterator& p)
 
 // vector (shared_ptr)
 template<class T>
+inline void encode(const std::vector<ceph::shared_ptr<T> >& v, bufferlist& bl,
+		   uint64_t features)
+{
+  __u32 n = (__u32)(v.size());
+  encode(n, bl);
+  for (typename std::vector<ceph::shared_ptr<T> >::const_iterator p = v.begin(); p != v.end(); ++p)
+    if (*p)
+      encode(**p, bl, features);
+    else
+      encode(T(), bl, features);
+}
+template<class T>
 inline void encode(const std::vector<ceph::shared_ptr<T> >& v, bufferlist& bl)
 {
   __u32 n = (__u32)(v.size());
@@ -595,7 +614,7 @@ inline void decode(std::vector<ceph::shared_ptr<T> >& v, bufferlist::iterator& p
   decode(n, p);
   v.resize(n);
   for (__u32 i=0; i<n; i++) {
-    v[i].reset(new T());
+    v[i] = std::make_shared<T>();
     decode(*v[i], p);
   }
 }
@@ -756,6 +775,17 @@ inline void decode(std::multimap<T,U>& m, bufferlist::iterator& p)
 
 // ceph::unordered_map
 template<class T, class U>
+inline void encode(const unordered_map<T,U>& m, bufferlist& bl,
+		   uint64_t features)
+{
+  __u32 n = (__u32)(m.size());
+  encode(n, bl);
+  for (typename unordered_map<T,U>::const_iterator p = m.begin(); p != m.end(); ++p) {
+    encode(p->first, bl, features);
+    encode(p->second, bl, features);
+  }
+}
+template<class T, class U>
 inline void encode(const unordered_map<T,U>& m, bufferlist& bl)
 {
   __u32 n = (__u32)(m.size());
@@ -801,6 +831,14 @@ inline void decode(ceph::unordered_set<T>& m, bufferlist::iterator& p)
 }
 
 // deque
+template<class T>
+inline void encode(const std::deque<T>& ls, bufferlist& bl, uint64_t features)
+{
+  __u32 n = ls.size();
+  encode(n, bl);
+  for (typename std::deque<T>::const_iterator p = ls.begin(); p != ls.end(); ++p)
+    encode(*p, bl, features);
+}
 template<class T>
 inline void encode(const std::deque<T>& ls, bufferlist& bl)
 {

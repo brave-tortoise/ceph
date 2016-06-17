@@ -36,6 +36,7 @@ using namespace std;
 #include "include/assert.h"
 #include "AsyncConnection.h"
 #include "Event.h"
+#include "common/simple_spin.h"
 
 
 class AsyncMessenger;
@@ -45,6 +46,7 @@ enum {
   l_msgr_first = 94000,
   l_msgr_recv_messages,
   l_msgr_send_messages,
+  l_msgr_send_messages_inline,
   l_msgr_recv_bytes,
   l_msgr_send_bytes,
   l_msgr_created_connections,
@@ -64,8 +66,9 @@ class Worker : public Thread {
 
  public:
   EventCenter center;
+  std::atomic_uint references;
   Worker(CephContext *c, WorkerPool *p, int i)
-    : cct(c), pool(p), done(false), id(i), perf_logger(NULL), center(c) {
+    : cct(c), pool(p), done(false), id(i), perf_logger(NULL), center(c), references(0) {
     center.init(InitEventNumber);
     char name[128];
     sprintf(name, "AsyncMessenger::Worker-%d", id);
@@ -74,10 +77,11 @@ class Worker : public Thread {
 
     plb.add_u64_counter(l_msgr_recv_messages, "msgr_recv_messages", "Network received messages");
     plb.add_u64_counter(l_msgr_send_messages, "msgr_send_messages", "Network sent messages");
+    plb.add_u64_counter(l_msgr_send_messages_inline, "msgr_send_messages_inline", "Network sent inline messages");
     plb.add_u64_counter(l_msgr_recv_bytes, "msgr_recv_bytes", "Network received bytes");
     plb.add_u64_counter(l_msgr_send_bytes, "msgr_send_bytes", "Network received bytes");
-    plb.add_u64_counter(l_msgr_created_connections, "msgr_active_connections", "Active connection number");
-    plb.add_u64_counter(l_msgr_active_connections, "msgr_created_connections", "Created connection number");
+    plb.add_u64_counter(l_msgr_created_connections, "msgr_created_connections", "Created connection number");
+    plb.add_u64_counter(l_msgr_active_connections, "msgr_active_connections", "Active connection number");
 
     perf_logger = plb.create_perf_counters();
     cct->get_perfcounters_collection()->add(perf_logger);
@@ -109,7 +113,7 @@ class Processor {
     Processor *pro;
 
    public:
-    C_processor_accept(Processor *p): pro(p) {}
+    explicit C_processor_accept(Processor *p): pro(p) {}
     void do_request(int id) {
       pro->accept();
     }
@@ -131,7 +135,6 @@ class WorkerPool {
   WorkerPool(const WorkerPool &);
   WorkerPool& operator=(const WorkerPool &);
   CephContext *cct;
-  uint64_t seq;
   vector<Worker*> workers;
   vector<int> coreids;
   // Used to indicate whether thread started
@@ -139,11 +142,12 @@ class WorkerPool {
   Mutex barrier_lock;
   Cond barrier_cond;
   atomic_t barrier_count;
+  simple_spinlock_t pool_spin = SIMPLE_SPINLOCK_INITIALIZER;
 
   class C_barrier : public EventCallback {
     WorkerPool *pool;
    public:
-    C_barrier(WorkerPool *p): pool(p) {}
+    explicit C_barrier(WorkerPool *p): pool(p) {}
     void do_request(int id) {
       Mutex::Locker l(pool->barrier_lock);
       pool->barrier_count.dec();
@@ -153,12 +157,11 @@ class WorkerPool {
   };
   friend class C_barrier;
  public:
-  WorkerPool(CephContext *c);
+  explicit WorkerPool(CephContext *c);
   virtual ~WorkerPool();
   void start();
-  Worker *get_worker() {
-    return workers[(seq++)%workers.size()];
-  }
+  Worker *get_worker();
+  void release_worker(EventCenter* c);
   int get_cpuid(int id) {
     if (coreids.empty())
       return -1;
@@ -332,7 +335,7 @@ private:
     AsyncMessenger *msgr;
 
    public:
-    C_handle_reap(AsyncMessenger *m): msgr(m) {}
+    explicit C_handle_reap(AsyncMessenger *m): msgr(m) {}
     void do_request(int id) {
       // judge whether is a time event
       msgr->reap_dead();
@@ -356,7 +359,6 @@ private:
    *  the only writers.
    */
 
-  int listen_sd;
   /**
    *  false; set to true if the AsyncMessenger bound to a specific address;
    *  and set false again by Accepter::stop().
@@ -524,6 +526,7 @@ public:
    */
   void unregister_conn(AsyncConnectionRef conn) {
     Mutex::Locker l(deleted_lock);
+    conn->release_worker();
     deleted_conns.insert(conn);
 
     if (deleted_conns.size() >= ReapDeadConnectionThreshold) {
@@ -539,6 +542,10 @@ public:
    * See "deleted_conns"
    */
   int reap_dead();
+  
+  void release_worker(EventCenter* c) {
+    pool->release_worker(c);
+  }
 
   /**
    * @} // AsyncMessenger Internals

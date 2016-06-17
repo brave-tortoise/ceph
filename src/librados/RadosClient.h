@@ -32,6 +32,7 @@ struct md_config_t;
 class Message;
 class MLog;
 class Messenger;
+class AioCompletionImpl;
 
 class librados::RadosClient : public Dispatcher
 {
@@ -75,13 +76,14 @@ private:
 public:
   Finisher finisher;
 
-  RadosClient(CephContext *cct_);
+  explicit RadosClient(CephContext *cct_);
   ~RadosClient();
   int ping_monitor(string mon_id, string *result);
   int connect();
   void shutdown();
 
   int watch_flush();
+  int async_watch_flush(AioCompletionImpl *c);
 
   uint64_t get_instance_id();
 
@@ -102,6 +104,7 @@ public:
   int pool_list(std::list<std::pair<int64_t, string> >& ls);
   int get_pool_stats(std::list<string>& ls, map<string,::pool_stat_t>& result);
   int get_fs_stats(ceph_statfs& result);
+  bool get_pool_is_selfmanaged_snaps_mode(const std::string& pool);
 
   /*
   -1 was set as the default value and monitor will pickup the right crush rule with below order:

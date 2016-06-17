@@ -1,5 +1,6 @@
 librbd_types_la_SOURCES = \
-	librbd/journal/Entries.cc \
+	librbd/journal/Types.cc \
+	librbd/mirroring_watcher/Types.cc \
 	librbd/WatchNotifyTypes.cc
 noinst_LTLIBRARIES += librbd_types.la
 
@@ -25,17 +26,23 @@ librbd_internal_la_SOURCES = \
 	librbd/Journal.cc \
 	librbd/LibrbdAdminSocketHook.cc \
 	librbd/LibrbdWriteback.cc \
+	librbd/MirroringWatcher.cc \
 	librbd/ObjectMap.cc \
+	librbd/ObjectWatcher.cc \
 	librbd/Operations.cc \
 	librbd/Utils.cc \
 	librbd/exclusive_lock/AcquireRequest.cc \
 	librbd/exclusive_lock/ReleaseRequest.cc \
+	librbd/exclusive_lock/StandardPolicy.cc \
 	librbd/image/CloseRequest.cc \
 	librbd/image/OpenRequest.cc \
 	librbd/image/RefreshParentRequest.cc \
 	librbd/image/RefreshRequest.cc \
 	librbd/image/SetSnapRequest.cc \
+	librbd/image_watcher/Notifier.cc \
+	librbd/image_watcher/NotifyLockOwner.cc \
 	librbd/journal/Replay.cc \
+	librbd/journal/StandardPolicy.cc \
 	librbd/object_map/InvalidateRequest.cc \
 	librbd/object_map/LockRequest.cc \
 	librbd/object_map/Request.cc \
@@ -48,6 +55,7 @@ librbd_internal_la_SOURCES = \
 	librbd/object_map/UpdateRequest.cc \
 	librbd/operation/FlattenRequest.cc \
 	librbd/operation/RebuildObjectMapRequest.cc \
+	librbd/operation/ObjectMapIterate.cc \
 	librbd/operation/RenameRequest.cc \
 	librbd/operation/Request.cc \
 	librbd/operation/ResizeRequest.cc \
@@ -57,6 +65,7 @@ librbd_internal_la_SOURCES = \
 	librbd/operation/SnapshotRenameRequest.cc \
 	librbd/operation/SnapshotRollbackRequest.cc \
 	librbd/operation/SnapshotUnprotectRequest.cc \
+	librbd/operation/SnapshotLimitRequest.cc \
 	librbd/operation/TrimRequest.cc
 noinst_LTLIBRARIES += librbd_internal.la
 
@@ -100,7 +109,9 @@ noinst_HEADERS += \
 	librbd/Journal.h \
 	librbd/LibrbdAdminSocketHook.h \
 	librbd/LibrbdWriteback.h \
+	librbd/MirroringWatcher.h \
 	librbd/ObjectMap.h \
+	librbd/ObjectWatcher.h \
 	librbd/Operations.h \
 	librbd/parent_types.h \
 	librbd/SnapInfo.h \
@@ -108,14 +119,22 @@ noinst_HEADERS += \
 	librbd/Utils.h \
 	librbd/WatchNotifyTypes.h \
 	librbd/exclusive_lock/AcquireRequest.h \
+	librbd/exclusive_lock/Policy.h \
 	librbd/exclusive_lock/ReleaseRequest.h \
+	librbd/exclusive_lock/StandardPolicy.h \
 	librbd/image/CloseRequest.h \
 	librbd/image/OpenRequest.h \
 	librbd/image/RefreshParentRequest.h \
 	librbd/image/RefreshRequest.h \
 	librbd/image/SetSnapRequest.h \
+	librbd/image_watcher/Notifier.h \
+	librbd/image_watcher/NotifyLockOwner.h \
+	librbd/journal/Policy.h \
 	librbd/journal/Replay.h \
-	librbd/journal/Entries.h \
+	librbd/journal/StandardPolicy.h \
+	librbd/journal/Types.h \
+	librbd/journal/TypeTraits.h \
+	librbd/mirroring_watcher/Types.h \
 	librbd/object_map/InvalidateRequest.h \
 	librbd/object_map/LockRequest.h \
 	librbd/object_map/Request.h \
@@ -128,6 +147,7 @@ noinst_HEADERS += \
 	librbd/object_map/UpdateRequest.h \
 	librbd/operation/FlattenRequest.h \
 	librbd/operation/RebuildObjectMapRequest.h \
+	librbd/operation/ObjectMapIterate.h \
 	librbd/operation/RenameRequest.h \
 	librbd/operation/Request.h \
 	librbd/operation/ResizeRequest.h \
@@ -137,6 +157,7 @@ noinst_HEADERS += \
 	librbd/operation/SnapshotRenameRequest.h \
 	librbd/operation/SnapshotRollbackRequest.h \
 	librbd/operation/SnapshotUnprotectRequest.h \
+	librbd/operation/SnapshotLimitRequest.h \
 	librbd/operation/TrimRequest.h
 
 endif # WITH_RBD

@@ -10,8 +10,7 @@
 #define dout_prefix *_dout << "stupidalloc "
 
 StupidAllocator::StupidAllocator()
-  : lock("StupicAllocator::lock"),
-    num_free(0),
+  : num_free(0),
     num_uncommitted(0),
     num_committing(0),
     num_reserved(0),
@@ -26,12 +25,8 @@ StupidAllocator::~StupidAllocator()
 
 unsigned StupidAllocator::_choose_bin(uint64_t orig_len)
 {
-  uint64_t len = orig_len / g_conf->bluestore_min_alloc_size;
-  int bin = 0;
-  while (len && bin + 1 < (int)free.size()) {
-    len >>= 1;
-    bin++;
-  }
+  uint64_t len = orig_len / g_conf->bdev_block_size;
+  int bin = std::min((int)cbits(len), (int)free.size() - 1);
   dout(30) << __func__ << " len " << orig_len << " -> " << bin << dendl;
   return bin;
 }
@@ -54,7 +49,7 @@ void StupidAllocator::_insert_free(uint64_t off, uint64_t len)
 
 int StupidAllocator::reserve(uint64_t need)
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   dout(10) << __func__ << " need " << need << " num_free " << num_free
 	   << " num_reserved " << num_reserved << dendl;
   if ((int64_t)need > num_free - num_reserved)
@@ -65,15 +60,15 @@ int StupidAllocator::reserve(uint64_t need)
 
 void StupidAllocator::unreserve(uint64_t unused)
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   dout(10) << __func__ << " unused " << unused << " num_free " << num_free
 	   << " num_reserved " << num_reserved << dendl;
-  assert((int64_t)unused >= num_reserved);
+  assert(num_reserved >= (int64_t)unused);
   num_reserved -= unused;
 }
 
 /// return the effective length of the extent if we align to alloc_unit
-static uint64_t aligned_len(interval_set<uint64_t>::iterator p,
+static uint64_t aligned_len(btree_interval_set<uint64_t>::iterator p,
 			    uint64_t alloc_unit)
 {
   uint64_t skew = p.get_start() % alloc_unit;
@@ -86,19 +81,19 @@ static uint64_t aligned_len(interval_set<uint64_t>::iterator p,
 }
 
 int StupidAllocator::allocate(
-  uint64_t need_size, uint64_t alloc_unit, int64_t hint,
+  uint64_t want_size, uint64_t alloc_unit, int64_t hint,
   uint64_t *offset, uint32_t *length)
 {
-  Mutex::Locker l(lock);
-  dout(10) << __func__ << " need_size " << need_size
+  std::lock_guard<std::mutex> l(lock);
+  dout(10) << __func__ << " want_size " << want_size
 	   << " alloc_unit " << alloc_unit
 	   << " hint " << hint
 	   << dendl;
-  uint64_t want = MAX(alloc_unit, need_size);
+  uint64_t want = MAX(alloc_unit, want_size);
   int bin = _choose_bin(want);
   int orig_bin = bin;
 
-  interval_set<uint64_t>::iterator p = free[0].begin();
+  auto p = free[0].begin();
 
   if (!hint)
     hint = last_alloc;
@@ -108,7 +103,7 @@ int StupidAllocator::allocate(
     for (bin = orig_bin; bin < (int)free.size(); ++bin) {
       p = free[bin].lower_bound(hint);
       while (p != free[bin].end()) {
-	if (aligned_len(p, alloc_unit) >= need_size) {
+	if (aligned_len(p, alloc_unit) >= want_size) {
 	  goto found;
 	}
 	++p;
@@ -116,11 +111,12 @@ int StupidAllocator::allocate(
     }
   }
 
-  // search up (from origin)
+  // search up (from origin, and skip searched extents by hint)
   for (bin = orig_bin; bin < (int)free.size(); ++bin) {
     p = free[bin].begin();
-    while (p != free[bin].end()) {
-      if (aligned_len(p, alloc_unit) >= need_size) {
+    auto end = hint ? free[bin].lower_bound(hint) : free[bin].end();
+    while (p != end) {
+      if (aligned_len(p, alloc_unit) >= want_size) {
 	goto found;
       }
       ++p;
@@ -140,10 +136,11 @@ int StupidAllocator::allocate(
     }
   }
 
-  // search down (origin)
+  // search down (from origin, and skip searched extents by hint)
   for (bin = orig_bin; bin >= 0; --bin) {
     p = free[bin].begin();
-    while (p != free[bin].end()) {
+    auto end = hint ? free[bin].lower_bound(hint) : free[bin].end();
+    while (p != end) {
       if (aligned_len(p, alloc_unit) >= alloc_unit) {
 	goto found;
       }
@@ -159,7 +156,7 @@ int StupidAllocator::allocate(
   if (skew)
     skew = alloc_unit - skew;
   *offset = p.get_start() + skew;
-  *length = MIN(MAX(alloc_unit, need_size), p.get_len() - skew);
+  *length = MIN(MAX(alloc_unit, want_size), p.get_len() - skew);
   if (g_conf->bluestore_debug_small_allocations) {
     uint64_t max =
       alloc_unit * (rand() % g_conf->bluestore_debug_small_allocations);
@@ -204,7 +201,7 @@ int StupidAllocator::allocate(
 int StupidAllocator::release(
   uint64_t offset, uint64_t length)
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   dout(10) << __func__ << " " << offset << "~" << length << dendl;
   uncommitted.insert(offset, length);
   num_uncommitted += length;
@@ -213,17 +210,17 @@ int StupidAllocator::release(
 
 uint64_t StupidAllocator::get_free()
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   return num_free;
 }
 
 void StupidAllocator::dump(ostream& out)
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   for (unsigned bin = 0; bin < free.size(); ++bin) {
     dout(30) << __func__ << " free bin " << bin << ": "
 	     << free[bin].num_intervals() << " extents" << dendl;
-    for (interval_set<uint64_t>::iterator p = free[bin].begin();
+    for (auto p = free[bin].begin();
 	 p != free[bin].end();
 	 ++p) {
       dout(30) << __func__ << "  " << p.get_start() << "~" << p.get_len() << dendl;
@@ -231,14 +228,14 @@ void StupidAllocator::dump(ostream& out)
   }
   dout(30) << __func__ << " committing: "
 	   << committing.num_intervals() << " extents" << dendl;
-  for (interval_set<uint64_t>::iterator p = committing.begin();
+  for (auto p = committing.begin();
        p != committing.end();
        ++p) {
     dout(30) << __func__ << "  " << p.get_start() << "~" << p.get_len() << dendl;
   }
   dout(30) << __func__ << " uncommitted: "
 	   << uncommitted.num_intervals() << " extents" << dendl;
-  for (interval_set<uint64_t>::iterator p = uncommitted.begin();
+  for (auto p = uncommitted.begin();
        p != uncommitted.end();
        ++p) {
     dout(30) << __func__ << "  " << p.get_start() << "~" << p.get_len() << dendl;
@@ -247,7 +244,7 @@ void StupidAllocator::dump(ostream& out)
 
 void StupidAllocator::init_add_free(uint64_t offset, uint64_t length)
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   dout(10) << __func__ << " " << offset << "~" << length << dendl;
   _insert_free(offset, length);
   num_free += length;
@@ -255,12 +252,12 @@ void StupidAllocator::init_add_free(uint64_t offset, uint64_t length)
 
 void StupidAllocator::init_rm_free(uint64_t offset, uint64_t length)
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   dout(10) << __func__ << " " << offset << "~" << length << dendl;
-  interval_set<uint64_t> rm;
+  btree_interval_set<uint64_t> rm;
   rm.insert(offset, length);
   for (unsigned i = 0; i < free.size() && !rm.empty(); ++i) {
-    interval_set<uint64_t> overlap;
+    btree_interval_set<uint64_t> overlap;
     overlap.intersection_of(rm, free[i]);
     if (!overlap.empty()) {
       dout(20) << __func__ << " bin " << i << " rm " << overlap << dendl;
@@ -281,7 +278,7 @@ void StupidAllocator::shutdown()
 
 void StupidAllocator::commit_start()
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   dout(10) << __func__ << " releasing " << num_uncommitted
 	   << " in extents " << uncommitted.num_intervals() << dendl;
   assert(committing.empty());
@@ -292,10 +289,10 @@ void StupidAllocator::commit_start()
 
 void StupidAllocator::commit_finish()
 {
-  Mutex::Locker l(lock);
+  std::lock_guard<std::mutex> l(lock);
   dout(10) << __func__ << " released " << num_committing
 	   << " in extents " << committing.num_intervals() << dendl;
-  for (interval_set<uint64_t>::iterator p = committing.begin();
+  for (auto p = committing.begin();
        p != committing.end();
        ++p) {
     _insert_free(p.get_start(), p.get_len());

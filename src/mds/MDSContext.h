@@ -55,7 +55,7 @@ protected:
   virtual MDSRank* get_mds();
 
 public:
-  MDSInternalContext(MDSRank *mds_) : mds(mds_) {
+  explicit MDSInternalContext(MDSRank *mds_) : mds(mds_) {
     assert(mds != NULL);
   }
 };
@@ -91,7 +91,7 @@ protected:
   virtual MDSRank* get_mds();
 
 public:
-  MDSIOContext(MDSRank *mds_) : mds(mds_) {
+  explicit MDSIOContext(MDSRank *mds_) : mds(mds_) {
     assert(mds != NULL);
   }
 };
@@ -135,8 +135,17 @@ public:
   C_IO_Wrapper(MDSRank *mds_, MDSInternalContextBase *wrapped_) : MDSIOContext(mds_), wrapped(wrapped_) {
     assert(wrapped != NULL);
   }
+
+  ~C_IO_Wrapper() {
+    if (wrapped != nullptr) {
+      delete wrapped;
+      wrapped = nullptr;
+    }
+  }
+
   virtual void finish(int r) {
     wrapped->complete(r);
+    wrapped = nullptr;
   }
 };
 

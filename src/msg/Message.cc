@@ -111,6 +111,8 @@ using namespace std;
 #include "messages/MMDSSlaveRequest.h"
 
 #include "messages/MMDSMap.h"
+#include "messages/MFSMap.h"
+#include "messages/MFSMapUser.h"
 #include "messages/MMDSBeacon.h"
 #include "messages/MMDSLoadTargets.h"
 #include "messages/MMDSResolve.h"
@@ -169,6 +171,9 @@ using namespace std;
 #include "messages/MOSDECSubOpWriteReply.h"
 #include "messages/MOSDECSubOpRead.h"
 #include "messages/MOSDECSubOpReadReply.h"
+
+#include "messages/MOSDPGUpdateLogMissing.h"
+#include "messages/MOSDPGUpdateLogMissingReply.h"
 
 #define DEBUGLVL  10    // debug level of output
 
@@ -437,6 +442,12 @@ Message *decode_message(CephContext *cct, int crcflags,
   case MSG_OSD_REPOPREPLY:
     m = new MOSDRepOpReply();
     break;
+  case MSG_OSD_PG_UPDATE_LOG_MISSING:
+    m = new MOSDPGUpdateLogMissing();
+    break;
+  case MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY:
+    m = new MOSDPGUpdateLogMissingReply();
+    break;
 
   case CEPH_MSG_OSD_MAP:
     m = new MOSDMap;
@@ -564,6 +575,12 @@ Message *decode_message(CephContext *cct, int crcflags,
 
   case CEPH_MSG_MDS_MAP:
     m = new MMDSMap;
+    break;
+  case CEPH_MSG_FS_MAP:
+    m = new MFSMap;
+    break;
+  case CEPH_MSG_FS_MAP_USER:
+    m = new MFSMapUser;
     break;
   case MSG_MDS_BEACON:
     m = new MMDSBeacon;

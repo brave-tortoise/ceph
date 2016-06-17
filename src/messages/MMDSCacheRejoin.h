@@ -224,11 +224,11 @@ public:
     ::encode(nonce, inode_locks);
     ::encode(bl, inode_locks);
   }
-  void add_inode_base(CInode *in) {
+  void add_inode_base(CInode *in, uint64_t features) {
     ::encode(in->inode.ino, inode_base);
     ::encode(in->last, inode_base);
     bufferlist bl;
-    in->_encode_base(bl);
+    in->_encode_base(bl, features);
     ::encode(bl, inode_base);
   }
   void add_inode_authpin(vinodeno_t ino, const metareqid_t& ri, __u32 attempt) {
@@ -295,7 +295,7 @@ public:
     ::encode(xlocked_inodes, payload);
     ::encode(wrlocked_inodes, payload);
     ::encode(cap_exports, payload);
-    ::encode(client_map, payload);
+    ::encode(client_map, payload, features);
     ::encode(imported_caps, payload);
     ::encode(strong_dirfrags, payload);
     ::encode(dirfrag_bases, payload);

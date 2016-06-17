@@ -31,7 +31,7 @@ struct Index {
   CollectionIndex *index;
 
   Index() : index(NULL) {}
-  Index(CollectionIndex* index) : index(index) {}
+  explicit Index(CollectionIndex* index) : index(index) {}
 
   CollectionIndex *operator->() { return index; }
   CollectionIndex &operator*() { return *index; }
@@ -49,7 +49,7 @@ struct Index {
  * This is enforced by using CollectionIndex::access_lock
  */
 class IndexManager {
-  Mutex lock; ///< Lock for Index Manager
+  RWLock lock; ///< Lock for Index Manager
   bool upgrade;
   ceph::unordered_map<coll_t, CollectionIndex* > col_indices;
 
@@ -65,10 +65,11 @@ class IndexManager {
    * @return error code
    */
   int build_index(coll_t c, const char *path, CollectionIndex **index);
+  bool get_index_optimistic(coll_t c, Index *index);
 public:
   /// Constructor
-  IndexManager(bool upgrade) : lock("IndexManager lock"),
-			       upgrade(upgrade) {}
+  explicit IndexManager(bool upgrade) : lock("IndexManager lock"),
+		    		        upgrade(upgrade) {}
 
   ~IndexManager();
 

@@ -17,6 +17,7 @@ libos_a_SOURCES = \
 	os/filestore/DBObjectMap.cc \
 	os/filestore/FileJournal.cc \
 	os/filestore/FileStore.cc \
+	os/filestore/JournalThrottle.cc \
 	os/filestore/GenericFileStoreBackend.cc \
 	os/filestore/HashIndex.cc \
 	os/filestore/IndexManager.cc \
@@ -24,22 +25,29 @@ libos_a_SOURCES = \
 	os/filestore/LFNIndex.cc \
 	os/filestore/WBThrottle.cc \
 	os/fs/FS.cc \
-	os/keyvaluestore/GenericObjectMap.cc \
-	os/keyvaluestore/KeyValueStore.cc \
 	os/kstore/kv.cc \
 	os/kstore/KStore.cc \
 	os/memstore/MemStore.cc \
 	os/ObjectStore.cc
 
+if WITH_FUSE
+libos_a_SOURCES += os/FuseStore.cc
+endif
+
 if WITH_LIBAIO
 libos_a_SOURCES += \
 	os/bluestore/kv.cc \
 	os/bluestore/Allocator.cc \
+	os/bluestore/BitmapFreelistManager.cc \
 	os/bluestore/BlockDevice.cc \
 	os/bluestore/BlueFS.cc \
 	os/bluestore/BlueRocksEnv.cc \
 	os/bluestore/BlueStore.cc \
+	os/bluestore/ExtentFreelistManager.cc \
 	os/bluestore/FreelistManager.cc \
+	os/bluestore/KernelDevice.cc \
+	os/bluestore/BitMapAllocator.cc \
+	os/bluestore/BitAllocator.cc \
 	os/bluestore/StupidAllocator.cc
 endif
 
@@ -72,6 +80,7 @@ noinst_HEADERS += \
 	os/filestore/DBObjectMap.h \
 	os/filestore/FileJournal.h \
 	os/filestore/FileStore.h \
+	os/filestore/JournalThrottle.h \
 	os/filestore/FDCache.h \
 	os/filestore/GenericFileStoreBackend.h \
 	os/filestore/HashIndex.h \
@@ -86,13 +95,12 @@ noinst_HEADERS += \
 	os/fs/btrfs_ioctl.h \
 	os/fs/FS.h \
 	os/fs/XFS.h \
-	os/keyvaluestore/GenericObjectMap.h \
-	os/keyvaluestore/KeyValueStore.h \
 	os/kstore/kstore_types.h \
 	os/kstore/KStore.h \
 	os/kstore/kv.h \
 	os/memstore/MemStore.h \
 	os/memstore/PageSet.h \
+	os/FuseStore.h \
 	os/ObjectMap.h \
 	os/ObjectStore.h
 
@@ -102,11 +110,16 @@ noinst_HEADERS += \
 	os/bluestore/bluestore_types.h \
 	os/bluestore/kv.h \
 	os/bluestore/Allocator.h \
+	os/bluestore/BitmapFreelistManager.h \
 	os/bluestore/BlockDevice.h \
 	os/bluestore/BlueFS.h \
 	os/bluestore/BlueRocksEnv.h \
 	os/bluestore/BlueStore.h \
+	os/bluestore/KernelDevice.h \
+	os/bluestore/ExtentFreelistManager.h \
 	os/bluestore/FreelistManager.h \
+	os/bluestore/BitMapAllocator.h \
+	os/bluestore/BitAllocator.h \
 	os/bluestore/StupidAllocator.h
 endif
 
@@ -115,6 +128,32 @@ libos_zfs_a_SOURCES = os/fs/ZFS.cc
 libos_zfs_a_CXXFLAGS = ${AM_CXXFLAGS} ${LIBZFS_CFLAGS}
 noinst_LIBRARIES += libos_zfs.a
 noinst_HEADERS += os/fs/ZFS.h
+endif
+
+if WITH_SPDK
+
+SPDK_SRCDIR = ${top_srcdir}/src/spdk/lib
+${SPDK_SRCDIR}/nvme/libspdk_nvme.a:
+	$(MAKE) -C ${SPDK_SRCDIR}/nvme DPDK_INC=${LIBDPDK_CFLAGS}
+${SPDK_SRCDIR}/memory/libspdk_memory.a:
+	$(MAKE) -C ${SPDK_SRCDIR}/memory DPDK_INC=${LIBDPDK_CFLAGS}
+${SPDK_SRCDIR}/util/libspdk_util.a:
+	$(MAKE) -C ${SPDK_SRCDIR}/util DPDK_INC=${LIBDPDK_CFLAGS}
+${SPDK_SRCDIR}/ioat/libspdk_ioat.a:
+	$(MAKE) -C ${SPDK_SRCDIR}/ioat DPDK_INC=${LIBDPDK_CFLAGS}
+LIBSPDK_CFLAGS = "-I${top_srcdir}/src/spdk/include"
+LIBSPDK_LIBS = \
+	${top_srcdir}/src/spdk/lib/nvme/libspdk_nvme.a \
+	${top_srcdir}/src/spdk/lib/memory/libspdk_memory.a \
+	${top_srcdir}/src/spdk/lib/util/libspdk_util.a \
+	${top_srcdir}/src/spdk/lib/ioat/libspdk_ioat.a
+
+libos_a_CXXFLAGS += \
+	${LIBSPDK_CFLAGS} \
+	${LIBDPDK_CFLAGS} \
+	${LIBPCIACCESS_CFLAGS}
+libos_a_SOURCES += os/bluestore/NVMEDevice.cc
+noinst_HEADERS += os/bluestore/NVMEDevice.h
 endif
 
 if WITH_LIBAIO

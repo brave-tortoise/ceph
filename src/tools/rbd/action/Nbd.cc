@@ -66,7 +66,7 @@ static int call_nbd_cmd(const po::variables_map &vm,
   }
 
   for (std::vector<const char*>::const_iterator p = args.begin();
-       p != args.end(); p++)
+       p != args.end(); ++p)
     process.add_cmd_arg(*p);
 
   if (process.spawn()) {
@@ -111,7 +111,8 @@ int execute_map(const po::variables_map &vm)
   std::string snap_name;
   int r = utils::get_pool_image_snapshot_names(
     vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
-    &snap_name, utils::SNAPSHOT_PRESENCE_PERMITTED);
+    &snap_name, utils::SNAPSHOT_PRESENCE_PERMITTED,
+    utils::SPEC_VALIDATION_NONE);
   if (r < 0) {
     return r;
   }

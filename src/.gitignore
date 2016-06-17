@@ -64,6 +64,7 @@ Makefile
 /init-ceph
 /keyring
 /librados-config
+/librgw_file*
 /massif.out.*
 /mnt
 /monmaptool
@@ -73,8 +74,10 @@ Makefile
 /rados
 /radosgw
 /radosgw-admin
+/radosgw-token
 /radosgw-object-expirer
 /rbd
+/rbd-mirror
 /rbd-nbd
 /rbd-fuse
 /rbd-replay

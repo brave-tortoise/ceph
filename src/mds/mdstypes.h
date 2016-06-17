@@ -21,6 +21,7 @@
 #include "include/interval_set.h"
 #include "include/compact_map.h"
 #include "include/compact_set.h"
+#include "include/fs_types.h"
 
 #include "inode_backtrace.h"
 
@@ -34,7 +35,7 @@
 
 #define MDS_REF_SET      // define me for improved debug output, sanity checking
 //#define MDS_AUTHPIN_SET  // define me for debugging auth pin leaks
-//#define MDS_VERIFY_FRAGSTAT    // do do (slow) sanity checking on frags
+//#define MDS_VERIFY_FRAGSTAT    // do (slow) sanity checking on frags
 
 #define MDS_PORT_CACHE   0x200
 #define MDS_PORT_LOCKER  0x300
@@ -75,9 +76,45 @@
 
 
 typedef int32_t mds_rank_t;
+typedef int32_t fs_cluster_id_t;
+
+
+
 BOOST_STRONG_TYPEDEF(uint64_t, mds_gid_t)
 extern const mds_gid_t MDS_GID_NONE;
+constexpr fs_cluster_id_t FS_CLUSTER_ID_NONE = {-1};
+// The namespace ID of the anonymous default filesystem from legacy systems
+constexpr fs_cluster_id_t FS_CLUSTER_ID_ANONYMOUS = {0};
 extern const mds_rank_t MDS_RANK_NONE;
+
+class mds_role_t
+{
+  public:
+  mds_rank_t rank;
+  fs_cluster_id_t fscid;
+  mds_role_t(fs_cluster_id_t fscid_, mds_rank_t rank_)
+    : rank(rank_), fscid(fscid_)
+  {}
+  mds_role_t()
+    : rank(MDS_RANK_NONE), fscid(FS_CLUSTER_ID_NONE)
+  {}
+  bool operator<(mds_role_t const &rhs) const
+  {
+    if (fscid < rhs.fscid) {
+      return true;
+    } else if (fscid == rhs.fscid) {
+      return rank < rhs.rank;
+    } else {
+      return false;
+    }
+  }
+
+  bool is_none() const
+  {
+    return (rank == MDS_RANK_NONE);
+  }
+};
+std::ostream& operator<<(std::ostream &out, const mds_role_t &role);
 
 
 extern long g_num_ino, g_num_dir, g_num_dn, g_num_cap;
@@ -145,7 +182,7 @@ struct frag_info_t : public scatter_info_t {
 
   // *this += cur - acc;
   void add_delta(const frag_info_t &cur, frag_info_t &acc, bool& touched_mtime) {
-    if (!(cur.mtime == acc.mtime)) {
+    if (cur.mtime > mtime) {
       mtime = cur.mtime;
       touched_mtime = true;
     }
@@ -158,6 +195,12 @@ struct frag_info_t : public scatter_info_t {
       mtime = other.mtime;
     nfiles += other.nfiles;
     nsubdirs += other.nsubdirs;
+  }
+
+  bool same_sums(const frag_info_t &o) const {
+    return mtime <= o.mtime &&
+	nfiles == o.nfiles &&
+	nsubdirs == o.nsubdirs;
   }
 
   void encode(bufferlist &bl) const;
@@ -213,7 +256,7 @@ struct nest_info_t : public scatter_info_t {
   }
 
   bool same_sums(const nest_info_t &o) const {
-    return rctime == o.rctime &&
+    return rctime <= o.rctime &&
         rbytes == o.rbytes &&
         rfiles == o.rfiles &&
         rsubdirs == o.rsubdirs &&
@@ -438,7 +481,7 @@ struct inode_t {
 
   // file (data access)
   ceph_dir_layout  dir_layout;    // [dir only]
-  ceph_file_layout layout;
+  file_layout_t layout;
   compact_set <int64_t> old_pools;
   uint64_t   size;        // on directory, # dentries
   uint64_t   max_size_ever; // max size the file has ever been
@@ -505,20 +548,15 @@ struct inode_t {
   }
 
   bool has_layout() const {
-    // why on earth is there no converse of memchr() in string.h?
-    const char *p = (const char *)&layout;
-    for (size_t i = 0; i < sizeof(layout); i++)
-      if (p[i] != '\0')
-	return true;
-    return false;
+    return layout != file_layout_t();
   }
 
   void clear_layout() {
-    memset(&layout, 0, sizeof(layout));
+    layout = file_layout_t();
   }
 
   uint64_t get_layout_size_increment() {
-    return (uint64_t)layout.fl_object_size * (uint64_t)layout.fl_stripe_count;
+    return layout.get_period();
   }
 
   bool is_dirty_rstat() const { return !(rstat == accounted_rstat); }
@@ -565,7 +603,7 @@ struct inode_t {
     old_pools.insert(l);
   }
 
-  void encode(bufferlist &bl) const;
+  void encode(bufferlist &bl, uint64_t features) const;
   void decode(bufferlist::iterator& bl);
   void dump(Formatter *f) const;
   static void generate_test_instances(list<inode_t*>& ls);
@@ -585,7 +623,7 @@ struct inode_t {
 private:
   bool older_is_consistent(const inode_t &other) const;
 };
-WRITE_CLASS_ENCODER(inode_t)
+WRITE_CLASS_ENCODER_FEATURES(inode_t)
 
 
 /*
@@ -596,12 +634,12 @@ struct old_inode_t {
   inode_t inode;
   std::map<string,bufferptr> xattrs;
 
-  void encode(bufferlist &bl) const;
+  void encode(bufferlist &bl, uint64_t features) const;
   void decode(bufferlist::iterator& bl);
   void dump(Formatter *f) const;
   static void generate_test_instances(list<old_inode_t*>& ls);
 };
-WRITE_CLASS_ENCODER(old_inode_t)
+WRITE_CLASS_ENCODER_FEATURES(old_inode_t)
 
 
 /*
@@ -625,7 +663,7 @@ struct fnode_t {
   void decode(bufferlist::iterator& bl);
   void dump(Formatter *f) const;
   static void generate_test_instances(list<fnode_t*>& ls);
-  fnode_t() : version(0),
+  fnode_t() : version(0), damage_flags(0),
 	      recursive_scrub_version(0), localized_scrub_version(0) {}
 };
 WRITE_CLASS_ENCODER(fnode_t)
@@ -669,12 +707,12 @@ struct session_info_t {
     completed_flushes.clear();
   }
 
-  void encode(bufferlist& bl) const;
+  void encode(bufferlist& bl, uint64_t features) const;
   void decode(bufferlist::iterator& p);
   void dump(Formatter *f) const;
   static void generate_test_instances(list<session_info_t*>& ls);
 };
-WRITE_CLASS_ENCODER(session_info_t)
+WRITE_CLASS_ENCODER_FEATURES(session_info_t)
 
 
 // =======
@@ -683,8 +721,10 @@ WRITE_CLASS_ENCODER(session_info_t)
 struct dentry_key_t {
   snapid_t snapid;
   const char *name;
-  dentry_key_t() : snapid(0), name(0) {}
-  dentry_key_t(snapid_t s, const char *n) : snapid(s), name(n) {}
+  __u32 hash;
+  dentry_key_t() : snapid(0), name(0), hash(0) {}
+  dentry_key_t(snapid_t s, const char *n, __u32 h=0) :
+    snapid(s), name(n), hash(h) {}
 
   bool is_valid() { return name || snapid; }
 
@@ -736,11 +776,15 @@ inline std::ostream& operator<<(std::ostream& out, const dentry_key_t &k)
 inline bool operator<(const dentry_key_t& k1, const dentry_key_t& k2)
 {
   /*
-   * order by name, then snap
+   * order by hash, name, snap
    */
-  int c = strcmp(k1.name, k2.name);
-  return 
-    c < 0 || (c == 0 && k1.snapid < k2.snapid);
+  int c = ceph_frag_value(k1.hash) - ceph_frag_value(k2.hash);
+  if (c)
+    return c < 0;
+  c = strcmp(k1.name, k2.name);
+  if (c)
+    return c < 0;
+  return k1.snapid < k2.snapid;
 }
 
 
@@ -941,7 +985,7 @@ struct dirfrag_t {
 WRITE_CLASS_ENCODER(dirfrag_t)
 
 
-inline std::ostream& operator<<(std::ostream& out, const dirfrag_t df) {
+inline std::ostream& operator<<(std::ostream& out, const dirfrag_t &df) {
   out << df.ino;
   if (!df.frag.is_root()) out << "." << df.frag;
   return out;
@@ -980,7 +1024,7 @@ class inode_load_vec_t {
   static const int NUM = 2;
   std::vector < DecayCounter > vec;
 public:
-  inode_load_vec_t(const utime_t &now)
+  explicit inode_load_vec_t(const utime_t &now)
      : vec(NUM, DecayCounter(now))
   {}
   // for dencoder infrastructure
@@ -1011,7 +1055,7 @@ class dirfrag_load_vec_t {
 public:
   static const int NUM = 5;
   std::vector < DecayCounter > vec;
-  dirfrag_load_vec_t(const utime_t &now)
+  explicit dirfrag_load_vec_t(const utime_t &now)
      : vec(NUM, DecayCounter(now))
   { }
   // for dencoder infrastructure
@@ -1115,7 +1159,7 @@ struct mds_load_t {
 
   double cpu_load_avg;
 
-  mds_load_t(const utime_t &t) : 
+  explicit mds_load_t(const utime_t &t) : 
     auth(t), all(t), req_rate(0), cache_hit_rate(0),
     queue_len(0), cpu_load_avg(0)
   {}
@@ -1227,7 +1271,7 @@ struct ClientLease {
 // print hack
 struct mdsco_db_line_prefix {
   MDSCacheObject *object;
-  mdsco_db_line_prefix(MDSCacheObject *o) : object(o) {}
+  explicit mdsco_db_line_prefix(MDSCacheObject *o) : object(o) {}
 };
 std::ostream& operator<<(std::ostream& out, mdsco_db_line_prefix o);
 
@@ -1298,6 +1342,7 @@ class MDSCacheObject {
 
 
   // -- wait --
+  const static uint64_t WAIT_ORDERED	 = (1ull<<61);
   const static uint64_t WAIT_SINGLEAUTH  = (1ull<<60);
   const static uint64_t WAIT_UNFREEZE    = (1ull<<59); // pka AUTHPINNABLE
 
@@ -1506,7 +1551,8 @@ protected:
   // ---------------------------------------------
   // waiting
  protected:
-  compact_multimap<uint64_t, MDSInternalContextBase*>  waiting;
+  compact_multimap<uint64_t, pair<uint64_t, MDSInternalContextBase*> > waiting;
+  static uint64_t last_wait_seq;
 
  public:
   bool is_waiter_for(uint64_t mask, uint64_t min=0) {
@@ -1515,7 +1561,7 @@ protected:
       while (min & (min-1))  // if more than one bit is set
 	min &= min-1;        //  clear LSB
     }
-    for (compact_multimap<uint64_t,MDSInternalContextBase*>::iterator p = waiting.lower_bound(min);
+    for (auto p = waiting.lower_bound(min);
 	 p != waiting.end();
 	 ++p) {
       if (p->first & mask) return true;
@@ -1526,7 +1572,15 @@ protected:
   virtual void add_waiter(uint64_t mask, MDSInternalContextBase *c) {
     if (waiting.empty())
       get(PIN_WAITER);
-    waiting.insert(pair<uint64_t,MDSInternalContextBase*>(mask, c));
+
+    uint64_t seq = 0;
+    if (mask & WAIT_ORDERED) {
+      seq = ++last_wait_seq;
+      mask &= ~WAIT_ORDERED;
+    }
+    waiting.insert(pair<uint64_t, pair<uint64_t, MDSInternalContextBase*> >(
+			    mask,
+			    pair<uint64_t, MDSInternalContextBase*>(seq, c)));
 //    pdout(10,g_conf->debug_mds) << (mdsco_db_line_prefix(this)) 
 //			       << "add_waiter " << hex << mask << dec << " " << c
 //			       << " on " << *this
@@ -1535,10 +1589,18 @@ protected:
   }
   virtual void take_waiting(uint64_t mask, list<MDSInternalContextBase*>& ls) {
     if (waiting.empty()) return;
-    compact_multimap<uint64_t,MDSInternalContextBase*>::iterator it = waiting.begin();
-    while (it != waiting.end()) {
+
+    // process ordered waiters in the same order that they were added.
+    std::map<uint64_t, MDSInternalContextBase*> ordered_waiters;
+
+    for (auto it = waiting.begin();
+	 it != waiting.end(); ) {
       if (it->first & mask) {
-	ls.push_back(it->second);
+
+	if (it->second.first > 0)
+	  ordered_waiters.insert(it->second);
+	else
+	  ls.push_back(it->second.second);
 //	pdout(10,g_conf->debug_mds) << (mdsco_db_line_prefix(this))
 //				   << "take_waiting mask " << hex << mask << dec << " took " << it->second
 //				   << " tag " << hex << it->first << dec
@@ -1552,6 +1614,11 @@ protected:
 //				   << dendl;
 	++it;
       }
+    }
+    for (auto it = ordered_waiters.begin();
+	 it != ordered_waiters.end();
+	 ++it) {
+      ls.push_back(it->second);
     }
     if (waiting.empty())
       put(PIN_WAITER);
@@ -1603,26 +1670,6 @@ inline std::ostream& operator<<(std::ostream& out, mdsco_db_line_prefix o) {
   o.object->print_db_line_prefix(out);
   return out;
 }
-
-class ceph_file_layout_wrapper : public ceph_file_layout
-{
-public:
-  void encode(bufferlist &bl) const
-  {
-    ::encode(static_cast<const ceph_file_layout&>(*this), bl);
-  }
-
-  void decode(bufferlist::iterator &p)
-  {
-    ::decode(static_cast<ceph_file_layout&>(*this), p);
-  }
-
-  static void generate_test_instances(std::list<ceph_file_layout_wrapper*>& ls)
-  {
-  }
-
-  void dump(Formatter *f) const;
-};
 
 // parse a map of keys/values.
 namespace qi = boost::spirit::qi;

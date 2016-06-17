@@ -80,7 +80,7 @@ class ServerContext : public MDSInternalContextBase {
   }
 
   public:
-  ServerContext(Server *s) : server(s) {
+  explicit ServerContext(Server *s) : server(s) {
     assert(server != NULL);
   }
 };
@@ -194,10 +194,10 @@ void Server::dispatch(Message *m)
   case MSG_MDS_SLAVE_REQUEST:
     handle_slave_request(static_cast<MMDSSlaveRequest*>(m));
     return;
+  default:
+    derr << "server unknown message " << m->get_type() << dendl;
+    assert(0 == "server unknown message");  
   }
-
-  dout(1) << "server unknown message " << m->get_type() << dendl;
-  assert(0);
 }
 
 
@@ -349,10 +349,16 @@ void Server::handle_client_session(MClientSession *m)
 	m->put();
 	return;
       }
+      // We are getting a seq that is higher than expected.
+      // Handle the same as any other seqn error.
+      //
       if (m->get_seq() != session->get_push_seq()) {
-	dout(0) << "old push seq " << m->get_seq() << " != " << session->get_push_seq() 
+	dout(0) << "old push seq " << m->get_seq() << " != " << session->get_push_seq()
 		<< ", BUGGY!" << dendl;
-	assert(0);
+	mds->clog->warn() << "incorrect push seq " << m->get_seq() << " != "
+			  << session->get_push_seq() << ", dropping" << " from client : " << session->get_human_name();
+	m->put();
+	return;
       }
       journal_close_session(session, Session::STATE_CLOSING, NULL);
     }
@@ -447,7 +453,7 @@ void Server::_session_logged(Session *session, uint64_t state_seq, bool open, ve
       // ms_handle_remote_reset() and realize they had in fact closed.
       // do this *before* sending the message to avoid a possible
       // race.
-      if (session->connection != NULL) {;
+      if (session->connection != NULL) {
         // Conditional because terminate_sessions will indiscrimately
         // put sessions in CLOSING whether they ever had a conn or not.
         session->connection->mark_disposable();
@@ -558,12 +564,14 @@ class C_MDS_TerminatedSessions : public ServerContext {
     server->terminating_sessions = false;
   }
   public:
-  C_MDS_TerminatedSessions(Server *s) : ServerContext(s) {}
+  explicit C_MDS_TerminatedSessions(Server *s) : ServerContext(s) {}
 };
 
 void Server::terminate_sessions()
 {
   dout(2) << "terminate_sessions" << dendl;
+
+  terminating_sessions = true;
 
   // kill them off.  clients will retry etc.
   set<Session*> sessions;
@@ -1056,7 +1064,7 @@ void Server::early_reply(MDRequestRef& mdr, CInode *tracei, CDentry *tracedn)
   }
 
 
-  MClientReply *reply = new MClientReply(mdr->client_request, 0);
+  MClientReply *reply = new MClientReply(req, 0);
   reply->set_unsafe();
 
   // mark xlocks "done", indicating that we are exposing uncommitted changes.
@@ -1064,7 +1072,7 @@ void Server::early_reply(MDRequestRef& mdr, CInode *tracei, CDentry *tracedn)
   //_rename_finish() does not send dentry link/unlink message to replicas.
   // so do not set xlocks on dentries "done", the xlocks prevent dentries
   // that have projected linkages from getting new replica.
-  mds->locker->set_xlocks_done(mdr.get(), mdr->client_request->get_op() == CEPH_MDS_OP_RENAME);
+  mds->locker->set_xlocks_done(mdr.get(), req->get_op() == CEPH_MDS_OP_RENAME);
 
   dout(10) << "early_reply " << reply->get_result() 
 	   << " (" << cpp_strerror(reply->get_result())
@@ -1077,8 +1085,7 @@ void Server::early_reply(MDRequestRef& mdr, CInode *tracei, CDentry *tracedn)
       mdr->cap_releases.erase(tracedn->get_dir()->get_inode()->vino());
 
     set_trace_dist(mdr->session, reply, tracei, tracedn, mdr->snapid,
-		   mdr->client_request->get_dentry_wanted(),
-		   mdr);
+		   req->get_dentry_wanted(), mdr);
   }
 
   reply->set_extra_bl(mdr->reply_extra_bl);
@@ -1087,7 +1094,7 @@ void Server::early_reply(MDRequestRef& mdr, CInode *tracei, CDentry *tracedn)
   mdr->did_early_reply = true;
 
   mds->logger->inc(l_mds_reply);
-  utime_t lat = ceph_clock_now(g_ceph_context) - mdr->client_request->get_recv_stamp();
+  utime_t lat = ceph_clock_now(g_ceph_context) - req->get_recv_stamp();
   mds->logger->tinc(l_mds_reply_latency, lat);
   dout(20) << "lat " << lat << dendl;
 
@@ -1420,14 +1427,16 @@ void Server::handle_client_request(MClientRequest *req)
 
   // register + dispatch
   MDRequestRef mdr = mdcache->request_start(req);
-  if (mdr.get()) {
-    if (session) {
-      mdr->session = session;
-      session->requests.push_back(&mdr->item_session_request);
-    }
-    if (has_completed)
-      mdr->has_completed = true;
+  if (!mdr.get())
+    return;
+
+  if (session) {
+    mdr->session = session;
+    session->requests.push_back(&mdr->item_session_request);
   }
+
+  if (has_completed)
+    mdr->has_completed = true;
 
   // process embedded cap releases?
   //  (only if NOT replay!)
@@ -1440,8 +1449,7 @@ void Server::handle_client_request(MClientRequest *req)
     req->releases.clear();
   }
 
-  if (mdr.get())
-    dispatch_client_request(mdr);
+  dispatch_client_request(mdr);
   return;
 }
 
@@ -1450,10 +1458,11 @@ void Server::handle_osd_map()
   /* Note that we check the OSDMAP_FULL flag directly rather than
    * using osdmap_full_flag(), because we want to know "is the flag set"
    * rather than "does the flag apply to us?" */
-  const OSDMap *osdmap = mds->objecter->get_osdmap_read();
-  is_full = osdmap->test_flag(CEPH_OSDMAP_FULL);
-  dout(7) << __func__ << ": full = " << is_full << " epoch = " << osdmap->get_epoch() << dendl;
-  mds->objecter->put_osdmap_read();
+  mds->objecter->with_osdmap([this](const OSDMap& o) {
+      is_full = o.test_flag(CEPH_OSDMAP_FULL);
+      dout(7) << __func__ << ": full = " << is_full << " epoch = "
+	      << o.get_epoch() << dendl;
+    });
 }
 
 void Server::dispatch_client_request(MDRequestRef& mdr)
@@ -1465,7 +1474,7 @@ void Server::dispatch_client_request(MDRequestRef& mdr)
   dout(7) << "dispatch_client_request " << *req << dendl;
 
   // we shouldn't be waiting on anyone.
-  assert(mdr->more()->waiting_on_slave.empty());
+  assert(!mdr->has_more() || mdr->more()->waiting_on_slave.empty());
 
   if (req->may_write()) {
     if (mdcache->is_readonly()) {
@@ -2131,14 +2140,17 @@ void Server::handle_slave_auth_pin_ack(MDRequestRef& mdr, MMDSSlaveRequest *ack)
  */
 bool Server::check_access(MDRequestRef& mdr, CInode *in, unsigned mask)
 {
- if (mdr->session && !mdr->session->check_access(
-       in, mask,
-       mdr->client_request->get_caller_uid(),
-       mdr->client_request->get_caller_gid(),
-       mdr->client_request->head.args.setattr.uid,
-       mdr->client_request->head.args.setattr.gid)) {
-    respond_to_request(mdr, -EACCES);
-    return false;
+  if (mdr->session) {
+    int r = mdr->session->check_access(
+      in, mask,
+      mdr->client_request->get_caller_uid(),
+      mdr->client_request->get_caller_gid(),
+      mdr->client_request->head.args.setattr.uid,
+      mdr->client_request->head.args.setattr.gid);
+    if (r < 0) {
+      respond_to_request(mdr, r);
+      return false;
+    }
   }
   return true;
 }
@@ -2247,7 +2259,7 @@ CDentry* Server::prepare_stray_dentry(MDRequestRef& mdr, CInode *in)
  * create a new inode.  set c/m/atime.  hit dir pop.
  */
 CInode* Server::prepare_new_inode(MDRequestRef& mdr, CDir *dir, inodeno_t useino, unsigned mode,
-				  ceph_file_layout *layout) 
+				  file_layout_t *layout)
 {
   CInode *in = new CInode(mdcache);
   
@@ -2293,7 +2305,6 @@ CInode* Server::prepare_new_inode(MDRequestRef& mdr, CDir *dir, inodeno_t useino
   memset(&in->inode.dir_layout, 0, sizeof(in->inode.dir_layout));
   if (in->inode.is_dir()) {
     in->inode.dir_layout.dl_dir_hash = g_conf->mds_default_dir_hash;
-    memset(&in->inode.layout, 0, sizeof(in->inode.layout));
   } else if (layout) {
     in->inode.layout = *layout;
   } else {
@@ -2434,7 +2445,7 @@ CInode* Server::rdlock_path_pin_ref(MDRequestRef& mdr, int n,
 				    bool want_auth,
 				    bool no_want_auth, /* for readdir, who doesn't want auth _even_if_ it's
 							  a snapped dir */
-				    ceph_file_layout **layout,
+				    file_layout_t **layout,
 				    bool no_lookup)    // true if we cannot return a null dentry lease
 {
   const filepath& refpath = n ? mdr->get_filepath2() : mdr->get_filepath();
@@ -2529,7 +2540,7 @@ CInode* Server::rdlock_path_pin_ref(MDRequestRef& mdr, int n,
 CDentry* Server::rdlock_path_xlock_dentry(MDRequestRef& mdr, int n,
 					  set<SimpleLock*>& rdlocks, set<SimpleLock*>& wrlocks, set<SimpleLock*>& xlocks,
 					  bool okexist, bool mustexist, bool alwaysxlock,
-					  ceph_file_layout **layout)
+					  file_layout_t **layout)
 {
   const filepath& refpath = n ? mdr->get_filepath2() : mdr->get_filepath();
 
@@ -2716,7 +2727,7 @@ void Server::handle_client_getattr(MDRequestRef& mdr, bool is_lookup)
   mdr->getattr_caps = mask;
 
   mds->balancer->hit_inode(ceph_clock_now(g_ceph_context), ref, META_POP_IRD,
-			   mdr->client_request->get_source().num());
+			   req->get_source().num());
 
   // reply
   dout(10) << "reply to stat on " << *req << dendl;
@@ -2766,10 +2777,30 @@ void Server::handle_client_lookup_ino(MDRequestRef& mdr,
 
   CDentry *dn = in->get_projected_parent_dn();
   CInode *diri = dn ? dn->get_dir()->inode : NULL;
+
+  set<SimpleLock*> rdlocks;
   if (dn && (want_parent || want_dentry)) {
     mdr->pin(dn);
-    set<SimpleLock*> rdlocks, wrlocks, xlocks;
     rdlocks.insert(&dn->lock);
+  }
+
+  unsigned mask = req->head.args.getattr.mask;
+  if (mask) {
+    Capability *cap = in->get_client_cap(mdr->get_client());
+    int issued = 0;
+    if (cap && (mdr->snapid == CEPH_NOSNAP || mdr->snapid <= cap->client_follows))
+      issued = cap->issued();
+    // permission bits, ACL/security xattrs
+    if ((mask & CEPH_CAP_AUTH_SHARED) && (issued & CEPH_CAP_AUTH_EXCL) == 0)
+      rdlocks.insert(&in->authlock);
+    if ((mask & CEPH_CAP_XATTR_SHARED) && (issued & CEPH_CAP_XATTR_EXCL) == 0)
+      rdlocks.insert(&in->xattrlock);
+
+    mdr->getattr_caps = mask;
+  }
+
+  if (!rdlocks.empty()) {
+    set<SimpleLock*> wrlocks, xlocks;
     if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
       return;
 
@@ -2850,6 +2881,7 @@ void Server::handle_client_open(MDRequestRef& mdr)
   if ((cmode & CEPH_FILE_MODE_WR) && mdcache->is_readonly()) {
     dout(7) << "read-only FS" << dendl;
     respond_to_request(mdr, -EROFS);
+    return;
   }
   
   set<SimpleLock*> rdlocks, wrlocks, xlocks;
@@ -2870,9 +2902,13 @@ void Server::handle_client_open(MDRequestRef& mdr)
     return;
   }
 
-  // can only open a dir with mode FILE_MODE_PIN, at least for now.
-  if (cur->inode.is_dir())
+  if (!cur->inode.is_file()) {
+    // can only open non-regular inode with mode FILE_MODE_PIN, at least for now.
     cmode = CEPH_FILE_MODE_PIN;
+    // the inode is symlink and client wants to follow it, ignore the O_TRUNC flag.
+    if (cur->inode.is_symlink() && !(flags & O_NOFOLLOW))
+      flags &= ~O_TRUNC;
+  }
 
   dout(10) << "open flags = " << flags
 	   << ", filemode = " << cmode
@@ -2885,9 +2921,16 @@ void Server::handle_client_open(MDRequestRef& mdr)
     respond_to_request(mdr, -ENXIO);                 // FIXME what error do we want?
     return;
     }*/
-  if ((flags & O_DIRECTORY) && !cur->inode.is_dir()) {
+  if ((flags & O_DIRECTORY) && !cur->inode.is_dir() && !cur->inode.is_symlink()) {
     dout(7) << "specified O_DIRECTORY on non-directory " << *cur << dendl;
     respond_to_request(mdr, -EINVAL);
+    return;
+  }
+
+  if ((flags & O_TRUNC) && !cur->inode.is_file()) {
+    dout(7) << "specified O_TRUNC on !(file|symlink) " << *cur << dendl;
+    // we should return -EISDIR for directory, return -EINVAL for other non-regular
+    respond_to_request(mdr, cur->inode.is_dir() ? -EISDIR : -EINVAL);
     return;
   }
 
@@ -2906,6 +2949,21 @@ void Server::handle_client_open(MDRequestRef& mdr)
     return;
   }
 
+  unsigned mask = req->head.args.open.mask;
+  if (mask) {
+    Capability *cap = cur->get_client_cap(mdr->get_client());
+    int issued = 0;
+    if (cap && (mdr->snapid == CEPH_NOSNAP || mdr->snapid <= cap->client_follows))
+      issued = cap->issued();
+    // permission bits, ACL/security xattrs
+    if ((mask & CEPH_CAP_AUTH_SHARED) && (issued & CEPH_CAP_AUTH_EXCL) == 0)
+      rdlocks.insert(&cur->authlock);
+    if ((mask & CEPH_CAP_XATTR_SHARED) && (issued & CEPH_CAP_XATTR_EXCL) == 0)
+      rdlocks.insert(&cur->xattrlock);
+
+    mdr->getattr_caps = mask;
+  }
+
   // O_TRUNC
   if ((flags & O_TRUNC) && !mdr->has_completed) {
     assert(cur->is_auth());
@@ -2915,7 +2973,7 @@ void Server::handle_client_open(MDRequestRef& mdr)
       return;
 
     if (!check_access(mdr, cur, MAY_WRITE))
-    return;
+      return;
 
     // wait for pending truncate?
     const inode_t *pi = cur->get_projected_inode();
@@ -2935,14 +2993,12 @@ void Server::handle_client_open(MDRequestRef& mdr)
   //  and that data itself is flushed so that we can read the snapped data off disk.
   if (mdr->snapid != CEPH_NOSNAP && !cur->is_dir()) {
     rdlocks.insert(&cur->filelock);
-    if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
-      return;
   }
 
   if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
     return;
 
-  int mask = MAY_READ;
+  mask = MAY_READ;
   if (cmode & CEPH_FILE_MODE_WR)
     mask |= MAY_WRITE;
   if (!check_access(mdr, cur, mask))
@@ -3072,7 +3128,7 @@ void Server::handle_client_openc(MDRequestRef& mdr)
 
   bool excl = (req->head.args.open.flags & O_EXCL);
   set<SimpleLock*> rdlocks, wrlocks, xlocks;
-  ceph_file_layout *dir_layout = NULL;
+  file_layout_t *dir_layout = NULL;
   CDentry *dn = rdlock_path_xlock_dentry(mdr, 0, rdlocks, wrlocks, xlocks,
                                          !excl, false, false, &dir_layout);
   if (!dn) return;
@@ -3081,7 +3137,7 @@ void Server::handle_client_openc(MDRequestRef& mdr)
     return;
   }
   // set layout
-  ceph_file_layout layout;
+  file_layout_t layout;
   if (dir_layout)
     layout = *dir_layout;
   else
@@ -3092,23 +3148,23 @@ void Server::handle_client_openc(MDRequestRef& mdr)
 
   // fill in any special params from client
   if (req->head.args.open.stripe_unit)
-    layout.fl_stripe_unit = req->head.args.open.stripe_unit;
+    layout.stripe_unit = req->head.args.open.stripe_unit;
   if (req->head.args.open.stripe_count)
-    layout.fl_stripe_count = req->head.args.open.stripe_count;
+    layout.stripe_count = req->head.args.open.stripe_count;
   if (req->head.args.open.object_size)
-    layout.fl_object_size = req->head.args.open.object_size;
+    layout.object_size = req->head.args.open.object_size;
   if (req->get_connection()->has_feature(CEPH_FEATURE_CREATEPOOLID) &&
       (__s32)req->head.args.open.pool >= 0) {
-    layout.fl_pg_pool = req->head.args.open.pool;
+    layout.pool_id = req->head.args.open.pool;
 
     // If client doesn't have capability to modify layout pools, then
     // only permit this request if the requested pool matches what the
     // file would have inherited anyway from its parent.
     CDir *parent = dn->get_dir();
     CInode *parent_in = parent->get_inode();
-    int64_t parent_pool = parent_in->inode.layout.fl_pg_pool;
+    int64_t parent_pool = parent_in->inode.layout.pool_id;
 
-    if (layout.fl_pg_pool != parent_pool) {
+    if (layout.pool_id != parent_pool) {
       access |= MAY_SET_POOL;
     }
 
@@ -3119,13 +3175,13 @@ void Server::handle_client_openc(MDRequestRef& mdr)
     }
   }
 
-  if (!ceph_file_layout_is_valid(&layout)) {
+  if (!layout.is_valid()) {
     dout(10) << " invalid initial file layout" << dendl;
     respond_to_request(mdr, -EINVAL);
     return;
   }
-  if (!mds->mdsmap->is_data_pool(layout.fl_pg_pool)) {
-    dout(10) << " invalid data pool " << layout.fl_pg_pool << dendl;
+  if (!mds->mdsmap->is_data_pool(layout.pool_id)) {
+    dout(10) << " invalid data pool " << layout.pool_id << dendl;
     respond_to_request(mdr, -EINVAL);
     return;
   }
@@ -3164,8 +3220,8 @@ void Server::handle_client_openc(MDRequestRef& mdr)
   dn->push_projected_linkage(in);
 
   in->inode.version = dn->pre_dirty();
-  if (layout.fl_pg_pool != mdcache->default_file_layout.fl_pg_pool)
-    in->inode.add_old_pool(mdcache->default_file_layout.fl_pg_pool);
+  if (layout.pool_id != mdcache->default_file_layout.pool_id)
+    in->inode.add_old_pool(mdcache->default_file_layout.pool_id);
   in->inode.update_backtrace();
   if (cmode & CEPH_FILE_MODE_WR) {
     in->inode.client_ranges[client].range.first = 0;
@@ -3236,15 +3292,31 @@ void Server::handle_client_readdir(MDRequestRef& mdr)
 
   // which frag?
   frag_t fg = (__u32)req->head.args.readdir.frag;
+  unsigned req_flags = (__u32)req->head.args.readdir.flags;
   string offset_str = req->get_path2();
-  dout(10) << " frag " << fg << " offset '" << offset_str << "'" << dendl;
+  dout(10) << " frag " << fg << " offset '" << offset_str << "'"
+	   << " flags " << req_flags << dendl;
+
+  __u32 offset_hash = 0;
+  if (!offset_str.empty())
+    offset_hash = ceph_frag_value(diri->hash_dentry_name(offset_str));
 
   // does the frag exist?
   if (diri->dirfragtree[fg.value()] != fg) {
-    frag_t newfg = diri->dirfragtree[fg.value()];
+    frag_t newfg;
+    if (req_flags & CEPH_READDIR_REPLY_BITFLAGS) {
+      if (fg.contains((unsigned)offset_hash)) {
+	newfg = diri->dirfragtree[offset_hash];
+      } else {
+	// client actually wants next frag
+	newfg = diri->dirfragtree[fg.value()];
+      }
+    } else {
+      offset_str.clear();
+      newfg = diri->dirfragtree[fg.value()];
+    }
     dout(10) << " adjust frag " << fg << " -> " << newfg << " " << diri->dirfragtree << dendl;
     fg = newfg;
-    offset_str.clear();
   }
   
   CDir *dir = try_open_auth_dirfrag(diri, fg, mdr);
@@ -3300,7 +3372,7 @@ void Server::handle_client_readdir(MDRequestRef& mdr)
   // build dir contents
   bufferlist dnbl;
   __u32 numfiles = 0;
-  __u8 end = (dir->begin() == dir->end());
+  bool end = (dir->begin() == dir->end());
   for (CDir::map_t::iterator it = dir->begin();
        !end && numfiles < max;
        end = (it == dir->end())) {
@@ -3321,8 +3393,11 @@ void Server::handle_client_readdir(MDRequestRef& mdr)
       continue;
     }
 
-    if (!offset_str.empty() && dn->get_name().compare(offset_str) <= 0)
-      continue;
+    if (!offset_str.empty()) {
+      dentry_key_t offset_key(dn->last, offset_str.c_str(), offset_hash);
+      if (!(offset_key < dn->key()))
+	continue;
+    }
 
     CInode *in = dnl->get_inode();
 
@@ -3390,12 +3465,22 @@ void Server::handle_client_readdir(MDRequestRef& mdr)
     mdcache->lru.lru_touch(dn);
   }
   
-  __u8 complete = (end && offset_str.empty());  // FIXME: what purpose does this serve
+  bool complete = false;
+  __u16 flags = 0;
+  if (end) {
+    flags = CEPH_READDIR_FRAG_END;
+    complete = offset_str.empty(); // FIXME: what purpose does this serve
+    if (complete)
+      flags |= CEPH_READDIR_FRAG_COMPLETE;
+  }
+  // client only understand END and COMPLETE flags ?
+  if (req_flags & CEPH_READDIR_REPLY_BITFLAGS) {
+    flags |= CEPH_READDIR_HASH_ORDER;
+  }
   
   // finish final blob
   ::encode(numfiles, dirbl);
-  ::encode(end, dirbl);
-  ::encode(complete, dirbl);
+  ::encode(flags, dirbl);
   dirbl.claim_append(dnbl);
   
   // yay, reply
@@ -3409,7 +3494,7 @@ void Server::handle_client_readdir(MDRequestRef& mdr)
 	   << " complete=" << (int)complete << dendl;
 
   // bump popularity.  NOTE: this doesn't quite capture it.
-  mds->balancer->hit_dir(ceph_clock_now(g_ceph_context), dir, META_POP_IRD, -1, numfiles);
+  mds->balancer->hit_dir(now, dir, META_POP_IRD, -1, numfiles);
   
   // reply
   mdr->tracei = diri;
@@ -3530,14 +3615,17 @@ void Server::handle_client_file_setlock(MDRequestRef& mdr)
     respond_to_request(mdr, 0);
   } else {
     dout(10) << " lock attempt on " << set_lock << dendl;
+    bool deadlock = false;
     if (mdr->more()->flock_was_waiting &&
 	!lock_state->is_waiting(set_lock)) {
       dout(10) << " was waiting for lock but not anymore, must have been canceled " << set_lock << dendl;
       respond_to_request(mdr, -EINTR);
-    } else if (!lock_state->add_lock(set_lock, will_wait, mdr->more()->flock_was_waiting)) {
+    } else if (!lock_state->add_lock(set_lock, will_wait, mdr->more()->flock_was_waiting, &deadlock)) {
       dout(10) << " it failed on this attempt" << dendl;
       // couldn't set lock right now
-      if (!will_wait) {
+      if (deadlock) {
+	respond_to_request(mdr, -EDEADLK);
+      } else if (!will_wait) {
 	respond_to_request(mdr, -EWOULDBLOCK);
       } else {
 	dout(10) << " added to waiting list" << dendl;
@@ -3593,8 +3681,8 @@ void Server::handle_client_file_readlock(MDRequestRef& mdr)
     break;
 
   default:
-    dout(10) << "got unknown lock type " << checking_lock.type
-	     << ", dropping request!" << dendl;
+    dout(10) << "got unknown lock type " << checking_lock.type << dendl;
+    respond_to_request(mdr, -EINVAL);
     return;
   }
   lock_state->look_for_lock(checking_lock);
@@ -3663,6 +3751,8 @@ void Server::handle_client_setattr(MDRequestRef& mdr)
     if (truncating_smaller && pi->is_truncating()) {
       dout(10) << " waiting for pending truncate from " << pi->truncate_from
 	       << " to " << pi->truncate_size << " to complete on " << *cur << dendl;
+      mds->locker->drop_locks(mdr.get());
+      mdr->drop_local_auth_pins();
       cur->add_waiter(CInode::WAIT_TRUNC, new C_MDS_RetryRequest(mdcache, mdr));
       mds->mdlog->flush();
       return;
@@ -3812,26 +3902,22 @@ void Server::handle_client_setlayout(MDRequestRef& mdr)
   }
 
   // validate layout
-  ceph_file_layout layout = cur->get_projected_inode()->layout;
+  file_layout_t layout = cur->get_projected_inode()->layout;
   // save existing layout for later
-  int64_t old_pool = layout.fl_pg_pool;
+  int64_t old_pool = layout.pool_id;
 
   int access = MAY_WRITE;
 
   if (req->head.args.setlayout.layout.fl_object_size > 0)
-    layout.fl_object_size = req->head.args.setlayout.layout.fl_object_size;
+    layout.object_size = req->head.args.setlayout.layout.fl_object_size;
   if (req->head.args.setlayout.layout.fl_stripe_unit > 0)
-    layout.fl_stripe_unit = req->head.args.setlayout.layout.fl_stripe_unit;
+    layout.stripe_unit = req->head.args.setlayout.layout.fl_stripe_unit;
   if (req->head.args.setlayout.layout.fl_stripe_count > 0)
-    layout.fl_stripe_count=req->head.args.setlayout.layout.fl_stripe_count;
-  if (req->head.args.setlayout.layout.fl_cas_hash > 0)
-    layout.fl_cas_hash = req->head.args.setlayout.layout.fl_cas_hash;
-  if (req->head.args.setlayout.layout.fl_object_stripe_unit > 0)
-    layout.fl_object_stripe_unit = req->head.args.setlayout.layout.fl_object_stripe_unit;
+    layout.stripe_count=req->head.args.setlayout.layout.fl_stripe_count;
   if (req->head.args.setlayout.layout.fl_pg_pool > 0) {
-    layout.fl_pg_pool = req->head.args.setlayout.layout.fl_pg_pool;
+    layout.pool_id = req->head.args.setlayout.layout.fl_pg_pool;
 
-    if (layout.fl_pg_pool != old_pool) {
+    if (layout.pool_id != old_pool) {
       access |= MAY_SET_POOL;
     }
 
@@ -3841,13 +3927,13 @@ void Server::handle_client_setlayout(MDRequestRef& mdr)
       return;
     }
   }
-  if (!ceph_file_layout_is_valid(&layout)) {
+  if (!layout.is_valid()) {
     dout(10) << "bad layout" << dendl;
     respond_to_request(mdr, -EINVAL);
     return;
   }
-  if (!mds->mdsmap->is_data_pool(layout.fl_pg_pool)) {
-    dout(10) << " invalid data pool " << layout.fl_pg_pool << dendl;
+  if (!mds->mdsmap->is_data_pool(layout.pool_id)) {
+    dout(10) << " invalid data pool " << layout.pool_id << dendl;
     respond_to_request(mdr, -EINVAL);
     return;
   }
@@ -3882,7 +3968,7 @@ void Server::handle_client_setdirlayout(MDRequestRef& mdr)
 {
   MClientRequest *req = mdr->client_request;
   set<SimpleLock*> rdlocks, wrlocks, xlocks;
-  ceph_file_layout *dir_layout = NULL;
+  file_layout_t *dir_layout = NULL;
   CInode *cur = rdlock_path_pin_ref(mdr, 0, rdlocks, true, false, &dir_layout);
   if (!cur) return;
 
@@ -3902,7 +3988,7 @@ void Server::handle_client_setdirlayout(MDRequestRef& mdr)
 
   // validate layout
   const inode_t *old_pi = cur->get_projected_inode();
-  ceph_file_layout layout;
+  file_layout_t layout;
   if (old_pi->has_layout())
     layout = old_pi->layout;
   else if (dir_layout)
@@ -3914,33 +4000,29 @@ void Server::handle_client_setdirlayout(MDRequestRef& mdr)
   int access = MAY_WRITE;
 
   if (req->head.args.setlayout.layout.fl_object_size > 0)
-    layout.fl_object_size = req->head.args.setlayout.layout.fl_object_size;
+    layout.object_size = req->head.args.setlayout.layout.fl_object_size;
   if (req->head.args.setlayout.layout.fl_stripe_unit > 0)
-    layout.fl_stripe_unit = req->head.args.setlayout.layout.fl_stripe_unit;
+    layout.stripe_unit = req->head.args.setlayout.layout.fl_stripe_unit;
   if (req->head.args.setlayout.layout.fl_stripe_count > 0)
-    layout.fl_stripe_count=req->head.args.setlayout.layout.fl_stripe_count;
-  if (req->head.args.setlayout.layout.fl_cas_hash > 0)
-    layout.fl_cas_hash = req->head.args.setlayout.layout.fl_cas_hash;
-  if (req->head.args.setlayout.layout.fl_object_stripe_unit > 0)
-    layout.fl_object_stripe_unit = req->head.args.setlayout.layout.fl_object_stripe_unit;
+    layout.stripe_count=req->head.args.setlayout.layout.fl_stripe_count;
   if (req->head.args.setlayout.layout.fl_pg_pool > 0) {
-    if (req->head.args.setlayout.layout.fl_pg_pool != layout.fl_pg_pool) {
+    if (req->head.args.setlayout.layout.fl_pg_pool != layout.pool_id) {
       access |= MAY_SET_POOL;
     }
-    layout.fl_pg_pool = req->head.args.setlayout.layout.fl_pg_pool;
+    layout.pool_id = req->head.args.setlayout.layout.fl_pg_pool;
     // make sure we have as new a map as the client
     if (req->get_mdsmap_epoch() > mds->mdsmap->get_epoch()) {
       mds->wait_for_mdsmap(req->get_mdsmap_epoch(), new C_MDS_RetryRequest(mdcache, mdr));
       return;
     }  
   }
-  if (!ceph_file_layout_is_valid(&layout)) {
+  if (!layout.is_valid()) {
     dout(10) << "bad layout" << dendl;
     respond_to_request(mdr, -EINVAL);
     return;
   }
-  if (!mds->mdsmap->is_data_pool(layout.fl_pg_pool)) {
-    dout(10) << " invalid data pool " << layout.fl_pg_pool << dendl;
+  if (!mds->mdsmap->is_data_pool(layout.pool_id)) {
+    dout(10) << " invalid data pool " << layout.pool_id << dendl;
     respond_to_request(mdr, -EINVAL);
     return;
   }
@@ -3965,8 +4047,8 @@ void Server::handle_client_setdirlayout(MDRequestRef& mdr)
 
 // XATTRS
 
-int Server::parse_layout_vxattr(string name, string value, const OSDMap *osdmap,
-				ceph_file_layout *layout, bool validate)
+int Server::parse_layout_vxattr(string name, string value, const OSDMap& osdmap,
+				file_layout_t *layout, bool validate)
 {
   dout(20) << "parse_layout_vxattr name " << name << " value '" << value << "'" << dendl;
   try {
@@ -3991,22 +4073,24 @@ int Server::parse_layout_vxattr(string name, string value, const OSDMap *osdmap,
 	  return r;
       }
     } else if (name == "layout.object_size") {
-      layout->fl_object_size = boost::lexical_cast<unsigned>(value);
+      layout->object_size = boost::lexical_cast<unsigned>(value);
     } else if (name == "layout.stripe_unit") {
-      layout->fl_stripe_unit = boost::lexical_cast<unsigned>(value);
+      layout->stripe_unit = boost::lexical_cast<unsigned>(value);
     } else if (name == "layout.stripe_count") {
-      layout->fl_stripe_count = boost::lexical_cast<unsigned>(value);
+      layout->stripe_count = boost::lexical_cast<unsigned>(value);
     } else if (name == "layout.pool") {
       try {
-	layout->fl_pg_pool = boost::lexical_cast<unsigned>(value);
+	layout->pool_id = boost::lexical_cast<unsigned>(value);
       } catch (boost::bad_lexical_cast const&) {
-	int64_t pool = osdmap->lookup_pg_pool_name(value);
+	int64_t pool = osdmap.lookup_pg_pool_name(value);
 	if (pool < 0) {
 	  dout(10) << " unknown pool " << value << dendl;
 	  return -ENOENT;
 	}
-	layout->fl_pg_pool = pool;
+	layout->pool_id = pool;
       }
+    } else if (name == "layout.pool_namespace") {
+      layout->pool_ns = value;
     } else {
       dout(10) << " unknown layout vxattr " << name << dendl;
       return -EINVAL;
@@ -4016,12 +4100,12 @@ int Server::parse_layout_vxattr(string name, string value, const OSDMap *osdmap,
     return -EINVAL;
   }
 
-  if (validate && !ceph_file_layout_is_valid(layout)) {
+  if (validate && !layout->is_valid()) {
     dout(10) << "bad layout" << dendl;
     return -EINVAL;
   }
-  if (!mds->mdsmap->is_data_pool(layout->fl_pg_pool)) {
-    dout(10) << " invalid data pool " << layout->fl_pg_pool << dendl;
+  if (!mds->mdsmap->is_data_pool(layout->pool_id)) {
+    dout(10) << " invalid data pool " << layout->pool_id << dendl;
     return -EINVAL;
   }
   return 0;
@@ -4075,7 +4159,7 @@ int Server::parse_quota_vxattr(string name, string value, quota_info_t *quota)
 }
 
 void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur,
-			       ceph_file_layout *dir_layout,
+			       file_layout_t *dir_layout,
 			       set<SimpleLock*> rdlocks,
 			       set<SimpleLock*> wrlocks,
 			       set<SimpleLock*> xlocks)
@@ -4086,158 +4170,162 @@ void Server::handle_set_vxattr(MDRequestRef& mdr, CInode *cur,
   string value (bl.c_str(), bl.length());
   dout(10) << "handle_set_vxattr " << name << " val " << value.length() << " bytes on " << *cur << dendl;
 
-  // layout or quota
-  if (name.find("ceph.file.layout") == 0 ||
-      name.find("ceph.dir.layout") == 0 ||
-      name.find("ceph.quota") == 0) {
-    inode_t *pi = NULL;
-    string rest;
-    if (name.find("ceph.dir.layout") == 0) {
-      if (!cur->is_dir()) {
-	respond_to_request(mdr, -EINVAL);
-	return;
-      }
+  inode_t *pi = NULL;
+  string rest;
 
-      ceph_file_layout layout;
-      if (cur->get_projected_inode()->has_layout())
-	layout = cur->get_projected_inode()->layout;
-      else if (dir_layout)
-	layout = *dir_layout;
-      else
-	layout = mdcache->default_file_layout;
-
-      rest = name.substr(name.find("layout"));
-      const OSDMap *osdmap = mds->objecter->get_osdmap_read();
-      int r = parse_layout_vxattr(rest, value, osdmap, &layout);
-      epoch_t epoch = osdmap->get_epoch();
-      mds->objecter->put_osdmap_read();
-      if (r < 0) {
-	if (r == -ENOENT) {
-	  epoch_t req_epoch = req->get_osdmap_epoch();
-	  if (req_epoch > epoch) {
-	    if (!mds->objecter->wait_for_map(req_epoch,
-		  new C_OnFinisher(new C_IO_Wrapper(mds, new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher)))
-	    return;
-	  } else  if (req_epoch == 0 && !mdr->waited_for_osdmap) {
-	    // For compatibility with client w/ old code, we still need get the latest map. 
-	    // One day if COMPACT_VERSION of MClientRequest >=3, we can remove those code.
-	    mdr->waited_for_osdmap = true;
-	    mds->objecter->wait_for_latest_osdmap(
-		new C_OnFinisher(new C_IO_Wrapper(mds, new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher));
-	    return;
-	  }
-	  r = -EINVAL;
-	}
-	respond_to_request(mdr, r);
-	return;
-      }
-
-      xlocks.insert(&cur->policylock);
-      if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
-	return;
-
-      if (cur->inode.layout.fl_pg_pool != layout.fl_pg_pool) {
-        if (!check_access(mdr, cur, MAY_SET_POOL)) {
-          return;
-        }
-      }
-
-      pi = cur->project_inode();
-      pi->layout = layout;
-    } else if (name.find("ceph.file.layout") == 0) {
-      if (!cur->is_file()) {
-	respond_to_request(mdr, -EINVAL);
-	return;
-      }
-      if (cur->get_projected_inode()->size ||
-	  cur->get_projected_inode()->truncate_seq > 1) {
-	respond_to_request(mdr, -ENOTEMPTY);
-	return;
-      }
-      ceph_file_layout layout = cur->get_projected_inode()->layout;
-      rest = name.substr(name.find("layout"));
-      const OSDMap *osdmap = mds->objecter->get_osdmap_read();
-      int r = parse_layout_vxattr(rest, value, osdmap, &layout);
-      epoch_t epoch = osdmap->get_epoch();
-      mds->objecter->put_osdmap_read();
-      if (r < 0) {
-	if (r == -ENOENT) {
-	  epoch_t req_epoch = req->get_osdmap_epoch();
-	  if (req_epoch > epoch) {
-	    if (!mds->objecter->wait_for_map(req_epoch,
-		new C_OnFinisher(new C_IO_Wrapper(mds, new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher)))
-	    return;
-	  } else if (req_epoch == 0 && !mdr->waited_for_osdmap) {
-	    // For compatibility with client w/ old code, we still need get the latest map. 
-	    // One day if COMPACT_VERSION of MClientRequest >=3, we can remove those code.
-	    mdr->waited_for_osdmap = true;
-	    mds->objecter->wait_for_latest_osdmap(
-	      new C_OnFinisher(new C_IO_Wrapper(mds, new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher));
-	    return;
-	  }
-	  r = -EINVAL;
-	}
-	respond_to_request(mdr, r);
-	return;
-      }
-
-      xlocks.insert(&cur->filelock);
-      if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
-	return;
-
-      if (cur->inode.layout.fl_pg_pool != layout.fl_pg_pool) {
-        if (!check_access(mdr, cur, MAY_SET_POOL)) {
-          return;
-        }
-      }
-
-      pi = cur->project_inode();
-      int64_t old_pool = pi->layout.fl_pg_pool;
-      pi->add_old_pool(old_pool);
-      pi->layout = layout;
-      pi->ctime = mdr->get_op_stamp();
-    } else {
-      // expect this to be "ceph.quota"
-      if (!cur->is_dir() || cur->is_root()) {
-        respond_to_request(mdr, -EINVAL);
-        return;
-      }
-
-      quota_info_t quota = cur->get_projected_inode()->quota;
-
-      rest = name.substr(name.find("quota"));
-      int r = parse_quota_vxattr(rest, value, &quota);
-      if (r < 0) {
-        respond_to_request(mdr, r);
-        return;
-      }
-
-      xlocks.insert(&cur->policylock);
-      if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
-        return;
-
-      pi = cur->project_inode();
-      pi->quota = quota;
+  if (name.compare(0, 15, "ceph.dir.layout") == 0) {
+    if (!cur->is_dir()) {
+      respond_to_request(mdr, -EINVAL);
+      return;
     }
 
-    pi->version = cur->pre_dirty();
-    if (cur->is_file())
-      pi->update_backtrace();
+    file_layout_t layout;
+    if (cur->get_projected_inode()->has_layout())
+      layout = cur->get_projected_inode()->layout;
+    else if (dir_layout)
+      layout = *dir_layout;
+    else
+      layout = mdcache->default_file_layout;
 
-    // log + wait
-    mdr->ls = mdlog->get_current_segment();
-    EUpdate *le = new EUpdate(mdlog, "set vxattr layout");
-    mdlog->start_entry(le);
-    le->metablob.add_client_req(req->get_reqid(), req->get_oldest_client_tid());
-    mdcache->predirty_journal_parents(mdr, &le->metablob, cur, 0, PREDIRTY_PRIMARY);
-    mdcache->journal_dirty_inode(mdr.get(), &le->metablob, cur);
+    rest = name.substr(name.find("layout"));
+    epoch_t epoch;
+    int r;
+    mds->objecter->with_osdmap([&](const OSDMap& osdmap) {
+	r = parse_layout_vxattr(rest, value, osdmap, &layout);
+	epoch = osdmap.get_epoch();
+      });
+    if (r < 0) {
+      if (r == -ENOENT) {
+        epoch_t req_epoch = req->get_osdmap_epoch();
+        if (req_epoch > epoch) {
+          Context *fin = new C_OnFinisher(new C_IO_Wrapper(mds,
+            new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher);
+          if (!mds->objecter->wait_for_map(req_epoch, fin))
+            return;
+          delete fin;
+        } else  if (req_epoch == 0 && !mdr->waited_for_osdmap) {
+          // For compatibility with client w/ old code, we still need get the latest map. 
+          // One day if COMPACT_VERSION of MClientRequest >=3, we can remove those code.
+          mdr->waited_for_osdmap = true;
+          mds->objecter->wait_for_latest_osdmap(
+	    new C_OnFinisher(new C_IO_Wrapper(mds, new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher));
+          return;
+        }
+        r = -EINVAL;
+      }
+      respond_to_request(mdr, r);
+      return;
+    }
 
-    journal_and_reply(mdr, cur, 0, le, new C_MDS_inode_update_finish(mds, mdr, cur));
+    xlocks.insert(&cur->policylock);
+    if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
+      return;
+
+    if (cur->inode.layout.pool_id != layout.pool_id) {
+      if (!check_access(mdr, cur, MAY_SET_POOL)) {
+        return;
+      }
+    }
+
+    pi = cur->project_inode();
+    pi->layout = layout;
+  } else if (name.compare(0, 16, "ceph.file.layout") == 0) {
+    if (!cur->is_file()) {
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+    if (cur->get_projected_inode()->size ||
+        cur->get_projected_inode()->truncate_seq > 1) {
+      respond_to_request(mdr, -ENOTEMPTY);
+      return;
+    }
+    file_layout_t layout = cur->get_projected_inode()->layout;
+    rest = name.substr(name.find("layout"));
+    int r;
+    epoch_t epoch;
+    mds->objecter->with_osdmap([&](const OSDMap& osdmap) {
+	r = parse_layout_vxattr(rest, value, osdmap, &layout);
+	epoch = osdmap.get_epoch();
+      });
+    if (r < 0) {
+      if (r == -ENOENT) {
+        epoch_t req_epoch = req->get_osdmap_epoch();
+        if (req_epoch > epoch) {
+          Context *fin = new C_OnFinisher(new C_IO_Wrapper(mds,
+            new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher);
+          if (!mds->objecter->wait_for_map(req_epoch, fin))
+            return;
+          delete fin;
+        } else if (req_epoch == 0 && !mdr->waited_for_osdmap) {
+          // For compatibility with client w/ old code, we still need get the latest map. 
+          // One day if COMPACT_VERSION of MClientRequest >=3, we can remove those code.
+          mdr->waited_for_osdmap = true;
+          mds->objecter->wait_for_latest_osdmap(
+            new C_OnFinisher(new C_IO_Wrapper(mds, new C_MDS_RetryRequest(mdcache, mdr)), mds->finisher));
+          return;
+        }
+        r = -EINVAL;
+      }
+      respond_to_request(mdr, r);
+      return;
+    }
+
+    xlocks.insert(&cur->filelock);
+    if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
+      return;
+
+    if (cur->inode.layout.pool_id != layout.pool_id) {
+      if (!check_access(mdr, cur, MAY_SET_POOL)) {
+        return;
+      }
+    }
+
+    pi = cur->project_inode();
+    int64_t old_pool = pi->layout.pool_id;
+    pi->add_old_pool(old_pool);
+    pi->layout = layout;
+    pi->ctime = mdr->get_op_stamp();
+  } else if (name.compare(0, 10, "ceph.quota") == 0) { 
+    if (!cur->is_dir() || cur->is_root()) {
+      respond_to_request(mdr, -EINVAL);
+      return;
+    }
+
+    quota_info_t quota = cur->get_projected_inode()->quota;
+
+    rest = name.substr(name.find("quota"));
+    int r = parse_quota_vxattr(rest, value, &quota);
+    if (r < 0) {
+      respond_to_request(mdr, r);
+      return;
+    }
+
+    xlocks.insert(&cur->policylock);
+    if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
+      return;
+
+    pi = cur->project_inode();
+    pi->quota = quota;
+  } else {
+    dout(10) << " unknown vxattr " << name << dendl;
+    respond_to_request(mdr, -EINVAL);
     return;
   }
 
-  dout(10) << " unknown vxattr " << name << dendl;
-  respond_to_request(mdr, -EINVAL);
+  pi->version = cur->pre_dirty();
+  if (cur->is_file())
+    pi->update_backtrace();
+
+  // log + wait
+  mdr->ls = mdlog->get_current_segment();
+  EUpdate *le = new EUpdate(mdlog, "set vxattr layout");
+  mdlog->start_entry(le);
+  le->metablob.add_client_req(req->get_reqid(), req->get_oldest_client_tid());
+  mdcache->predirty_journal_parents(mdr, &le->metablob, cur, 0, PREDIRTY_PRIMARY);
+  mdcache->journal_dirty_inode(mdr.get(), &le->metablob, cur);
+
+  journal_and_reply(mdr, cur, 0, le, new C_MDS_inode_update_finish(mds, mdr, cur));
+  return;
 }
 
 void Server::handle_remove_vxattr(MDRequestRef& mdr, CInode *cur,
@@ -4314,8 +4402,8 @@ void Server::handle_client_setxattr(MDRequestRef& mdr)
   set<SimpleLock*> rdlocks, wrlocks, xlocks;
   CInode *cur;
 
-  ceph_file_layout *dir_layout = NULL;
-  if (name.find("ceph.dir.layout") == 0)
+  file_layout_t *dir_layout = NULL;
+  if (name.compare(0, 15, "ceph.dir.layout") == 0)
     cur = rdlock_path_pin_ref(mdr, 0, rdlocks, true, false, &dir_layout);
   else
     cur = rdlock_path_pin_ref(mdr, 0, rdlocks, true);
@@ -4330,7 +4418,7 @@ void Server::handle_client_setxattr(MDRequestRef& mdr)
   int flags = req->head.args.setxattr.flags;
 
   // magic ceph.* namespace?
-  if (name.find("ceph.") == 0) {
+  if (name.compare(0, 5, "ceph.") == 0) {
     handle_set_vxattr(mdr, cur, dir_layout, rdlocks, wrlocks, xlocks);
     return;
   }
@@ -4386,7 +4474,7 @@ void Server::handle_client_removexattr(MDRequestRef& mdr)
   MClientRequest *req = mdr->client_request;
   string name(req->get_path2());
   set<SimpleLock*> rdlocks, wrlocks, xlocks;
-  ceph_file_layout *dir_layout = NULL;
+  file_layout_t *dir_layout = NULL;
   CInode *cur;
   if (name == "ceph.dir.layout")
     cur = rdlock_path_pin_ref(mdr, 0, rdlocks, true, false, &dir_layout);
@@ -4400,7 +4488,7 @@ void Server::handle_client_removexattr(MDRequestRef& mdr)
     return;
   }
 
-  if (name.find("ceph.") == 0) {
+  if (name.compare(0, 5, "ceph.") == 0) {
     handle_remove_vxattr(mdr, cur, rdlocks, wrlocks, xlocks);
     return;
   }
@@ -4497,7 +4585,7 @@ void Server::handle_client_mknod(MDRequestRef& mdr)
   MClientRequest *req = mdr->client_request;
   client_t client = mdr->get_client();
   set<SimpleLock*> rdlocks, wrlocks, xlocks;
-  ceph_file_layout *dir_layout = NULL;
+  file_layout_t *dir_layout = NULL;
   CDentry *dn = rdlock_path_xlock_dentry(mdr, 0, rdlocks, wrlocks, xlocks, false, false, false,
 					 &dir_layout);
   if (!dn) return;
@@ -4518,7 +4606,7 @@ void Server::handle_client_mknod(MDRequestRef& mdr)
     mode |= S_IFREG;
 
   // set layout
-  ceph_file_layout layout;
+  file_layout_t layout;
   if (dir_layout && S_ISREG(mode))
     layout = *dir_layout;
   else
@@ -4535,8 +4623,8 @@ void Server::handle_client_mknod(MDRequestRef& mdr)
   newi->inode.rdev = req->head.args.mknod.rdev;
   newi->inode.version = dn->pre_dirty();
   newi->inode.rstat.rfiles = 1;
-  if (layout.fl_pg_pool != mdcache->default_file_layout.fl_pg_pool)
-    newi->inode.add_old_pool(mdcache->default_file_layout.fl_pg_pool);
+  if (layout.pool_id != mdcache->default_file_layout.pool_id)
+    newi->inode.add_old_pool(mdcache->default_file_layout.pool_id);
   newi->inode.update_backtrace();
 
   // if the client created a _regular_ file via MKNOD, it's highly likely they'll
@@ -5534,8 +5622,9 @@ void Server::_unlink_local_finish(MDRequestRef& mdr,
   // removing a new dn?
   dn->get_dir()->try_remove_unlinked_dn(dn);
 
-  // clean up?
-  if (straydn) {
+  // clean up ?
+  // respond_to_request() drops locks. So stray reintegration can race with us.
+  if (straydn && !straydn->get_projected_linkage()->is_null()) {
     // Tip off the MDCache that this dentry is a stray that
     // might be elegible for purge.
     mdcache->notify_stray(straydn);
@@ -6382,7 +6471,8 @@ void Server::_rename_finish(MDRequestRef& mdr, CDentry *srcdn, CDentry *destdn, 
     mds->locker->eval(in, CEPH_CAP_LOCKS, true);
 
   // clean up?
-  if (straydn) {
+  // respond_to_request() drops locks. So stray reintegration can race with us.
+  if (straydn && !straydn->get_projected_linkage()->is_null()) {
     mdcache->notify_stray(straydn);
   }
 }
@@ -6432,7 +6522,8 @@ version_t Server::_rename_prepare_import(MDRequestRef& mdr, CDentry *srcdn, buff
 	  
   // imported caps
   ::decode(mdr->more()->imported_client_map, blp);
-  ::encode(mdr->more()->imported_client_map, *client_map_bl);
+  ::encode(mdr->more()->imported_client_map, *client_map_bl,
+           mds->mdsmap->get_up_features());
   prepare_force_open_sessions(mdr->more()->imported_client_map, mdr->more()->sseq_map);
 
   list<ScatterLock*> updated_scatterlocks;  // we clear_updated explicitly below
@@ -7208,7 +7299,7 @@ void Server::_logged_slave_rename(MDRequestRef& mdr,
       (*p)->state_clear(CDir::STATE_EXPORTBOUND);
 
     if (reply) {
-      ::encode(exported_client_map, reply->inode_export);
+      ::encode(exported_client_map, reply->inode_export, mds->mdsmap->get_up_features());
       reply->inode_export.claim_append(inodebl);
       reply->inode_export_v = srcdnl->get_inode()->inode.version;
     }
@@ -7853,10 +7944,13 @@ void Server::handle_client_lssnap(MDRequestRef& mdr)
   }
 
   ::encode(num, dirbl);
-  __u8 end = (p == infomap.end());
-  ::encode(end, dirbl);  // end
-  __u8 complete = end && last_snapid == 0;
-  ::encode(complete, dirbl);  // complete
+  __u16 flags = 0;
+  if (p == infomap.end()) {
+    flags = CEPH_READDIR_FRAG_END;
+    if (last_snapid == 0)
+      flags |= CEPH_READDIR_FRAG_COMPLETE;
+  }
+  ::encode(flags, dirbl);
   dirbl.claim_append(dnbl);
   
   mdr->reply_extra_bl = dirbl;

@@ -58,7 +58,7 @@ struct LockType {
   int type;
   const sm_t *sm;
 
-  LockType(int t) : type(t) {
+  explicit LockType(int t) : type(t) {
     switch (type) {
     case CEPH_LOCK_DN:
     case CEPH_LOCK_IAUTH:
@@ -306,7 +306,7 @@ public:
     parent->take_waiting(mask << get_wait_shift(), ls);
   }
   void add_waiter(uint64_t mask, MDSInternalContextBase *c) {
-    parent->add_waiter(mask << get_wait_shift(), c);
+    parent->add_waiter((mask << get_wait_shift()) | MDSCacheObject::WAIT_ORDERED, c);
   }
   bool is_waiter_for(uint64_t mask) const {
     return parent->is_waiter_for(mask << get_wait_shift());

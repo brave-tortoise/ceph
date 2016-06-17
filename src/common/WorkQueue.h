@@ -126,10 +126,7 @@ public:
     }
 
   protected:
-    virtual void _process(const list<T*> &) { assert(0); }
-    virtual void _process(const list<T*> &items, TPHandle &handle) {
-      _process(items);
-    }
+    virtual void _process(const list<T*> &items, TPHandle &handle) = 0;
 
   public:
     BatchWorkQueue(string n, time_t ti, time_t sti, ThreadPool* p)
@@ -257,10 +254,7 @@ public:
     void unlock() {
       pool->unlock();
     }
-    virtual void _process(U) { assert(0); }
-    virtual void _process(U u, TPHandle &) {
-      _process(u);
-    }
+    virtual void _process(U u, TPHandle &) = 0;
   };
 
   /** @brief Template by-pointer work queue.
@@ -293,10 +287,7 @@ public:
 
   protected:
     /// Process a work item. Called from the worker threads.
-    virtual void _process(T *t) { assert(0); }
-    virtual void _process(T *t, TPHandle &) {
-      _process(t);
-    }
+    virtual void _process(T *t, TPHandle &) = 0;
 
   public:
     WorkQueue(string n, time_t ti, time_t sti, ThreadPool* p) : WorkQueue_(n, ti, sti), pool(p) {
@@ -423,6 +414,11 @@ public:
       }
       return m_items.front();
     }
+    void requeue(T *item) {
+      Mutex::Locker pool_locker(m_pool->_lock);
+      _void_process_finish(nullptr);
+      m_items.push_front(item);
+    }
     void signal() {
       Mutex::Locker pool_locker(m_pool->_lock);
       m_pool->_cond.SignalOne();
@@ -443,6 +439,7 @@ private:
   // threads
   struct WorkThread : public Thread {
     ThreadPool *pool;
+    // cppcheck-suppress noExplicitConstructor
     WorkThread(ThreadPool *p) : pool(p) {}
     void *entry() {
       pool->worker(this);
@@ -540,23 +537,23 @@ public:
     : ThreadPool::WorkQueueVal<
       GenContext<ThreadPool::TPHandle&>*>(name, ti, ti*10, tp) {}
   
-  void _enqueue(GenContext<ThreadPool::TPHandle&> *c) {
+  void _enqueue(GenContext<ThreadPool::TPHandle&> *c) override {
     _queue.push_back(c);
   }
-  void _enqueue_front(GenContext<ThreadPool::TPHandle&> *c) {
+  void _enqueue_front(GenContext<ThreadPool::TPHandle&> *c) override {
     _queue.push_front(c);
   }
-  bool _empty() {
+  bool _empty() override {
     return _queue.empty();
   }
-  GenContext<ThreadPool::TPHandle&> *_dequeue() {
+  GenContext<ThreadPool::TPHandle&> *_dequeue() override {
     assert(!_queue.empty());
     GenContext<ThreadPool::TPHandle&> *c = _queue.front();
     _queue.pop_front();
     return c;
   }
-  using ThreadPool::WorkQueueVal<GenContext<ThreadPool::TPHandle&>*>::_process;
-  void _process(GenContext<ThreadPool::TPHandle&> *c, ThreadPool::TPHandle &tp) {
+  void _process(GenContext<ThreadPool::TPHandle&> *c,
+		ThreadPool::TPHandle &tp) override {
     c->complete(tp);
   }
 };
