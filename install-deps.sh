@@ -49,7 +49,7 @@ Ubuntu|Debian|Devuan)
         packages=$(echo $packages) # change newlines into spaces
         $SUDO bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y $packages"
         ;;
-CentOS|Fedora|SUSE*|RedHatEnterpriseServer)
+CentOS|Fedora|SUSE*|RedHatEnterpriseServer|n/a)
         case $(lsb_release -si) in
             SUSE*)
                 $SUDO zypper -y yum-utils
