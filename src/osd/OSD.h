@@ -135,6 +135,7 @@ enum {
   l_osd_tier_clean,
   l_osd_tier_delay,
   l_osd_tier_proxy_read,
+  l_osd_tier_proxy_write,
 
   l_osd_agent_wake,
   l_osd_agent_skip,
@@ -305,6 +306,14 @@ public:
   } ///< @return true if we don't need to recreate the collection
 };
 typedef ceph::shared_ptr<DeletingState> DeletingStateRef;
+
+
+struct PromoteInfo {
+  PGRef pg;
+  //ObjectContextRef obc;
+  object_locator_t oloc;
+};
+
 
 class OSD;
 class OSDService {
@@ -572,6 +581,7 @@ public:
   Mutex agent_timer_lock;
   SafeTimer agent_timer;
 
+  void agent_queue_timer(PGRef pg);
   void agent_entry();
   void agent_stop();
 
@@ -649,6 +659,116 @@ public:
     return agent_ops;
   }
 
+
+  FIFOCache<hobject_t> candidates_queue, degraded_candidates_queue;
+
+  Mutex recovery_lock;
+  map<pg_shard_t, int> recovery_peers;
+
+  void start_recovery_pg(PG * pg) {
+    Mutex::Locker l(recovery_lock);
+    for(set<pg_shard_t>::iterator i = pg->recovery_set.begin();
+      i != pg->recovery_set.end();
+      ++i) {
+      ++recovery_peers[*i];
+    }
+  }
+
+  void finish_recovery_pg(PG * pg) {
+    Mutex::Locker l(recovery_lock);
+    for(set<pg_shard_t>::iterator i = pg->recovery_set.begin();
+      i != pg->recovery_set.end();
+      ++i) {
+      if(--recovery_peers[*i] == 0) {
+	recovery_peers.erase(*i);
+      }
+    }
+  }
+
+
+  // -- promotion state --
+  Mutex promote_lock;
+  Cond promote_cond;
+  MRUCache<hobject_t, PromoteInfo> promote_queue;
+  int promote_ops;
+  unordered_set<hobject_t> promote_oids;
+  struct PromoteThread : public Thread {
+    OSDService *osd;
+    PromoteThread(OSDService *o) : osd(o) {}
+    void *entry() {
+      osd->promote_entry();
+      return NULL;
+    }
+  } promote_thread;
+  bool promote_stop_flag;
+
+  void promote_entry();
+  void promote_stop();
+
+  /// insert an object into promote_queue
+  void promote_enqueue_object(const hobject_t& oid, const PromoteInfo& info) {
+    Mutex::Locker l(promote_lock);
+    /*PromoteInfo *ret = promote_queue.adjust_or_add(oid, info);
+    if(ret) {
+      PGRef pg = ret->pg;
+      pg->candidate_enqueue_object(oid);
+    }
+    */
+    if(!promote_queue.adjust_or_add(oid, info) && promote_ops < g_conf->osd_promote_max_ops_in_flight) {
+      promote_cond.Signal();
+    }
+  }
+
+  /*
+  /// adjust priority of an object in promote_queue
+  bool promote_adjust_object(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    if(promote_queue.adjust_or_lookup(oid))
+      return true;
+    return false;
+  }
+  
+  /// lookup an object in promote_queue
+  bool promote_lookup_object(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    if(promote_queue.lookup(oid))
+      return true;
+    return false;
+  }
+  */
+
+  /// remove an object from promote_queue
+  void promote_dequeue_object(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    promote_queue.remove(oid);
+  }
+
+  /// note start of an async (promote) op
+  bool promote_start_op(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    if(!promote_oids.count(oid)) {
+      ++promote_ops;
+      promote_oids.insert(oid);
+      return true;
+    }
+    return false;
+  }
+
+  /// note finish or cancellation of an async (promote) op
+  void promote_finish_op(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    assert(promote_ops > 0);
+    --promote_ops;
+    //assert(promote_oids.count(oid) == 1);
+    promote_oids.erase(oid);
+    promote_cond.Signal();
+  }
+
+  /// get count of active promote ops
+  int promote_get_num_ops() {
+    Mutex::Locker l(promote_lock);
+    return promote_ops;
+  }
 
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;

@@ -1698,6 +1698,11 @@ void PG::activate(ObjectStore::Transaction& t,
       for (map<pg_shard_t, pg_missing_t>::iterator i = peer_missing.begin();
 	   i != peer_missing.end();
 	   ++i) {
+	if(!(i->second.missing.empty())) {
+	  //dout(0) << "wugy-debug:  osd " << i->first << " down" << dendl;
+	  recovery_set.insert(i->first);
+	  //osd->recovery_peers[i->first]++;
+	}
 	if (is_actingbackfill(i->first))
 	  continue;
 	assert(peer_info.count(i->first));
@@ -1707,6 +1712,8 @@ void PG::activate(ObjectStore::Transaction& t,
 	  i->first,
 	  ctx);
       }
+
+      osd->start_recovery_pg(this);
 
       build_might_have_unfound();
 
@@ -6238,6 +6245,19 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
 
   if (context< Active >().all_replicas_activated)
     post_event(GoClean());
+
+  /*
+  for(set<pg_shard_t>::iterator i = pg->recovery_set.begin();
+	i != pg->recovery_set.end();
+	++i) {
+    if(--pg->osd->recovery_peers[*i] == 0) {
+      pg->osd->recovery_peers.erase(*i);
+    }
+  }
+  */
+
+  pg->osd->finish_recovery_pg(pg);
+  pg->recovery_set.clear();
 }
 
 void PG::RecoveryState::Recovered::exit()

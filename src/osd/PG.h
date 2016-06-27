@@ -477,6 +477,7 @@ public:
   pg_shard_t up_primary;
   vector<int> up, acting, want_acting;
   set<pg_shard_t> actingbackfill, actingset;
+  set<pg_shard_t> recovery_set;
   map<pg_shard_t,eversion_t> peer_last_complete_ondisk;
   eversion_t  min_last_complete_ondisk;  // up: min over last_complete_ondisk, peer_last_complete_ondisk
   eversion_t  pg_trim_to;
@@ -2266,6 +2267,10 @@ public:
   virtual void agent_delay() = 0;
   virtual void agent_clear() = 0;
   virtual void agent_choose_mode_restart() = 0;
+
+  //virtual void candidate_enqueue_object(const hobject_t& oid) = 0;
+  //virtual void promote_work(ObjectContextRef obc, const hobject_t& oid, const object_locator_t& oloc) = 0;
+  virtual void promote_work(const hobject_t& oid, const object_locator_t& oloc) = 0;
 };
 
 ostream& operator<<(ostream& out, const PG& pg);

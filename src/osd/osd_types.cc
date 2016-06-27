@@ -914,6 +914,8 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_unsigned("target_max_objects", target_max_objects);
   f->dump_unsigned("cache_target_dirty_ratio_micro",
 		   cache_target_dirty_ratio_micro);
+  f->dump_unsigned("cache_target_warm_ratio_micro",
+		   cache_target_warm_ratio_micro);
   f->dump_unsigned("cache_target_full_ratio_micro",
 		   cache_target_full_ratio_micro);
   f->dump_unsigned("cache_min_flush_age", cache_min_flush_age);
@@ -925,8 +927,11 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_unsigned("hit_set_period", hit_set_period);
   f->dump_unsigned("hit_set_count", hit_set_count);
   f->dump_unsigned("min_read_recency_for_promote", min_read_recency_for_promote);
+  f->dump_unsigned("min_write_recency_for_promote", min_write_recency_for_promote);
   f->dump_unsigned("stripe_width", get_stripe_width());
   f->dump_unsigned("expected_num_objects", expected_num_objects);
+  f->dump_unsigned("max_temp_increment", max_temp_increment);
+  f->dump_unsigned("hit_set_decay_factor", hit_set_decay_factor);
 }
 
 
@@ -1226,7 +1231,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
-  ENCODE_START(17, 5, bl);
+  ENCODE_START(20, 5, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1268,12 +1273,16 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(last_force_op_resend, bl);
   ::encode(min_read_recency_for_promote, bl);
   ::encode(expected_num_objects, bl);
+  ::encode(max_temp_increment, bl);
+  ::encode(hit_set_decay_factor, bl);
+  ::encode(min_write_recency_for_promote, bl);
+  ::encode(cache_target_warm_ratio_micro, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(17, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(20, 5, 5, bl);
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1385,6 +1394,23 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   } else {
     expected_num_objects = 0;
   }
+  if (struct_v >= 18) {
+    ::decode(max_temp_increment, bl);
+    ::decode(hit_set_decay_factor, bl);
+  } else {
+    max_temp_increment = 10000;
+    hit_set_decay_factor = 80;
+  }
+  if (struct_v >= 19) {
+    ::decode(min_write_recency_for_promote, bl);
+  } else {
+    min_write_recency_for_promote = 1;
+  }
+  if (struct_v >= 20) {
+    ::decode(cache_target_warm_ratio_micro, bl);
+  } else {
+    cache_target_warm_ratio_micro = 0;
+  }
   DECODE_FINISH(bl);
   calc_pg_masks();
 }
@@ -1431,15 +1457,19 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.hit_set_period = 3600;
   a.hit_set_count = 8;
   a.min_read_recency_for_promote = 1;
+  a.min_write_recency_for_promote = 1;
   a.set_stripe_width(12345);
   a.target_max_bytes = 1238132132;
   a.target_max_objects = 1232132;
   a.cache_target_dirty_ratio_micro = 187232;
+  a.cache_target_warm_ratio_micro = 687222;
   a.cache_target_full_ratio_micro = 987222;
   a.cache_min_flush_age = 231;
   a.cache_min_evict_age = 2321;
   a.erasure_code_profile = "profile in osdmap";
   a.expected_num_objects = 123456;
+  a.max_temp_increment = 10000;
+  a.hit_set_decay_factor = 80;
   o.push_back(new pg_pool_t(a));
 }
 
@@ -1486,9 +1516,15 @@ ostream& operator<<(ostream& out, const pg_pool_t& p)
   }
   if (p.min_read_recency_for_promote)
     out << " min_read_recency_for_promote " << p.min_read_recency_for_promote;
+  if (p.min_write_recency_for_promote)
+    out << " min_write_recency_for_promote " << p.min_write_recency_for_promote;
   out << " stripe_width " << p.get_stripe_width();
   if (p.expected_num_objects)
     out << " expected_num_objects " << p.expected_num_objects;
+  if (p.max_temp_increment)
+    out << " max_temp_increment " << p.max_temp_increment;
+  if (p.hit_set_decay_factor)
+    out << " hit_set_decay_factor " << p.hit_set_decay_factor;
   return out;
 }
 

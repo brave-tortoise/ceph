@@ -217,6 +217,14 @@ OSDService::OSDService(OSD *osd) :
   agent_stop_flag(false),
   agent_timer_lock("OSD::agent_timer_lock"),
   agent_timer(osd->client_messenger->cct, agent_timer_lock),
+  candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
+  degraded_candidates_queue(16),
+  recovery_lock("OSD::recovery_lock"),
+  promote_lock("OSD::promote_lock"),
+  promote_queue(cct->_conf->osd_promote_work_queue_max_size),
+  promote_ops(0),
+  promote_thread(this),
+  promote_stop_flag(false),
   objecter(new Objecter(osd->client_messenger->cct, osd->objecter_messenger, osd->monc, NULL, 0, 0)),
   objecter_finisher(osd->client_messenger->cct),
   watch_lock("OSD::watch_lock"),
@@ -472,6 +480,7 @@ void OSDService::init()
   agent_timer.init();
 
   agent_thread.create();
+  promote_thread.create();
 }
 
 void OSDService::activate_map()
@@ -485,6 +494,7 @@ void OSDService::activate_map()
   agent_lock.Unlock();
 }
 
+/*
 class AgentTimeoutCB : public Context {
   PGRef pg;
 public:
@@ -493,6 +503,15 @@ public:
     pg->agent_choose_mode_restart();
   }
 };
+
+void OSDService::agent_queue_timer(PGRef pg) {
+  // Queue a timer to call agent_choose_mode for this pg in 5 seconds
+  agent_timer_lock.Lock();
+  Context *cb = new AgentTimeoutCB(pg);
+  agent_timer.add_event_after(g_conf->osd_agent_delay_time, cb);
+  agent_timer_lock.Unlock();
+}
+*/
 
 void OSDService::agent_entry()
 {
@@ -529,18 +548,16 @@ void OSDService::agent_entry()
     PGRef pg = *agent_queue_pos;
     int max = g_conf->osd_agent_max_ops - agent_ops;
     agent_lock.Unlock();
-    if (!pg->agent_work(max)) {
+
+    pg->agent_work(max);
+    /*if (!pg->agent_work(max)) {
       dout(10) << __func__ << " " << *pg
 	<< " no agent_work, delay for " << g_conf->osd_agent_delay_time
 	<< " seconds" << dendl;
 
       osd->logger->inc(l_osd_tier_delay);
-      // Queue a timer to call agent_choose_mode for this pg in 5 seconds
-      agent_timer_lock.Lock();
-      Context *cb = new AgentTimeoutCB(pg);
-      agent_timer.add_event_after(g_conf->osd_agent_delay_time, cb);
-      agent_timer_lock.Unlock();
-    }
+      agent_queue_timer(pg);
+    }*/
     agent_lock.Lock();
   }
   agent_lock.Unlock();
@@ -565,6 +582,59 @@ void OSDService::agent_stop()
     agent_cond.Signal();
   }
   agent_thread.join();
+}
+
+
+// ---- handle promotion ops ----
+void OSDService::promote_entry()
+{
+  promote_lock.Lock();
+
+  while(!promote_stop_flag) {
+    if(promote_queue.empty()) {
+      dout(20) << __func__ << " empty queue" << dendl;
+      promote_cond.Wait(promote_lock);
+      continue;
+    }
+
+    if(promote_ops >= g_conf->osd_promote_max_ops_in_flight) {
+      dout(20) << __func__ << " too many promote ops in flight" << dendl;
+      promote_cond.Wait(promote_lock);
+      continue;
+    }
+
+    hobject_t oid;
+    PromoteInfo info;
+    promote_queue.pop(&oid, &info);
+    promote_lock.Unlock();
+    
+    PGRef pg = info.pg;
+    //pg->promote_work(info.obc, oid, info.oloc);
+    //ObjectContextRef obc = pg->get_object_context(oid, true);
+    pg->promote_work(oid, info.oloc);
+    promote_lock.Lock();
+  }
+
+  promote_lock.Unlock();
+}
+
+void OSDService::promote_stop()
+{
+  {
+    Mutex::Locker l(promote_lock);
+
+    // By this time all ops should be cancelled
+    assert(promote_ops == 0);
+    // By this time all PGs are shutdown and dequeued
+    if(!promote_queue.empty()) {
+      assert(0 == "promote queue not empty");
+    }
+
+    promote_stop_flag = true;
+    promote_cond.Signal();
+  }
+
+  promote_thread.join();
 }
 
 // -------------------------------------
@@ -2140,6 +2210,7 @@ void OSD::create_logger()
   osd_plb.add_u64_counter(l_osd_tier_clean, "tier_clean");
   osd_plb.add_u64_counter(l_osd_tier_delay, "tier_delay");
   osd_plb.add_u64_counter(l_osd_tier_proxy_read, "tier_proxy_read");
+  osd_plb.add_u64_counter(l_osd_tier_proxy_write, "tier_proxy_write");
 
   osd_plb.add_u64_counter(l_osd_agent_wake, "agent_wake");
   osd_plb.add_u64_counter(l_osd_agent_skip, "agent_skip");
@@ -2320,6 +2391,9 @@ int OSD::shutdown()
 
   dout(10) << "stopping agent" << dendl;
   service.agent_stop();
+
+  dout(10) << "stopping promote" << dendl;
+  service.promote_stop();
 
   osd_lock.Lock();
 
@@ -8693,6 +8767,43 @@ int OSD::init_op_flags(OpRequestRef& op)
         op->set_promote();
         break;
       }
+
+    case CEPH_OSD_OP_DELETE:
+      // if we get a delete with FAILOK we can skip handle cache. without
+      // FAILOK we still need to promote (or do something smarter) to
+      // determine whether to return ENOENT or 0.
+      if (iter == m->ops.begin() &&
+	  iter->op.flags == CEPH_OSD_OP_FLAG_FAILOK) {
+	op->set_skip_handle_cache();
+      }
+      // skip promotion when proxying a delete op
+      if (m->ops.size() == 1) {
+	op->set_skip_promote();
+      }
+      break;
+
+    case CEPH_OSD_OP_CACHE_TRY_FLUSH:
+    case CEPH_OSD_OP_CACHE_FLUSH:
+    case CEPH_OSD_OP_CACHE_EVICT:
+      // If try_flush/flush/evict is the only op, can skip handle cache.
+      if (m->ops.size() == 1) {
+	op->set_skip_handle_cache();
+      }
+      break;
+
+    case CEPH_OSD_OP_READ:
+    case CEPH_OSD_OP_SYNC_READ:
+    case CEPH_OSD_OP_SPARSE_READ:
+    case CEPH_OSD_OP_WRITEFULL:
+      if (m->ops.size() == 1 &&
+          (iter->op.flags & CEPH_OSD_OP_FLAG_FADVISE_NOCACHE ||
+           iter->op.flags & CEPH_OSD_OP_FLAG_FADVISE_DONTNEED)) {
+        op->set_write_full();
+      }
+      break;
+    case CEPH_OSD_OP_CACHE_PROMOTE:
+      op->set_skip_handle_cache();
+      break;
 
     default:
       break;

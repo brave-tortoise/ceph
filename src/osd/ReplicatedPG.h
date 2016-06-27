@@ -228,6 +228,28 @@ public:
   };
   typedef boost::shared_ptr<ProxyReadOp> ProxyReadOpRef;
 
+  struct ProxyWriteOp {
+    OpContext *ctx;
+    OpRequestRef op;
+    hobject_t soid;
+    ceph_tid_t objecter_tid;
+    vector<OSDOp> &ops;
+    version_t user_version;
+    bool sent_disk;
+    bool sent_ack;
+    utime_t mtime;
+    bool canceled;
+    osd_reqid_t reqid;
+
+    ProxyWriteOp(OpRequestRef _op, hobject_t oid, vector<OSDOp>& _ops, osd_reqid_t _reqid)
+      : ctx(NULL), op(_op), soid(oid),
+        objecter_tid(0), ops(_ops),
+	user_version(0), sent_disk(false),
+	sent_ack(false), canceled(false),
+        reqid(_reqid) { }
+  };
+  typedef boost::shared_ptr<ProxyWriteOp> ProxyWriteOpRef;
+
   struct FlushOp {
     ObjectContextRef obc;       ///< obc we are flushing
     OpRequestRef op;            ///< initiating op
@@ -858,7 +880,7 @@ protected:
   // replica ops
   // [primary|tail]
   xlist<RepGather*> repop_queue;
-  map<ceph_tid_t, RepGather*> repop_map;
+  unordered_map<ceph_tid_t, RepGather*> repop_map;
 
   friend class C_OSD_RepopApplied;
   friend class C_OSD_RepopCommit;
@@ -872,22 +894,31 @@ protected:
   RepGather *simple_repop_create(ObjectContextRef obc);
   void simple_repop_submit(RepGather *repop);
 
+  // candidate objects for promotion
+  //FIFOCache<hobject_t> candidates_queue;
+
+  //void candidate_enqueue_object(const hobject_t& oid) {
+    //candidates_queue.add(oid);
+  //}
+
+  // objects in cache
+  LRUCache<hobject_t> rw_cache;
+  utime_t rw_cache_persist_start_stamp;
+
+  hobject_t get_rw_cache_archive_object();
+  void rw_cache_persist();   ///< persist rw_cache info
+  bool agent_load_rw_cache();  ///< load rw_cache, if needed
+  bool rw_cache_apply_log(); ///< apply log entries to update in-memory rw_cache
+
   // hot/cold tracking
   HitSetRef hit_set;        ///< currently accumulating HitSet
   utime_t hit_set_start_stamp;    ///< time the current HitSet started recording
 
-  map<time_t,HitSetRef> hit_set_flushing; ///< currently being written, not yet readable
-
+  hobject_t get_hit_set_current_object(utime_t stamp);
+  hobject_t get_hit_set_archive_object(utime_t start, utime_t end);
   void hit_set_clear();     ///< discard any HitSet state
   void hit_set_setup();     ///< initialize HitSet state
   void hit_set_create();    ///< create a new HitSet
-  void hit_set_persist();   ///< persist hit info
-  bool hit_set_apply_log(); ///< apply log entries to update in-memory HitSet
-  void hit_set_trim(RepGather *repop, unsigned max); ///< discard old HitSets
-  void hit_set_in_memory_trim();                     ///< discard old in memory HitSets
-
-  hobject_t get_hit_set_current_object(utime_t stamp);
-  hobject_t get_hit_set_archive_object(utime_t start, utime_t end);
 
   // agent
   boost::scoped_ptr<TierAgentState> agent_state;
@@ -898,17 +929,17 @@ protected:
   void agent_setup();       ///< initialize agent state
   bool agent_work(int max); ///< entry point to do some agent work
   bool agent_maybe_flush(ObjectContextRef& obc);  ///< maybe flush
-  bool agent_maybe_evict(ObjectContextRef& obc);  ///< maybe evict
-
-  void agent_load_hit_sets();  ///< load HitSets, if needed
+  bool agent_maybe_evict(ObjectContextRef& obc, bool after_flush = false);  ///< maybe evict
 
   /// estimate object atime and temperature
   ///
   /// @param oid [in] object name
   /// @param atime [out] seconds since last access (lower bound)
   /// @param temperature [out] relative temperature (# hitset bins we appear in)
-  void agent_estimate_atime_temp(const hobject_t& oid,
-				 int *atime, int *temperature);
+  // void agent_estimate_atime_temp(const hobject_t& oid,
+  //				 int *atime, int *temperature);
+  //void agent_estimate_atime_temp(const hobject_t& oid, int * atime, int * temp);
+  void agent_estimate_temp(const hobject_t& oid, int * temp);
 
   /// stop the agent
   void agent_stop();
@@ -918,7 +949,7 @@ protected:
   void agent_clear();
 
   /// choose (new) agent mode(s), returns true if op is requeued
-  bool agent_choose_mode(bool restart = false, OpRequestRef op = OpRequestRef());
+  void agent_choose_mode(bool restart = false);
   void agent_choose_mode_restart();
 
   /// true if we can send an ondisk/commit for v
@@ -1131,6 +1162,10 @@ protected:
 				   uint64_t length, bool count_bytes);
   void add_interval_usage(interval_set<uint64_t>& s, object_stat_sum_t& st);
 
+  bool is_waiting_for_recovery_or_backfill(const hobject_t& soid);
+
+  void call_for_promote(const object_t& soid, const object_locator_t& oloc);
+
   /**
    * This helper function is called from do_op if the ObjectContext lookup fails.
    * @returns true if the caching code is handling the Op, false otherwise.
@@ -1138,9 +1173,8 @@ protected:
   inline bool maybe_handle_cache(OpRequestRef op,
 				 bool write_ordered,
 				 ObjectContextRef obc, int r,
-				 const hobject_t& missing_oid,
-				 bool must_promote,
-				 bool in_hit_set = false);
+				 hobject_t& missing_oid,
+				 bool must_promote);
   /**
    * This helper function tells the client to redirect their request elsewhere.
    */
@@ -1154,7 +1188,24 @@ protected:
   void promote_object(ObjectContextRef obc,            ///< [optional] obc
 		      const hobject_t& missing_object, ///< oid (if !obc)
 		      const object_locator_t& oloc,    ///< locator for obc|oid
-		      OpRequestRef op);                ///< [optional] client op
+		      OpRequestRef op = OpRequestRef());                ///< [optional] client op
+
+  /**
+   * This function starts an async_promote,
+   * and puts the object into a queue, waiting for promotion.
+   * The queue is a mru cache, so only hot objects are promoted,
+   * and promotion of cold objects are canceled.
+   */
+  void async_promote_object(const hobject_t& missing_object, ///< oid (if !obc)
+		      const object_locator_t& oloc);   ///< locator for obc|oid
+  // promote an object
+  void promote_work(const hobject_t& missing_object,   ///< oid (if !obc)
+		    const object_locator_t& oloc);     ///< locator for obc|oid
+
+  // check if a promotion is needed
+  /*bool maybe_promote(const hobject_t& missing_object,
+		     bool in_hit_set,
+		     uint32_t recency);*/
 
   /**
    * Check if the op is such that we can skip promote (e.g., DELETE)
@@ -1272,7 +1323,8 @@ protected:
   void recover_got(hobject_t oid, eversion_t v);
 
   // -- copyfrom --
-  map<hobject_t, CopyOpRef> copy_ops;
+  //map<hobject_t, CopyOpRef> copy_ops;
+  unordered_map<hobject_t, CopyOpRef> copy_ops;
 
   int fill_in_copy_get(
     OpContext *ctx,
@@ -1317,7 +1369,7 @@ protected:
   friend struct C_Copyfrom;
 
   // -- flush --
-  map<hobject_t, FlushOpRef> flush_ops;
+  unordered_map<hobject_t, FlushOpRef> flush_ops;
 
   /// start_flush takes ownership of on_flush iff ret == -EINPROGRESS
   int start_flush(
@@ -1356,17 +1408,28 @@ protected:
   bool pgls_filter(PGLSFilter *filter, hobject_t& sobj, bufferlist& outdata);
   int get_pgls_filter(bufferlist::iterator& iter, PGLSFilter **pfilter);
 
+  unordered_map<hobject_t, list<OpRequestRef> > in_progress_proxy_ops;
+  void kick_proxy_ops_blocked(hobject_t& soid);
+  void cancel_proxy_ops(bool requeue);
+
   // -- proxyread --
-  map<ceph_tid_t, ProxyReadOpRef> proxyread_ops;
-  map<hobject_t, list<OpRequestRef> > in_progress_proxy_reads;
+  unordered_map<ceph_tid_t, ProxyReadOpRef> proxyread_ops;
 
   void do_proxy_read(OpRequestRef op);
   void finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r);
-  void kick_proxy_read_blocked(hobject_t& soid);
   void cancel_proxy_read(ProxyReadOpRef prdop);
-  void cancel_proxy_read_ops(bool requeue);
 
   friend struct C_ProxyRead;
+
+  // -- proxywrite --
+  unordered_map<ceph_tid_t, ProxyWriteOpRef> proxywrite_ops;
+
+  void do_proxy_write(OpRequestRef op, const hobject_t& missing_oid);
+  void finish_proxy_write(hobject_t oid, ceph_tid_t tid, int r);
+  void cancel_proxy_write(ProxyWriteOpRef pwop);
+
+  friend struct C_ProxyWrite_Apply;
+  friend struct C_ProxyWrite_Commit;
 
 public:
   ReplicatedPG(OSDService *o, OSDMapRef curmap,

@@ -242,6 +242,9 @@ enum {
   CEPH_OSD_RMW_FLAG_PGOP        = (1 << 5),
   CEPH_OSD_RMW_FLAG_CACHE       = (1 << 6),
   CEPH_OSD_RMW_FLAG_PROMOTE     = (1 << 7),
+  CEPH_OSD_RMW_FLAG_SKIP_HANDLE_CACHE = (1 << 8),
+  CEPH_OSD_RMW_FLAG_SKIP_PROMOTE      = (1 << 9),
+  CEPH_OSD_RMW_FLAG_WRITE_FULL        = (1 << 10),
 };
 
 
@@ -996,6 +999,7 @@ public:
     target_max_bytes = 0;
     target_max_objects = 0;
     cache_target_dirty_ratio_micro = 0;
+    cache_target_warm_ratio_micro = 0;
     cache_target_full_ratio_micro = 0;
     hit_set_params = HitSet::Params();
     hit_set_period = 0;
@@ -1006,6 +1010,7 @@ public:
   uint64_t target_max_objects; ///< tiering: target max pool size
 
   uint32_t cache_target_dirty_ratio_micro; ///< cache: fraction of target to leave dirty
+  uint32_t cache_target_warm_ratio_micro;  ///< cache: fraction of target to warm cache
   uint32_t cache_target_full_ratio_micro;  ///< cache: fraction of target to fill before we evict in earnest
 
   uint32_t cache_min_flush_age;  ///< minimum age (seconds) before we can flush
@@ -1014,12 +1019,16 @@ public:
   HitSet::Params hit_set_params; ///< The HitSet params to use on this pool
   uint32_t hit_set_period;      ///< periodicity of HitSet segments (seconds)
   uint32_t hit_set_count;       ///< number of periods to retain
-  uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote
+  uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote (on read)
+  uint32_t min_write_recency_for_promote;   ///< minimum number of HitSet to check before promote (on write)
 
   uint32_t stripe_width;        ///< erasure coded stripe size in bytes
 
   uint64_t expected_num_objects; ///< expected number of objects on this pool, a value of 0 indicates
                                  ///< user does not specify any expected value
+
+  uint32_t max_temp_increment;
+  uint32_t hit_set_decay_factor;
 
   pg_pool_t()
     : flags(0), type(0), size(0), min_size(0),
@@ -1036,6 +1045,7 @@ public:
       cache_mode(CACHEMODE_NONE),
       target_max_bytes(0), target_max_objects(0),
       cache_target_dirty_ratio_micro(0),
+      cache_target_warm_ratio_micro(0),
       cache_target_full_ratio_micro(0),
       cache_min_flush_age(0),
       cache_min_evict_age(0),
@@ -1043,8 +1053,11 @@ public:
       hit_set_period(0),
       hit_set_count(0),
       min_read_recency_for_promote(0),
+      min_write_recency_for_promote(0),
       stripe_width(0),
-      expected_num_objects(0)
+      expected_num_objects(0),
+      max_temp_increment(0),
+      hit_set_decay_factor(0)
   { }
 
   void dump(Formatter *f) const;
