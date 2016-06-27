@@ -1538,6 +1538,14 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
+  dout(0) << "wugy-debug: "
+	  << "oid: " << oid << "; "
+	  << "obc->obs.oi.soid: " << obc->obs.oi.soid << "; "
+	  << (op->may_write() ? " may_write; " : "")
+	  << (op->may_read() ? " may_read; " : "")
+	  << (in_hit_set ? "in hit set" : "not in hit set") << "; "
+	  << dendl;
+
   if (agent_state) {
     if (agent_choose_mode(false, op))
       return;
