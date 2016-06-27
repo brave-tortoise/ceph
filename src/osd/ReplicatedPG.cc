@@ -1529,6 +1529,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   bool in_hit_set = false;
   if (hit_set) {
+    dout(0) << "wugy-debug: hit_set has setup" << dendl;
     if (missing_oid != hobject_t() && hit_set->contains(missing_oid))
       in_hit_set = true;
     hit_set->insert(oid);
