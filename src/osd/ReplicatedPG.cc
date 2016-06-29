@@ -1527,18 +1527,32 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
-  bool in_hit_set = false;
-  if (hit_set) {
-    dout(0) << "wugy-debug: hit_set has setup" << dendl;
-    if (missing_oid != hobject_t() && hit_set->contains(missing_oid))
-      in_hit_set = true;
-    hit_set->insert(oid);
-    if (hit_set->is_full() ||
-	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
-      hit_set_persist();
+  // cache hit
+  /*
+  if(r == 0) {
+    if(missing_oid == hobject_t()) {
+	dout(0) << "wugy-debug: "
+		<< "osd: " << oid << "; "
+		<< "cache hit or new write" << dendl;
+    } else {
+	dout(0) << "wugy-debug: "
+		<< "puzzling?" << dendl;
+    }
+  } else {
+    if(missing_oid != hobject_t()) {
+	dout(0) << "wugy-debug: "
+		<< "osd: " << oid << "; "
+		<< "cache miss" << dendl;
+    } else {
+	dout(0) << "wugy-debug: "
+		<< "osd: " << oid << "; "
+		<< "object does not exist?" << dendl;
     }
   }
+  */
 
+/*
+  if(!obc) {
   dout(0) << "wugy-debug: "
 	  << "oid: " << oid << "; "
 	  << "obc->obs.oi.soid: " << obc->obs.oi.soid << "; "
@@ -1546,15 +1560,73 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 	  << (op->may_read() ? " may_read; " : "")
 	  << (in_hit_set ? "in hit set" : "not in hit set") << "; "
 	  << dendl;
+  }
+*/
+
+  bool in_hit_set = false;
+  if (hit_set) {
+    /*if (obc.get()) {
+      if (obc->obs.oi.soid != hobject_t() && hit_set->contains(obc->obs.oi.soid))
+	in_hit_set = true;
+    } else {*/
+    if (missing_oid != hobject_t() && hit_set->contains(missing_oid))
+	in_hit_set = true;
+    //}
+    if (hit_set->is_full() ||
+	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
+	//dout(0) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
+      	hit_set_persist();
+    }
+    hit_set->insert(oid);
+  }/* else {
+    dout(0) << "wugy-debug: hit_set has not setup!" << dendl;
+  }*/
+
+  /*
+  dout(0) << "wugy-debug: "
+	  << "oid: " << oid << "; "
+	  << "obc->obs.oi.soid: " << obc->obs.oi.soid << "; "
+	  << (op->may_write() ? " may_write; " : "")
+	  << (op->may_read() ? " may_read; " : "")
+	  << (in_hit_set ? "in hit set" : "not in hit set") << "; "
+	  << dendl;
+  */
 
   if (agent_state) {
     if (agent_choose_mode(false, op))
       return;
   }
 
+  /*
+  dout(0) << "wugy-debug: "
+	  << "oid: " << oid << "; "
+	  << (op->may_write() ? " may_write; " : "")
+	  << (op->may_read() ? " may_read; " : "")
+	  << (op->may_cache() ? " may_cache; " : "")
+	  << dendl;
+
+  if(op->may_write()) {
+	dout(0) << "obc->obs.exists: " << obc->obs.exists << dendl;
+  } else if(op->may_read()) {
+	if(obc) dout(0) << "obc->obs.exists: " << obc->obs.exists << dendl;
+	else	dout(0) << "obc is null" << dendl;
+  }
+  */
+
   if ((m->get_flags() & CEPH_OSD_FLAG_IGNORE_CACHE) == 0 &&
       maybe_handle_cache(op, write_ordered, obc, r, missing_oid, false, in_hit_set))
     return;
+
+  // not handled by cache --> cache hit
+  // write: obc && obc->obs.exists
+  // read: !obc
+
+  /*
+  dout(0) << "wugy-debug: "
+	  << "oid: " << oid << "; "
+	  << "not handled by cache!"
+	  << dendl;
+  */
 
   if (r && (r != -ENOENT || !obc)) {
     dout(20) << __func__ << "find_object_context got error " << r << dendl;
