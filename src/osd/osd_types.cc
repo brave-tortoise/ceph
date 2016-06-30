@@ -946,6 +946,17 @@ void pg_pool_t::calc_pg_masks()
   pgp_num_mask = (1 << calc_bits_of(pgp_num-1)) - 1;
 }
 
+void pg_pool_t::calc_temp_inc()
+{
+  uint32_t inc = max_temp_increment;
+  uint32_t len = hit_set_count - 1;
+  temp_increment.resize(len);
+  for(uint32_t i = 0; i < len; i++) {
+    inc = inc * hit_set_decay_factor / 100;
+    temp_increment[i] = inc;
+  }
+}
+
 unsigned pg_pool_t::get_pg_num_divisor(pg_t pgid) const
 {
   if (pg_num == pg_num_mask + 1)
@@ -1226,7 +1237,8 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
-  ENCODE_START(17, 5, bl);
+  //ENCODE_START(17, 5, bl);
+  ENCODE_START(18, 5, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1268,12 +1280,15 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(last_force_op_resend, bl);
   ::encode(min_read_recency_for_promote, bl);
   ::encode(expected_num_objects, bl);
+  ::encode(max_temp_increment, bl);
+  ::encode(hit_set_decay_factor, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(17, 5, 5, bl);
+  //DECODE_START_LEGACY_COMPAT_LEN(17, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(18, 5, 5, bl);
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1385,8 +1400,16 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   } else {
     expected_num_objects = 0;
   }
+  if (struct_v >= 18) {
+    ::decode(max_temp_increment, bl);
+    ::decode(hit_set_decay_factor, bl);
+  } else {
+    max_temp_increment = 1000;
+    hit_set_decay_factor = 80;
+  }
   DECODE_FINISH(bl);
   calc_pg_masks();
+  calc_temp_inc();
 }
 
 void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)

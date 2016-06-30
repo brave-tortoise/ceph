@@ -1527,42 +1527,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
-  // cache hit
-  /*
-  if(r == 0) {
-    if(missing_oid == hobject_t()) {
-	dout(0) << "wugy-debug: "
-		<< "osd: " << oid << "; "
-		<< "cache hit or new write" << dendl;
-    } else {
-	dout(0) << "wugy-debug: "
-		<< "puzzling?" << dendl;
-    }
-  } else {
-    if(missing_oid != hobject_t()) {
-	dout(0) << "wugy-debug: "
-		<< "osd: " << oid << "; "
-		<< "cache miss" << dendl;
-    } else {
-	dout(0) << "wugy-debug: "
-		<< "osd: " << oid << "; "
-		<< "object does not exist?" << dendl;
-    }
-  }
-  */
-
-/*
-  if(!obc) {
-  dout(0) << "wugy-debug: "
-	  << "oid: " << oid << "; "
-	  << "obc->obs.oi.soid: " << obc->obs.oi.soid << "; "
-	  << (op->may_write() ? " may_write; " : "")
-	  << (op->may_read() ? " may_read; " : "")
-	  << (in_hit_set ? "in hit set" : "not in hit set") << "; "
-	  << dendl;
-  }
-*/
-
   bool in_hit_set = false;
   if (hit_set) {
     /*if (obc.get()) {
@@ -1578,40 +1542,12 @@ void ReplicatedPG::do_op(OpRequestRef& op)
       	hit_set_persist();
     }
     hit_set->insert(oid);
-  }/* else {
-    dout(0) << "wugy-debug: hit_set has not setup!" << dendl;
-  }*/
-
-  /*
-  dout(0) << "wugy-debug: "
-	  << "oid: " << oid << "; "
-	  << "obc->obs.oi.soid: " << obc->obs.oi.soid << "; "
-	  << (op->may_write() ? " may_write; " : "")
-	  << (op->may_read() ? " may_read; " : "")
-	  << (in_hit_set ? "in hit set" : "not in hit set") << "; "
-	  << dendl;
-  */
+  }
 
   if (agent_state) {
     if (agent_choose_mode(false, op))
       return;
   }
-
-  /*
-  dout(0) << "wugy-debug: "
-	  << "oid: " << oid << "; "
-	  << (op->may_write() ? " may_write; " : "")
-	  << (op->may_read() ? " may_read; " : "")
-	  << (op->may_cache() ? " may_cache; " : "")
-	  << dendl;
-
-  if(op->may_write()) {
-	dout(0) << "obc->obs.exists: " << obc->obs.exists << dendl;
-  } else if(op->may_read()) {
-	if(obc) dout(0) << "obc->obs.exists: " << obc->obs.exists << dendl;
-	else	dout(0) << "obc is null" << dendl;
-  }
-  */
 
   if ((m->get_flags() & CEPH_OSD_FLAG_IGNORE_CACHE) == 0 &&
       maybe_handle_cache(op, write_ordered, obc, r, missing_oid, false, in_hit_set))
@@ -1620,13 +1556,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   // not handled by cache --> cache hit
   // write: obc && obc->obs.exists
   // read: !obc
-
-  /*
-  dout(0) << "wugy-debug: "
-	  << "oid: " << oid << "; "
-	  << "not handled by cache!"
-	  << dendl;
-  */
 
   if (r && (r != -ENOENT || !obc)) {
     dout(20) << __func__ << "find_object_context got error " << r << dendl;
@@ -10670,7 +10599,7 @@ bool ReplicatedPG::agent_work(int start_max)
   if (++agent_state->hist_age > g_conf->osd_agent_hist_halflife) {
     dout(20) << __func__ << " resetting atime and temp histograms" << dendl;
     agent_state->hist_age = 0;
-    agent_state->atime_hist.decay();
+    //agent_state->atime_hist.decay();
     agent_state->temp_hist.decay();
   }
 
@@ -10856,11 +10785,19 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
   }
 
   if (agent_state->evict_mode != TierAgentState::EVICT_MODE_FULL) {
-    // is this object old and/or cold enough?
-    int atime = -1, temp = 0;
-    if (hit_set)
-      agent_estimate_atime_temp(soid, &atime, NULL /*FIXME &temp*/);
+    // is this object cold enough?
+    int temp = 0;
+    if(hit_set)
+	agent_estimate_temp(soid, &temp);
+    
+    uint64_t temp_lower = 0, temp_upper = 0;
+    agent_state->temp_hist.add(temp);
+    agent_state->temp_hist.get_position_micro(temp, &temp_lower, &temp_upper);
 
+    if (temp_upper >= agent_state->evict_effort)
+      return false;
+
+    /*
     uint64_t atime_upper = 0, atime_lower = 0;
     if (atime < 0 && obc->obs.oi.mtime != utime_t()) {
       if (obc->obs.oi.local_mtime != utime_t()) {
@@ -10883,11 +10820,6 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     }
 
     unsigned temp_upper = 0, temp_lower = 0;
-    /*
-    // FIXME: bound atime based on creation time?
-    agent_state->temp_hist.add(atime);
-    agent_state->temp_hist.get_position_micro(temp, &temp_lower, &temp_upper);
-    */
 
     dout(20) << __func__
 	     << " atime " << atime
@@ -10909,6 +10841,7 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
 
     if (1000000 - atime_upper >= agent_state->evict_effort)
       return false;
+    */
   }
 
   if (!obc->get_write(OpRequestRef())) {
@@ -11153,6 +11086,29 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
   return requeued;
 }
 
+void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
+{
+  assert(hit_set);
+
+  *temp = 0;
+  if(hit_set->contains(oid))
+    *temp = pool.info.max_temp_increment;
+
+  // hit_set_map: old-->new
+  // reverse traverse: new-->old
+  uint32_t i = 0;
+  for (map<time_t,HitSetRef>::reverse_iterator p =
+	 agent_state->hit_set_map.rbegin();
+       p != agent_state->hit_set_map.rend();
+       ++p, ++i) {
+
+    if (p->second->contains(oid))
+      *temp += pool.info.temp_increment[i];
+  }
+}
+
+
+/*
 void ReplicatedPG::agent_estimate_atime_temp(const hobject_t& oid,
 					     int *atime, int *temp)
 {
@@ -11182,7 +11138,7 @@ void ReplicatedPG::agent_estimate_atime_temp(const hobject_t& oid,
     }
   }
 }
-
+*/
 
 // ==========================================================================================
 // SCRUB

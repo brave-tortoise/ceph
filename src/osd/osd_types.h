@@ -1000,6 +1000,8 @@ public:
     hit_set_params = HitSet::Params();
     hit_set_period = 0;
     hit_set_count = 0;
+
+    temp_increment.clear();
   }
 
   uint64_t target_max_bytes;   ///< tiering: target max pool size
@@ -1020,6 +1022,10 @@ public:
 
   uint64_t expected_num_objects; ///< expected number of objects on this pool, a value of 0 indicates
                                  ///< user does not specify any expected value
+
+  uint32_t max_temp_increment;
+  uint32_t hit_set_decay_factor;
+  vector<uint32_t> temp_increment;
 
   pg_pool_t()
     : flags(0), type(0), size(0), min_size(0),
@@ -1044,7 +1050,9 @@ public:
       hit_set_count(0),
       min_read_recency_for_promote(0),
       stripe_width(0),
-      expected_num_objects(0)
+      expected_num_objects(0),
+      max_temp_increment(0),
+      hit_set_decay_factor(0)
   { }
 
   void dump(Formatter *f) const;
@@ -1141,6 +1149,7 @@ public:
 
   static int calc_bits_of(int t);
   void calc_pg_masks();
+  void calc_temp_inc();
 
   /*
    * we have two snap modes:
