@@ -6466,8 +6466,8 @@ done:
     ntp->hit_set_count = g_conf->osd_tier_default_cache_hit_set_count;
     ntp->hit_set_period = g_conf->osd_tier_default_cache_hit_set_period;
     ntp->min_read_recency_for_promote = g_conf->osd_tier_default_cache_min_read_recency_for_promote;
-    ntp->max_temp_increment = g_conf->osd_tier_default_cache_max_temp_increment;
-    ntp->hit_set_decay_factor = g_conf->osd_tier_default_cache_hit_set_decay_factor;
+    ntp->max_temp_increment = 1000; //g_conf->osd_tier_default_cache_max_temp_increment;
+    ntp->hit_set_decay_factor = 80; //g_conf->osd_tier_default_cache_hit_set_decay_factor;
     ntp->hit_set_params = hsp;
     ntp->target_max_bytes = size;
     ss << "pool '" << tierpoolstr << "' is now (or already was) a cache tier of '" << poolstr << "'";
