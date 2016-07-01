@@ -948,6 +948,8 @@ void pg_pool_t::calc_pg_masks()
 
 void pg_pool_t::calc_temp_inc()
 {
+  if(!hit_set_count)	return;
+
   uint32_t inc = max_temp_increment;
   uint32_t len = hit_set_count - 1;
   temp_increment.resize(len);
