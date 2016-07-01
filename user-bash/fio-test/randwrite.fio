@@ -6,13 +6,22 @@
 ioengine=rbd
 clientname=admin
 pool=hdd-pool
-rbdname=test
 rw=randwrite
 bs=4k
 #size=20g
-ramp_time=20
-runtime=100
+ramp_time=30
+runtime=300
 #time_based
+iodepth=128
 
-[rbd_iodepth512]
-iodepth=512
+[rbd-test1]
+rbdname=test1
+
+[rbd-test2]
+rbdname=test2
+
+[rbd-test3]
+rbdname=test3
+
+[rbd-test4]
+rbdname=test4

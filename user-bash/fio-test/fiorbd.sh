@@ -5,5 +5,3 @@ do
 done
 
 fio $1
-#fio rbd.fio
-#fio rbd2.fio
