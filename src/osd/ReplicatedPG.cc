@@ -1554,8 +1554,9 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     return;
 
   // not handled by cache --> cache hit
-  // write: obc && obc->obs.exists
-  // read: !obc
+  // cache hit: obc && obc->obs.exists
+  // read miss: !obc
+  // write miss: obc && !obc->obs.exists
 
   if (r && (r != -ENOENT || !obc)) {
     dout(20) << __func__ << "find_object_context got error " << r << dendl;
@@ -10794,7 +10795,12 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     agent_state->temp_hist.add(temp);
     agent_state->temp_hist.get_position_micro(temp, &temp_lower, &temp_upper);
 
-    if (temp_upper >= agent_state->evict_effort)
+    dout(10) << "wugy-debug: "
+	    << "temp = " << temp << "; "
+	    << "hotter than: " << temp_lower << " objects; "
+	    << "evict effort: " << agent_state->evict_effort << dendl;
+
+    if (temp_lower >= agent_state->evict_effort)
       return false;
 
     /*
@@ -10906,6 +10912,9 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
     return requeued;
   }
 
+  //dout(0) << "wugy-deug: "
+  //	  << "hit_set insert count: " << hit_set->insert_count() << dendl; 
+
   uint64_t divisor = pool.info.get_pg_num_divisor(info.pgid.pgid);
   assert(divisor > 0);
 
@@ -10979,7 +10988,7 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
     if (full_objects_micro > full_micro)
       full_micro = full_objects_micro;
   }
-  dout(20) << __func__ << " dirty " << ((float)dirty_micro / 1000000.0)
+  dout(10) << __func__ << " dirty " << ((float)dirty_micro / 1000000.0)
 	   << " full " << ((float)full_micro / 1000000.0)
 	   << dendl;
 
