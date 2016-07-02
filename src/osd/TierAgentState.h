@@ -23,6 +23,7 @@ struct TierAgentState {
   bool delaying;
 
   /// histogram of ages we've encountered
+  //pow2_hist_t atime_hist;
   pow2_hist_t temp_hist;
   int hist_age;
 

@@ -909,6 +909,7 @@ protected:
   /// @param temperature [out] relative temperature (# hitset bins we appear in)
   // void agent_estimate_atime_temp(const hobject_t& oid,
   //				 int *atime, int *temperature);
+  //void agent_estimate_atime_temp(const hobject_t& oid, int * atime, int * temp);
   void agent_estimate_temp(const hobject_t& oid, int * temp);
 
   /// stop the agent

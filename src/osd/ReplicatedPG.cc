@@ -10532,6 +10532,11 @@ bool ReplicatedPG::agent_work(int start_max)
   for (vector<hobject_t>::iterator p = ls.begin();
        p != ls.end();
        ++p) {
+    if(object_contexts.lookup(*p)) {
+      dout(20) << __func__ << " skip (hot object)" << *p << dendl;
+      osd->logger->inc(l_osd_agent_skip);
+      continue;
+    }
     if (p->nspace == cct->_conf->osd_hit_set_namespace) {
       dout(20) << __func__ << " skip (hit set) " << *p << dendl;
       osd->logger->inc(l_osd_agent_skip);
@@ -10804,6 +10809,10 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
       return false;
 
     /*
+    int atime = -1, temp = 0;
+    if (hit_set)
+      agent_estimate_atime_temp(soid, &atime, NULL);
+    
     uint64_t atime_upper = 0, atime_lower = 0;
     if (atime < 0 && obc->obs.oi.mtime != utime_t()) {
       if (obc->obs.oi.local_mtime != utime_t()) {
@@ -10842,6 +10851,11 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     f->flush(*_dout);
     delete f;
     *_dout << dendl;
+
+    dout(0) << "wugy-debug: "
+	    << "atime = " << atime << "; "
+	    << "younger than: " << 1000000 - atime_upper << " objects; "
+	    << "evict effort: " << agent_state->evict_effort << dendl;
 
     // FIXME: ignore temperature for now.
 
@@ -11043,6 +11057,10 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
     dout(30) << __func__ << " evict_effort " << was << " quantized by " << inc << " to " << evict_effort << dendl;
   }
 
+  //uint64_t max_dirty_objects = flush_target * pool.info.target_max_objects / 1000000 / divisor;
+  //dout(0) << "wugy-debug: max_dirty_objects: " << max_dirty_objects
+  //	<< "; object_contexts max_size: " << object_contexts.max_size << dendl;
+
   bool old_idle = agent_state->is_idle();
   if (flush_mode != agent_state->flush_mode) {
     dout(5) << __func__ << " flush_mode "
@@ -11115,8 +11133,6 @@ void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
       *temp += pool.info.temp_increment[i];
   }
 }
-
-
 /*
 void ReplicatedPG::agent_estimate_atime_temp(const hobject_t& oid,
 					     int *atime, int *temp)
@@ -11148,7 +11164,6 @@ void ReplicatedPG::agent_estimate_atime_temp(const hobject_t& oid,
   }
 }
 */
-
 // ==========================================================================================
 // SCRUB
 
