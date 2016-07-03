@@ -56,3 +56,47 @@ void pow2_hist_t::decay(int bits)
   }
   _contract();
 }
+
+// -- pow2_hist_t --
+void pow2_hist_new_t::dump(Formatter *f) const
+{
+  f->open_array_section("histogram");
+  for(unsigned i = low_bin; i <= high_bin; i++) {
+    f->dump_int("count", h[i]);
+  }
+  f->close_section();
+  f->dump_int("low_bin", low_bin);
+  f->dump_int("high_bin", high_bin);
+  f->dump_int("total", total);
+}
+
+void pow2_hist_new_t::encode(bufferlist& bl) const
+{
+  ENCODE_START(1, 1, bl);
+  ::encode(h, bl);
+  ::encode(low_bin, bl);
+  ::encode(high_bin, bl);
+  ::encode(total, bl);
+  ENCODE_FINISH(bl);
+}
+
+void pow2_hist_new_t::decode(bufferlist::iterator& p)
+{
+  DECODE_START(1, p);
+  ::decode(h, p);
+  ::decode(low_bin, p);
+  ::decode(high_bin, p);
+  ::decode(total, p);
+  DECODE_FINISH(p);
+}
+
+void pow2_hist_new_t::decay(int bits)
+{
+  uint64_t total_decay = 0;
+  for(unsigned i = low_bin; i <= high_bin; i++) {
+    h[i] >>= bits;
+    total_decay += h[i];
+  }
+  total = total_decay;
+  _contract();
+}

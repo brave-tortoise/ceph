@@ -132,4 +132,92 @@ public:
 };
 WRITE_CLASS_ENCODER(pow2_hist_t)
 
+
+/**
+ * power of 2 histogram
+ */
+struct pow2_hist_new_t { //
+  /**
+   * histogram
+   *
+   * bin size is 2^index
+   * value is count of elements that are <= the current bin but > the previous bin.
+   */
+  std::vector<int32_t> h;
+  unsigned low_bin, high_bin;
+  uint64_t total;
+
+private:
+  /// drop useless trailing 0's
+  void _contract() {
+    while (low_bin < 31 && h[low_bin] == 0)
+	++low_bin;
+    while (high_bin > 0 && h[high_bin] == 0)
+      	--high_bin;
+  }
+
+public:
+  pow2_hist_new_t() : low_bin(31), high_bin(0), total(0) {
+    h.resize(32);
+  }
+
+  void clear() {
+    h.clear();
+    low_bin = 31;
+    high_bin = 0;
+    total = 0;
+  }
+
+  void add(int32_t v) {
+    unsigned bin = calc_bits_of(v);
+    if(bin > high_bin) {
+	high_bin = bin;
+    } else if(bin < low_bin) {
+	low_bin = bin;
+    }
+    h[bin]++;
+  }
+
+  static unsigned calc_bits_of(int t) {
+    unsigned b = 0;
+    while (t > 0) {
+      t = t >> 1;
+      b++;
+    }
+    return b;
+  }
+
+  /// get a value's position in the histogram.
+  ///
+  /// positions are represented as values in the range [0..1000000]
+  /// (millionths on the unit interval).
+  ///
+  /// @param v [in] value (non-negative)
+  /// @param lower [out] pointer to lower-bound (0..1000000)
+  /// @param upper [out] pointer to the upper bound (0..1000000)
+  void get_position_micro(int32_t v, uint64_t *lower) {
+    unsigned bin = calc_bits_of(v);
+    uint64_t lower_sum;
+    if(bin == high_bin) {
+	lower_sum = total - h[high_bin];
+    } else {
+	lower_sum = 0;
+    	for (unsigned i=low_bin; i<bin; ++i) {
+	    lower_sum += h[i];
+    	}
+    }
+    if (total > 0) {
+      *lower = lower_sum * 1000000 / total;
+    }
+  }
+
+  /// decay histogram by N bits (default 1, for a halflife)
+  void decay(int bits = 1);
+
+  void dump(Formatter *f) const;
+  void encode(bufferlist &bl) const;
+  void decode(bufferlist::iterator &bl);
+};
+WRITE_CLASS_ENCODER(pow2_hist_new_t)
+
 #endif /* CEPH_HISTOGRAM_H */

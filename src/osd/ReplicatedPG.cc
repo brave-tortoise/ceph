@@ -10796,9 +10796,9 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     if(hit_set)
 	agent_estimate_temp(soid, &temp);
     
-    uint64_t temp_lower = 0, temp_upper = 0;
+    uint64_t temp_lower = 0;
     agent_state->temp_hist.add(temp);
-    agent_state->temp_hist.get_position_micro(temp, &temp_lower, &temp_upper);
+    agent_state->temp_hist.get_position_micro(temp, &temp_lower);
 
     dout(10) << "wugy-debug: "
 	    << "temp = " << temp << "; "

@@ -1406,7 +1406,7 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
     ::decode(max_temp_increment, bl);
     ::decode(hit_set_decay_factor, bl);
   } else {
-    max_temp_increment = 1000;
+    max_temp_increment = 10000;
     hit_set_decay_factor = 80;
   }
   DECODE_FINISH(bl);

@@ -24,7 +24,7 @@ struct TierAgentState {
 
   /// histogram of ages we've encountered
   //pow2_hist_t atime_hist;
-  pow2_hist_t temp_hist;
+  pow2_hist_new_t temp_hist;
   int hist_age;
 
   /// past HitSet(s) (not current)
