@@ -10602,6 +10602,11 @@ bool ReplicatedPG::agent_work(int start_max)
     }
   }
 
+  dout(20) << "wugy-debug: "
+	<< "hist_age: " << agent_state->hist_age
+	<< "; temp_hist total: " << agent_state->temp_hist.total
+	<< dendl;
+
   if (++agent_state->hist_age > g_conf->osd_agent_hist_halflife) {
     dout(20) << __func__ << " resetting atime and temp histograms" << dendl;
     agent_state->hist_age = 0;
@@ -10800,7 +10805,7 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     agent_state->temp_hist.add(temp);
     agent_state->temp_hist.get_position_micro(temp, &temp_lower);
 
-    dout(10) << "wugy-debug: "
+    dout(20) << "wugy-debug: "
 	    << "temp = " << temp << "; "
 	    << "hotter than: " << temp_lower << " objects; "
 	    << "evict effort: " << agent_state->evict_effort << dendl;

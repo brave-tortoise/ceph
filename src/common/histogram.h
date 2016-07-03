@@ -176,6 +176,7 @@ public:
 	low_bin = bin;
     }
     h[bin]++;
+    total++;
   }
 
   static unsigned calc_bits_of(int t) {
@@ -196,6 +197,9 @@ public:
   /// @param lower [out] pointer to lower-bound (0..1000000)
   /// @param upper [out] pointer to the upper bound (0..1000000)
   void get_position_micro(int32_t v, uint64_t *lower) {
+    if(total < 10)
+	*lower = 1000000;
+
     unsigned bin = calc_bits_of(v);
     uint64_t lower_sum;
     if(bin == high_bin) {
@@ -206,9 +210,8 @@ public:
 	    lower_sum += h[i];
     	}
     }
-    if (total > 0) {
-      *lower = lower_sum * 1000000 / total;
-    }
+
+    *lower = lower_sum * 1000000 / total;
   }
 
   /// decay histogram by N bits (default 1, for a halflife)
