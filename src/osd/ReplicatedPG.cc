@@ -1529,25 +1529,27 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   bool in_hit_set = false;
   if (hit_set) {
-    /*if (obc.get()) {
-      if (obc->obs.oi.soid != hobject_t() && hit_set->contains(obc->obs.oi.soid))
+    if (missing_oid != hobject_t() && hit_set->contains(missing_oid) && (!op->been_inserted || op->been_in_hit_set)) {
 	in_hit_set = true;
-    } else {*/
-    if (missing_oid != hobject_t() && hit_set->contains(missing_oid))
-	in_hit_set = true;
-    //}
+	op->been_in_hit_set = true;
+    }
+
     if (hit_set->is_full() ||
 	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
 	//dout(0) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
       	hit_set_persist();
     }
-    hit_set->insert(oid);
+
+    if(!op->been_inserted) {
+    	hit_set->insert(oid);
+	op->been_inserted = true;
+    }
   }
 
-  if (agent_state) {
+  /*if (agent_state) {
     if (agent_choose_mode(false, op))
       return;
-  }
+  }*/
 
   if ((m->get_flags() & CEPH_OSD_FLAG_IGNORE_CACHE) == 0 &&
       maybe_handle_cache(op, write_ordered, obc, r, missing_oid, false, in_hit_set))
@@ -10812,61 +10814,6 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
 
     if (temp_lower >= agent_state->evict_effort)
       return false;
-
-    /*
-    int atime = -1, temp = 0;
-    if (hit_set)
-      agent_estimate_atime_temp(soid, &atime, NULL);
-    
-    uint64_t atime_upper = 0, atime_lower = 0;
-    if (atime < 0 && obc->obs.oi.mtime != utime_t()) {
-      if (obc->obs.oi.local_mtime != utime_t()) {
-        atime = ceph_clock_now(NULL).sec() - obc->obs.oi.local_mtime;
-      } else {
-        atime = ceph_clock_now(NULL).sec() - obc->obs.oi.mtime;
-      }
-    }
-    if (atime < 0) {
-      if (hit_set) {
-        atime = pool.info.hit_set_period * pool.info.hit_set_count; // "infinite"
-      } else {
-	atime_upper = 1000000;
-      }
-    }
-    if (atime >= 0) {
-      agent_state->atime_hist.add(atime);
-      agent_state->atime_hist.get_position_micro(atime, &atime_lower,
-						 &atime_upper);
-    }
-
-    unsigned temp_upper = 0, temp_lower = 0;
-
-    dout(20) << __func__
-	     << " atime " << atime
-	     << " pos " << atime_lower << "-" << atime_upper
-	     << ", temp " << temp
-	     << " pos " << temp_lower << "-" << temp_upper
-	     << ", evict_effort " << agent_state->evict_effort
-	     << dendl;
-    dout(30) << "agent_state:\n";
-    Formatter *f = Formatter::create("");
-    f->open_object_section("agent_state");
-    agent_state->dump(f);
-    f->close_section();
-    f->flush(*_dout);
-    delete f;
-    *_dout << dendl;
-
-    dout(0) << "wugy-debug: "
-	    << "atime = " << atime << "; "
-	    << "younger than: " << 1000000 - atime_upper << " objects; "
-	    << "evict effort: " << agent_state->evict_effort << dendl;
-
-    // FIXME: ignore temperature for now.
-
-    if (1000000 - atime_upper >= agent_state->evict_effort)
-      return false;
-    */
   }
 
   if (!obc->get_write(OpRequestRef())) {
