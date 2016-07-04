@@ -1385,7 +1385,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     op->may_cache() ||
     (m->get_flags() & CEPH_OSD_FLAG_RWORDERED);
 
-  dout(10) << "do_op " << *m
+  dout(0) << "do_op " << *m
 	   << (op->may_write() ? " may_write" : "")
 	   << (op->may_read() ? " may_read" : "")
 	   << (op->may_cache() ? " may_cache" : "")
