@@ -1385,7 +1385,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     op->may_cache() ||
     (m->get_flags() & CEPH_OSD_FLAG_RWORDERED);
 
-  dout(0) << "do_op " << *m
+  dout(20) << "do_op " << *m
 	   << (op->may_write() ? " may_write" : "")
 	   << (op->may_read() ? " may_read" : "")
 	   << (op->may_cache() ? " may_cache" : "")
@@ -1543,6 +1543,10 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     if(!op->been_inserted) {
     	hit_set->insert(oid);
 	op->been_inserted = true;
+
+	dout(10) << "wugy-debug: "
+		<< " flags " << ceph_osd_flag_string(m->get_flags())
+		<< dendl;
     }
   }
 
@@ -1555,7 +1559,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
       maybe_handle_cache(op, write_ordered, obc, r, missing_oid, false, in_hit_set))
     return;
 
-  // not handled by cache --> cache hit
+  // not handled by cache --> cache hit | create new object on cache
   // cache hit: obc && obc->obs.exists
   // read miss: !obc
   // write miss: obc && !obc->obs.exists
@@ -1763,6 +1767,11 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   ctx->src_obc = src_obc;
 
   execute_ctx(ctx);
+
+  // choose flush/evict mode after create a new object on cache
+  if (agent_state && can_create && !obc->obs.exists) {
+      agent_choose_mode();
+  }
 }
 
 bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
@@ -6687,6 +6696,9 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
   simple_repop_submit(repop);
 
   osd->logger->inc(l_osd_tier_promote);
+
+  // choose flush/evict mode after promotion
+  agent_choose_mode();
 }
 
 void ReplicatedPG::cancel_copy(CopyOpRef cop, bool requeue)
