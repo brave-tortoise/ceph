@@ -1582,7 +1582,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   }
 
   // io blocked on obc?
-  if (obc->is_blocked() && !be_flush_op)
+  if (obc->is_blocked() && !be_flush_op) {
     wait_for_blocked_object(obc->obs.oi.soid, op);
     return;
   }
