@@ -1485,9 +1485,10 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 		m->get_object_locator().get_pool(),
 		m->get_object_locator().nspace);
 
+  bool be_flush_op = m->get_flags() & CEPH_OSD_FLAG_FLUSH;
+
   // io blocked on obc?
-  if (((m->get_flags() & CEPH_OSD_FLAG_FLUSH) == 0) &&
-      maybe_await_blocked_snapset(oid, op)) {
+  if(!be_flush_op && maybe_await_blocked_snapset(oid, op)) {
     return;
   }
 
@@ -1528,7 +1529,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   }
 
   bool in_hit_set = false;
-  if (hit_set) {
+  if (hit_set && !be_flush_op) {
     if (missing_oid != hobject_t() && hit_set->contains(missing_oid) && (!op->been_inserted || op->been_in_hit_set)) {
 	in_hit_set = true;
 	op->been_in_hit_set = true;
@@ -1536,7 +1537,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
     if (hit_set->is_full() ||
 	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
-	//dout(0) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
+	dout(20) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
       	hit_set_persist();
     }
 
@@ -1544,7 +1545,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     	hit_set->insert(oid);
 	op->been_inserted = true;
 
-	dout(10) << "wugy-debug: "
+	dout(20) << "wugy-debug: "
 		<< " flags " << ceph_osd_flag_string(m->get_flags())
 		<< dendl;
     }
@@ -1581,8 +1582,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   }
 
   // io blocked on obc?
-  if (obc->is_blocked() &&
-      (m->get_flags() & CEPH_OSD_FLAG_FLUSH) == 0) {
+  if (obc->is_blocked() && !be_flush_op)
     wait_for_blocked_object(obc->obs.oi.soid, op);
     return;
   }
@@ -1718,7 +1718,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   if (m->get_flags() & CEPH_OSD_FLAG_SKIPRWLOCKS) {
     dout(20) << __func__ << ": skipping rw locks" << dendl;
-  } else if (m->get_flags() & CEPH_OSD_FLAG_FLUSH) {
+  } else if (be_flush_op) {
     dout(20) << __func__ << ": part of flush, will ignore write lock" << dendl;
 
     // verify there is in fact a flush in progress
@@ -3768,6 +3768,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       break;
 
     case CEPH_OSD_OP_CACHE_EVICT:
+	dout(20) << "wugy-debug: cache evict" << dendl;
       ++ctx->num_write;
       {
 	tracepoint(osd, do_osd_op_pre_cache_evict, soid.oid.name.c_str(), soid.snap.val);
@@ -4389,6 +4390,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       break;
     
     case CEPH_OSD_OP_DELETE:
+	dout(20) << "wugy-debug: delete object" << dendl;
       ++ctx->num_write;
       tracepoint(osd, do_osd_op_pre_delete, soid.oid.name.c_str(), soid.snap.val);
       result = _delete_oid(ctx, ctx->ignore_cache);
@@ -4996,6 +4998,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       break;
 
     case CEPH_OSD_OP_COPY_GET:
+	dout(20) << "wugy-debug: copy get" << dendl;
       ++ctx->num_read;
       tracepoint(osd, do_osd_op_pre_copy_get, soid.oid.name.c_str(), soid.snap.val);
       result = fill_in_copy_get(ctx, bp, osd_op, ctx->obc, false);
@@ -5004,6 +5007,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       break;
 
     case CEPH_OSD_OP_COPY_FROM:
+	dout(20) << "wugy-debug: copy from" << dendl;
       ++ctx->num_write;
       {
 	object_t src_name;
@@ -10889,9 +10893,6 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
     dout(20) << __func__ << this << " delaying, ignored" << dendl;
     return requeued;
   }
-
-  //dout(0) << "wugy-deug: "
-  //	  << "hit_set insert count: " << hit_set->insert_count() << dendl; 
 
   uint64_t divisor = pool.info.get_pg_num_divisor(info.pgid.pgid);
   assert(divisor > 0);
