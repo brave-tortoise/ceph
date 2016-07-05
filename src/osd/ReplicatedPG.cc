@@ -10894,6 +10894,17 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
     return requeued;
   }
 
+  TierAgentState::flush_mode_t flush_mode = TierAgentState::FLUSH_MODE_IDLE;
+  TierAgentState::evict_mode_t evict_mode = TierAgentState::EVICT_MODE_IDLE;
+  unsigned evict_effort = 0;
+
+  if (info.stats.stats_invalid) {
+    // idle; stats can't be trusted until we scrub.
+    dout(20) << __func__ << " stats invalid (post-split), idle" << dendl;
+    goto skip_calc;
+  }
+
+{
   uint64_t divisor = pool.info.get_pg_num_divisor(info.pgid.pgid);
   assert(divisor > 0);
 
@@ -10972,7 +10983,6 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
 	   << dendl;
 
   // flush mode
-  TierAgentState::flush_mode_t flush_mode = TierAgentState::FLUSH_MODE_IDLE;
   uint64_t flush_target = pool.info.cache_target_dirty_ratio_micro;
   uint64_t flush_slop = (float)flush_target * g_conf->osd_agent_slop;
   if (restart || agent_state->flush_mode == TierAgentState::FLUSH_MODE_IDLE)
@@ -10980,16 +10990,11 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
   else
     flush_target -= MIN(flush_target, flush_slop);
 
-  if (info.stats.stats_invalid) {
-    // idle; stats can't be trusted until we scrub.
-    dout(20) << __func__ << " stats invalid (post-split), idle" << dendl;
-  } else if (dirty_micro > flush_target) {
+  if (dirty_micro > flush_target) {
     flush_mode = TierAgentState::FLUSH_MODE_ACTIVE;
   }
 
   // evict mode
-  TierAgentState::evict_mode_t evict_mode = TierAgentState::EVICT_MODE_IDLE;
-  unsigned evict_effort = 0;
   uint64_t evict_target = pool.info.cache_target_full_ratio_micro;
   uint64_t evict_slop = (float)evict_target * g_conf->osd_agent_slop;
   if (restart || agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE)
@@ -10997,9 +11002,7 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
   else
     evict_target -= MIN(evict_target, evict_slop);
 
-  if (info.stats.stats_invalid) {
-    // idle; stats can't be trusted until we scrub.
-  } else if (full_micro > 1000000) {
+  if (full_micro > 1000000) {
     // evict anything clean
     evict_mode = TierAgentState::EVICT_MODE_FULL;
     evict_effort = 1000000;
@@ -11021,11 +11024,13 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
     assert(evict_effort >= inc && evict_effort <= 1000000);
     dout(30) << __func__ << " evict_effort " << was << " quantized by " << inc << " to " << evict_effort << dendl;
   }
+}
 
   //uint64_t max_dirty_objects = flush_target * pool.info.target_max_objects / 1000000 / divisor;
   //dout(0) << "wugy-debug: max_dirty_objects: " << max_dirty_objects
   //	<< "; object_contexts max_size: " << object_contexts.max_size << dendl;
 
+skip_calc:
   bool old_idle = agent_state->is_idle();
   if (flush_mode != agent_state->flush_mode) {
     dout(5) << __func__ << " flush_mode "
@@ -11098,37 +11103,7 @@ void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
       *temp += pool.info.temp_increment[i];
   }
 }
-/*
-void ReplicatedPG::agent_estimate_atime_temp(const hobject_t& oid,
-					     int *atime, int *temp)
-{
-  assert(hit_set);
-  *atime = -1;
-  if (temp)
-    *temp = 0;
-  if (hit_set->contains(oid)) {
-    *atime = 0;
-    if (temp)
-      ++(*temp);
-    else
-      return;
-  }
-  time_t now = ceph_clock_now(NULL).sec();
-  for (map<time_t,HitSetRef>::reverse_iterator p =
-	 agent_state->hit_set_map.rbegin();
-       p != agent_state->hit_set_map.rend();
-       ++p) {
-    if (p->second->contains(oid)) {
-      if (*atime < 0)
-	*atime = now - p->first;
-      if (temp)
-	++(*temp);
-      else
-	return;
-    }
-  }
-}
-*/
+
 // ==========================================================================================
 // SCRUB
 
