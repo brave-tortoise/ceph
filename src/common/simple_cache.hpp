@@ -100,4 +100,75 @@ public:
   }
 };
 
+
+// ========================================================================
+// lru cache for io access
+
+template <class T>
+class RWLRU {
+  Mutex lock;
+  size_t max_size;
+  map<T, typename list<T>::iterator> contents;
+  list<T> lru;
+
+  void trim_cache() {
+    while (lru.size() > max_size) {
+      contents.erase(lru.back());
+      lru.pop_back();
+    }
+  }
+
+  void _add(const T& entry) {
+    lru.push_front(entry);
+    contents[entry] = lru.begin();
+    trim_cache();
+  }
+
+public:
+  RWLRU(size_t max_size) : lock("RWLRU::lock"), max_size(max_size) {}
+
+  void clear(const T& entry) {
+    Mutex::Locker l(lock);
+    typename map<T, typename list<T>::iterator>::iterator i =
+      contents.find(entry);
+    if (i == contents.end())
+      return;
+    lru.erase(i->second);
+    contents.erase(i);
+  }
+
+  void set_size(size_t new_size) {
+    Mutex::Locker l(lock);
+    max_size = new_size;
+    trim_cache();
+  }
+
+  bool lookup(const T& entry) {
+    Mutex::Locker l(lock);
+    typename list<T>::iterator loc = contents.count(entry) ?
+      contents[entry] : lru.end();
+    if (loc != lru.end()) {
+      return true;
+    }
+    return false;
+  }
+
+  void adjust_or_add(const T& entry) {
+    Mutex::Locker l(lock);
+    typename list<T>::iterator loc = contents.count(entry) ?
+      contents[entry] : lru.end();
+    if (loc != lru.end()) {
+      lru.splice(lru.begin(), lru, loc);
+      return;
+    }
+    _add(entry);
+    return;
+  }
+
+  /*void add(const T& entry) {
+    Mutex::Locker l(lock);
+    _add(entry);
+  }*/
+};
+
 #endif

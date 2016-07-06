@@ -1530,6 +1530,12 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   bool in_hit_set = false;
   if (hit_set && !be_flush_op) {
+    if(can_create) {
+	osd->write_cache.adjust_or_add(oid);
+    } else if(op->may_read()) {
+	osd->read_cache.adjust_or_add(oid);
+    }
+
     if (missing_oid != hobject_t() && hit_set->contains(missing_oid) && (!op->been_inserted || op->been_in_hit_set)) {
 	in_hit_set = true;
 	op->been_in_hit_set = true;
@@ -10550,11 +10556,11 @@ bool ReplicatedPG::agent_work(int start_max)
   for (vector<hobject_t>::iterator p = ls.begin();
        p != ls.end();
        ++p) {
-    if(object_contexts.lookup(*p)) {
+    /*if(object_contexts.lookup(*p)) {
       dout(20) << __func__ << " skip (hot object)" << *p << dendl;
       osd->logger->inc(l_osd_agent_skip);
       continue;
-    }
+    }*/
     if (p->nspace == cct->_conf->osd_hit_set_namespace) {
       dout(20) << __func__ << " skip (hit set) " << *p << dendl;
       osd->logger->inc(l_osd_agent_skip);
@@ -10607,9 +10613,11 @@ bool ReplicatedPG::agent_work(int start_max)
     }
 
     if (agent_state->flush_mode != TierAgentState::FLUSH_MODE_IDLE &&
+	!osd->write_cache.lookup(*p) &&
 	agent_maybe_flush(obc))
       ++started;
     if (agent_state->evict_mode != TierAgentState::EVICT_MODE_IDLE &&
+	!osd->read_cache.lookup(*p) &&
 	agent_maybe_evict(obc))
       ++started;
     if (started >= start_max) {

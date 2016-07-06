@@ -236,6 +236,8 @@ OSDService::OSDService(OSD *osd) :
   map_cache(cct, cct->_conf->osd_map_cache_size),
   map_bl_cache(cct->_conf->osd_map_cache_size),
   map_bl_inc_cache(cct->_conf->osd_map_cache_size),
+  read_cache(cct->_conf->osd_read_cache_object_count),
+  write_cache(cct->_conf->osd_write_cache_object_count),
   in_progress_split_lock("OSDService::in_progress_split_lock"),
   stat_lock("OSD::stat_lock"),
   full_status_lock("OSDService::full_status_lock"),

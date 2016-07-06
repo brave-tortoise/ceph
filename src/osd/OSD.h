@@ -710,6 +710,11 @@ public:
   SimpleLRU<epoch_t, bufferlist> map_bl_cache;
   SimpleLRU<epoch_t, bufferlist> map_bl_inc_cache;
 
+  // osd read cache, not evict objects in cache
+  RWLRU<hobject_t> read_cache;
+  // osd write cache, not flush objects in cache
+  RWLRU<hobject_t> write_cache;
+
   OSDMapRef try_get_map(epoch_t e);
   OSDMapRef get_map(epoch_t e) {
     OSDMapRef ret(try_get_map(e));
