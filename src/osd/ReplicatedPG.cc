@@ -1874,11 +1874,11 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	if(!can_skip_promote(op)) {
 	  bool been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
 					pool.info.min_write_recency_for_promote, promote_op);
-	  dout(0) << "wugy-debug: "
-		  << "in_hit_set: " << in_hit_set << "; "
-		  << "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
-		  << (been_promoted ? "promote" : "not promote")
-		  << dendl;
+	  dout(20) << "wugy-debug: "
+		<< "in_hit_set: " << in_hit_set << "; "
+		<< "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
+		<< (been_promoted ? "promote" : "not promote")
+		<< dendl;
 	}
 
 	return true;
@@ -1899,11 +1899,11 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	if(!can_skip_promote(op)) {
 	  been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
 					pool.info.min_read_recency_for_promote, promote_op);
-	  dout(0) << "wugy-debug: "
-		  << "in_hit_set: " << in_hit_set << "; "
-		  << "min_read_recency_for_promote: " << pool.info.min_read_recency_for_promote << "; "
-		  << (been_promoted ? "promote" : "not promote")
-		  << dendl;
+	  dout(20) << "wugy-debug: "
+		<< "in_hit_set: " << in_hit_set << "; "
+		<< "min_read_recency_for_promote: " << pool.info.min_read_recency_for_promote << "; "
+		<< (been_promoted ? "promote" : "not promote")
+		<< dendl;
 	}
 	
 	if(!can_proxy_op && !been_promoted) {
@@ -11366,7 +11366,7 @@ void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
   if(hit_set->contains(oid)) {
     *temp = pool.info.max_temp_increment;
 
-    dout(0) << "wugy-debug: "
+    dout(20) << "wugy-debug: "
 	<< "max_temp_increment: " << pool.info.max_temp_increment
 	<< dendl;
   }

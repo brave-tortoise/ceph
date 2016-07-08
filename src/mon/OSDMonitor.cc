@@ -3113,6 +3113,10 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
 	f->dump_int("min_read_recency_for_promote", p->min_read_recency_for_promote);
       } else if (var == "min_write_recency_for_promote") {
 	f->dump_int("min_write_recency_for_promote", p->min_write_recency_for_promote);
+      } else if (var == "max_temp_increment") {
+	f->dump_int("max_temp_increment", p->max_temp_increment);
+      } else if (var == "hit_set_decay_factor") {
+	f->dump_int("hit_set_decay_factor", p->hit_set_decay_factor);
       } else if (var == "write_fadvise_dontneed") {
 	f->dump_string("write_fadvise_dontneed", p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ? "true" : "false");
       }
@@ -3168,6 +3172,10 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
 	ss << "min_read_recency_for_promote: " << p->min_read_recency_for_promote;
       } else if (var == "min_write_recency_for_promote") {
 	ss << "min_write_recency_for_promote: " << p->min_write_recency_for_promote;
+      } else if (var == "max_temp_increment") {
+	ss << "max_temp_increment: " << p->max_temp_increment;
+      } else if (var == "hit_set_decay_factor") {
+	ss << "hit_set_decay_factor: " << p->hit_set_decay_factor;
       } else if (var == "write_fadvise_dontneed") {
 	ss << "write_fadvise_dontneed: " <<  (p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ? "true" : "false");
       }
@@ -4419,6 +4427,18 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       return -EINVAL;
     }
     p.min_write_recency_for_promote = n;
+  } else if (var == "max_temp_increment") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.max_temp_increment = n;
+  } else if (var == "hit_set_decay_factor") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.hit_set_decay_factor = n;
   } else if (var == "write_fadvise_dontneed") {
     if (val == "true" || (interr.empty() && n == 1)) {
       p.flags |= pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED;
