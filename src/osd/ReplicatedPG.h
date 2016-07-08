@@ -1389,6 +1389,8 @@ protected:
   int get_pgls_filter(bufferlist::iterator& iter, PGLSFilter **pfilter);
 
   map<hobject_t, list<OpRequestRef> > in_progress_proxy_ops;
+  void kick_proxy_ops_blocked(hobject_t& soid);
+  void cancel_proxy_ops(bool requeue);
 
   // -- proxyread --
   map<ceph_tid_t, ProxyReadOpRef> proxyread_ops;
@@ -1396,9 +1398,9 @@ protected:
 
   void do_proxy_read(OpRequestRef op);
   void finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r);
-  void kick_proxy_read_blocked(hobject_t& soid);
+  //void kick_proxy_read_blocked(hobject_t& soid);
   void cancel_proxy_read(ProxyReadOpRef prdop);
-  void cancel_proxy_read_ops(bool requeue);
+  //void cancel_proxy_read_ops(bool requeue);
 
   friend struct C_ProxyRead;
 
