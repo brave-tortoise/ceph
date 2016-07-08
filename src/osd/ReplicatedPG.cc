@@ -1872,8 +1872,13 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 
 	// Promote too?
 	if(!can_skip_promote(op)) {
-	  maybe_promote(obc, missing_oid, oloc, in_hit_set,
-			pool.info.min_write_recency_for_promote, promote_op);
+	  bool been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
+					pool.info.min_write_recency_for_promote, promote_op);
+	  dout(0) << "wugy-debug: "
+		  << "in_hit_set: " << in_hit_set << "; "
+		  << "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
+		  << (been_promoted ? "promote" : "not promote")
+		  << dendl;
 	}
 
 	return true;
@@ -11297,7 +11302,7 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
 }
 
   //uint64_t max_dirty_objects = flush_target * pool.info.target_max_objects / 1000000 / divisor;
-  //dout(0) << "wugy-debug: max_dirty_objects: " << max_dirty_objects
+  //dout(20) << "wugy-debug: max_dirty_objects: " << max_dirty_objects
   //	<< "; object_contexts max_size: " << object_contexts.max_size << dendl;
 
 skip_calc:
@@ -11358,8 +11363,13 @@ void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
   assert(hit_set);
 
   *temp = 0;
-  if(hit_set->contains(oid))
+  if(hit_set->contains(oid)) {
     *temp = pool.info.max_temp_increment;
+
+    dout(0) << "wugy-debug: "
+	<< "max_temp_increment: " << pool.info.max_temp_increment
+	<< dendl;
+  }
 
   // hit_set_map: old-->new
   // reverse traverse: new-->old
@@ -11369,8 +11379,13 @@ void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
        p != agent_state->hit_set_map.rend();
        ++p, ++i) {
 
-    if (p->second->contains(oid))
+    if (p->second->contains(oid)) {
       *temp += pool.info.temp_increment[i];
+
+      dout(20) << "wugy-debug: "
+	<< "temp_increment: " << pool.info.temp_increment[i]
+	<< dendl;
+    }
   }
 }
 

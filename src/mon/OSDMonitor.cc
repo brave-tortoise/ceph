@@ -3111,6 +3111,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
        f->dump_string("erasure_code_profile", p->erasure_code_profile);
       } else if (var == "min_read_recency_for_promote") {
 	f->dump_int("min_read_recency_for_promote", p->min_read_recency_for_promote);
+      } else if (var == "min_write_recency_for_promote") {
+	f->dump_int("min_write_recency_for_promote", p->min_write_recency_for_promote);
       } else if (var == "write_fadvise_dontneed") {
 	f->dump_string("write_fadvise_dontneed", p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ? "true" : "false");
       }
@@ -3164,6 +3166,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
        ss << "erasure_code_profile: " << p->erasure_code_profile;
       } else if (var == "min_read_recency_for_promote") {
 	ss << "min_read_recency_for_promote: " << p->min_read_recency_for_promote;
+      } else if (var == "min_write_recency_for_promote") {
+	ss << "min_write_recency_for_promote: " << p->min_write_recency_for_promote;
       } else if (var == "write_fadvise_dontneed") {
 	ss << "write_fadvise_dontneed: " <<  (p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ? "true" : "false");
       }
@@ -4409,6 +4413,12 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       return -EINVAL;
     }
     p.min_read_recency_for_promote = n;
+  } else if (var == "min_write_recency_for_promote") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.min_write_recency_for_promote = n;
   } else if (var == "write_fadvise_dontneed") {
     if (val == "true" || (interr.empty() && n == 1)) {
       p.flags |= pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED;
@@ -6112,6 +6122,31 @@ done:
       err = -ENOTEMPTY;
       goto reply;
     }
+
+    string modestr = g_conf->osd_tier_default_cache_mode;
+    pg_pool_t::cache_mode_t mode = pg_pool_t::get_cache_mode_from_str(modestr);
+    if (mode < 0) {
+      ss << "osd tier cache default mode '" << modestr << "' is not a valid cache mode";
+      err = -EINVAL;
+      goto reply;
+    }
+    HitSet::Params hsp;
+    if (g_conf->osd_tier_default_cache_hit_set_type == "bloom") {
+      BloomHitSet::Params *bsp = new BloomHitSet::Params;
+      bsp->set_fpp(g_conf->osd_pool_default_hit_set_bloom_fpp);
+      hsp = HitSet::Params(bsp);
+    } else if (g_conf->osd_tier_default_cache_hit_set_type == "explicit_hash") {
+      hsp = HitSet::Params(new ExplicitHashHitSet::Params);
+    }
+    else if (g_conf->osd_tier_default_cache_hit_set_type == "explicit_object") {
+      hsp = HitSet::Params(new ExplicitObjectHitSet::Params);
+    } else {
+      ss << "osd tier cache default hit set type '" <<
+	g_conf->osd_tier_default_cache_hit_set_type << "' is not a known type";
+      err = -EINVAL;
+      goto reply;
+    }
+
     // go
     pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
     pg_pool_t *ntp = pending_inc.get_new_pool(tierpool_id, tp);
@@ -6120,8 +6155,23 @@ done:
       return true;
     }
     np->tiers.insert(tierpool_id);
+    np->read_tier = np->write_tier = tierpool_id;
     np->set_snap_epoch(pending_inc.epoch); // tier will update to our snap info
     ntp->tier_of = pool_id;
+    ntp->cache_mode = mode;
+    ntp->hit_set_count = g_conf->osd_tier_default_cache_hit_set_count;
+    ntp->hit_set_period = g_conf->osd_tier_default_cache_hit_set_period;
+    ntp->min_read_recency_for_promote = g_conf->osd_tier_default_cache_min_read_recency_for_promote;
+    ntp->min_write_recency_for_promote = g_conf->osd_tier_default_cache_min_write_recency_for_promote;
+    ntp->max_temp_increment = g_conf->osd_tier_default_cache_max_temp_increment;
+    ntp->hit_set_decay_factor = g_conf->osd_tier_default_cache_hit_set_decay_factor;
+    dout(20) << "wugy-debug: "
+	<< "OSDMonitor read configs: "
+	<< "min_write_recency_for_promote = " << ntp->min_write_recency_for_promote << "; "
+	<< "max_temp_increment = " << ntp->max_temp_increment
+	<< dendl;
+    ntp->hit_set_params = hsp;
+
     ss << "pool '" << tierpoolstr << "' is now (or already was) a tier of '" << poolstr << "'";
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
 					      get_last_committed() + 1));
@@ -6469,8 +6519,14 @@ done:
     ntp->min_write_recency_for_promote = g_conf->osd_tier_default_cache_min_write_recency_for_promote;
     ntp->max_temp_increment = g_conf->osd_tier_default_cache_max_temp_increment;
     ntp->hit_set_decay_factor = g_conf->osd_tier_default_cache_hit_set_decay_factor;
+    dout(20) << "wugy-debug: "
+	<< "OSDMonitor read configs: "
+	<< "min_write_recency_for_promote = " << ntp->min_write_recency_for_promote << "; "
+	<< "max_temp_increment = " << ntp->max_temp_increment
+	<< dendl;
     ntp->hit_set_params = hsp;
     ntp->target_max_bytes = size;
+
     ss << "pool '" << tierpoolstr << "' is now (or already was) a cache tier of '" << poolstr << "'";
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
 					      get_last_committed() + 1));

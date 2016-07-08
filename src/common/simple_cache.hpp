@@ -165,10 +165,9 @@ public:
     return;
   }
 
-  /*void add(const T& entry) {
-    Mutex::Locker l(lock);
-    _add(entry);
-  }*/
+  size_t get_size() {
+    return max_size;
+  }
 };
 
 #endif
