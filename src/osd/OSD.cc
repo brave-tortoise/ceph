@@ -2142,6 +2142,7 @@ void OSD::create_logger()
   osd_plb.add_u64_counter(l_osd_tier_clean, "tier_clean");
   osd_plb.add_u64_counter(l_osd_tier_delay, "tier_delay");
   osd_plb.add_u64_counter(l_osd_tier_proxy_read, "tier_proxy_read");
+  osd_plb.add_u64_counter(l_osd_tier_proxy_write, "tier_proxy_write");
 
   osd_plb.add_u64_counter(l_osd_agent_wake, "agent_wake");
   osd_plb.add_u64_counter(l_osd_agent_skip, "agent_skip");

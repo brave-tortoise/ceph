@@ -1830,8 +1830,12 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
   }
 
   // older versions do not proxy the feature bits.
-  bool can_proxy_read = get_osdmap()->get_up_osd_features() &
+  //bool can_proxy_read = get_osdmap()->get_up_osd_features() &
+    //CEPH_FEATURE_OSD_PROXY_FEATURES;
+
+  bool can_proxy_op = get_osdmap()->get_up_osd_features() &
     CEPH_FEATURE_OSD_PROXY_FEATURES;
+
   OpRequestRef promote_op;
 
   switch (pool.info.cache_mode) {
@@ -1839,7 +1843,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
     if (agent_state &&
 	agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL) {
       if (!op->may_write() && !op->may_cache() && !write_ordered) {
-	if (can_proxy_read) {
+	if (can_proxy_op) {
 	  dout(20) << __func__ << " cache pool full, proxying read" << dendl;
 	  do_proxy_read(op);
 	} else {
@@ -1852,59 +1856,52 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       waiting_for_cache_not_full.push_back(op);
       return true;
     }
-    if (can_skip_promote(op)) {
-      return false;
-    }
-    if (op->may_write() || write_ordered || !hit_set) {
-      promote_object(obc, missing_oid, oloc, op);
-      return true;
+
+    if(!hit_set) {
+	promote_object(obc, missing_oid, oloc, op);
+	return true;
     }
 
-    if (can_proxy_read)
-      do_proxy_read(op);
-    else
-      promote_op = op;   // for non-proxy case promote_object needs this
-
-    // Avoid duplicate promotion
-    if (obc.get() && obc->is_blocked()) {
-      return true;
-    }
-
-    // Promote too?
-    switch (pool.info.min_read_recency_for_promote) {
-    case 0:
-      promote_object(obc, missing_oid, oloc, promote_op);
-      break;
-    case 1:
-      // Check if in the current hit set
-      if (in_hit_set) {
-	promote_object(obc, missing_oid, oloc, promote_op);
-      } else if (!can_proxy_read) {
-	do_cache_redirect(op);
-      }
-      break;
-    default:
-      if (in_hit_set) {
-	promote_object(obc, missing_oid, oloc, promote_op);
-      } else {
-	// Check if in other hit sets
-	map<time_t,HitSetRef>::iterator itor;
-	bool in_other_hit_sets = false;
-	for (itor = agent_state->hit_set_map.begin(); itor != agent_state->hit_set_map.end(); ++itor) {
-	  if (itor->second->contains(missing_oid)) {
-	    in_other_hit_sets = true;
-	    break;
-	  }
+    if(op->may_write() || op->may_cache()) {
+	if(can_proxy_op) {
+	  do_proxy_write(op, missing_oid);
+	} else {
+	  promote_object(obc, missing_oid, oloc, op);
+	  return true;
 	}
-	if (in_other_hit_sets) {
-	  promote_object(obc, missing_oid, oloc, promote_op);
-	} else if (!can_proxy_read) {
+
+	// Promote too?
+	if(!can_skip_promote(op)) {
+	  maybe_promote(obc, missing_oid, oloc, in_hit_set,
+			pool.info.min_write_recency_for_promote, promote_op);
+	}
+
+	return true;
+    } else {
+	if(can_proxy_op) {
+	  do_proxy_read(op);
+	} else {
+	  promote_op = op;	// for non-proxy case promote_object needs this
+	}
+
+	// Avoid duplicate promotion
+	if (obc.get() && obc->is_blocked()) {
+      	  return true;
+    	}
+	
+	// Promote too?
+	bool been_promoted = false;
+	if(!can_skip_promote(op)) {
+	  been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
+					pool.info.min_read_recency_for_promote, promote_op);
+	}
+	
+	if(!can_proxy_op && !been_promoted) {
 	  do_cache_redirect(op);
 	}
-      }
-      break;
+
+	return true;
     }
-    return true;
 
   case pg_pool_t::CACHEMODE_FORWARD:
     do_cache_redirect(op);
@@ -1984,6 +1981,58 @@ bool ReplicatedPG::can_skip_promote(OpRequestRef op)
   return false;
 }
 
+bool ReplicatedPG::maybe_promote(ObjectContextRef obc,
+				 const hobject_t& missing_oid,
+				 const object_locator_t& oloc,
+				 bool in_hit_set,
+				 uint32_t recency,
+				 OpRequestRef promote_op)
+{
+
+  dout(20) << __func__ << " missing_oid " << missing_oid
+	   << "  in_hit_set " << in_hit_set << dendl;
+
+  switch(recency) {
+  case 0:
+    promote_object(obc, missing_oid, oloc, promote_op);
+    break;
+  case 1:
+    // Check if in the current hit set
+    if(in_hit_set) {
+	promote_object(obc, missing_oid, oloc, promote_op);
+    } else {
+	// not promote
+	return false;
+    }
+    break;
+  default:
+    if (in_hit_set) {
+	promote_object(obc, missing_oid, oloc, promote_op);
+    } else {
+	// Check if in other hit sets
+	const hobject_t& oid = obc.get() ? obc->obs.oi.soid : missing_oid;
+	map<time_t, HitSetRef>::reverse_iterator itor;
+	for(--recency, itor = agent_state->hit_set_map.rbegin();
+		recency && itor != agent_state->hit_set_map.rend();
+		--recency, ++itor) {
+	  if(itor->second->contains(oid)) {
+	    break;
+	  }
+	}
+
+	if(recency) {
+	  promote_object(obc, missing_oid, oloc, promote_op);
+	} else {
+	  // not promote
+	  return false;
+	}
+    }
+    break;
+  }
+
+  return true;
+}
+
 void ReplicatedPG::do_cache_redirect(OpRequestRef op)
 {
   MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
@@ -2056,7 +2105,7 @@ void ReplicatedPG::do_proxy_read(OpRequestRef op)
   fin->tid = tid;
   prdop->objecter_tid = tid;
   proxyread_ops[tid] = prdop;
-  in_progress_proxy_reads[soid].push_back(op);
+  in_progress_proxy_ops[soid].push_back(op);
 }
 
 void ReplicatedPG::finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r)
@@ -2082,9 +2131,9 @@ void ReplicatedPG::finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r)
   }
   proxyread_ops.erase(tid);
 
-  map<hobject_t, list<OpRequestRef> >::iterator q = in_progress_proxy_reads.find(oid);
-  if (q == in_progress_proxy_reads.end()) {
-    dout(10) << __func__ << " no in_progress_proxy_reads found" << dendl;
+  map<hobject_t, list<OpRequestRef> >::iterator q = in_progress_proxy_ops.find(oid);
+  if (q == in_progress_proxy_ops.end()) {
+    dout(10) << __func__ << " no in_progress_proxy_ops found" << dendl;
     return;
   }
   assert(q->second.size());
@@ -2095,7 +2144,7 @@ void ReplicatedPG::finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r)
   OpRequestRef op = *it;
   q->second.erase(it);
   if (q->second.size() == 0) {
-    in_progress_proxy_reads.erase(oid);
+    in_progress_proxy_ops.erase(oid);
   }
 
   osd->logger->inc(l_osd_tier_proxy_read);
@@ -2111,14 +2160,14 @@ void ReplicatedPG::finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r)
 
 void ReplicatedPG::kick_proxy_read_blocked(hobject_t& soid)
 {
-  map<hobject_t, list<OpRequestRef> >::iterator p = in_progress_proxy_reads.find(soid);
-  if (p == in_progress_proxy_reads.end())
+  map<hobject_t, list<OpRequestRef> >::iterator p = in_progress_proxy_ops.find(soid);
+  if (p == in_progress_proxy_ops.end())
     return;
 
   list<OpRequestRef>& ls = p->second;
   dout(10) << __func__ << " " << soid << " requeuing " << ls.size() << " requests" << dendl;
   requeue_ops(ls);
-  in_progress_proxy_reads.erase(p);
+  in_progress_proxy_ops.erase(p);
 }
 
 void ReplicatedPG::cancel_proxy_read(ProxyReadOpRef prdop)
@@ -2144,16 +2193,165 @@ void ReplicatedPG::cancel_proxy_read_ops(bool requeue)
 
   if (requeue) {
     map<hobject_t, list<OpRequestRef> >::iterator p =
-      in_progress_proxy_reads.begin();
-    while (p != in_progress_proxy_reads.end()) {
+      in_progress_proxy_ops.begin();
+    while (p != in_progress_proxy_ops.end()) {
       list<OpRequestRef>& ls = p->second;
       dout(10) << __func__ << " " << p->first << " requeuing " << ls.size()
 	       << " requests" << dendl;
       requeue_ops(ls);
-      in_progress_proxy_reads.erase(p++);
+      in_progress_proxy_ops.erase(p++);
     }
   } else {
-    in_progress_proxy_reads.clear();
+    in_progress_proxy_ops.clear();
+  }
+}
+
+struct C_ProxyWrite_Commit : public Context {
+  ReplicatedPGRef pg;
+  hobject_t oid;
+  epoch_t last_peering_reset;
+  ceph_tid_t tid;
+  ReplicatedPG::ProxyWriteOpRef pwop;
+  C_ProxyWrite_Commit(ReplicatedPG *p, hobject_t o, epoch_t lpr,
+	              const ReplicatedPG::ProxyWriteOpRef& pw)
+    : pg(p), oid(o), last_peering_reset(lpr),
+      tid(0), pwop(pw)
+  {}
+  void finish(int r) {
+    if (pwop->canceled)
+      return;
+    pg->lock();
+    if (pwop->canceled) {
+      pg->unlock();
+      return;
+    }
+    if (last_peering_reset == pg->get_last_peering_reset()) {
+      pg->finish_proxy_write(oid, tid, r);
+    }
+    pg->unlock();
+  }
+};
+
+void ReplicatedPG::do_proxy_write(OpRequestRef op, const hobject_t& missing_oid)
+{
+  MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
+  object_locator_t oloc(m->get_object_locator());
+  oloc.pool = pool.info.tier_of;
+  SnapContext snapc(m->get_snap_seq(), m->get_snaps());
+
+  hobject_t soid(m->get_oid(),
+		 m->get_object_locator().key,
+		 missing_oid.snap,
+		 m->get_pg().ps(),
+		 m->get_object_locator().get_pool(),
+		 m->get_object_locator().nspace);
+  unsigned flags = CEPH_OSD_FLAG_IGNORE_CACHE | CEPH_OSD_FLAG_IGNORE_OVERLAY;
+  dout(10) << __func__ << " Start proxy write for " << *m << dendl;
+
+  ProxyWriteOpRef pwop(new ProxyWriteOp(op, soid, m->ops, m->get_reqid()));
+  pwop->ctx = new OpContext(op, m->get_reqid(), pwop->ops, this);
+  pwop->mtime = m->get_mtime();
+
+  ObjectOperation obj_op;
+  obj_op.dup(pwop->ops);
+
+  C_ProxyWrite_Commit *fin = new C_ProxyWrite_Commit(
+      this, soid, get_last_peering_reset(), pwop);
+  ceph_tid_t tid = osd->objecter->mutate(
+    soid.oid, oloc, obj_op, snapc,
+    pwop->mtime,
+    flags, NULL, new C_OnFinisher(fin, &osd->objecter_finisher),
+    &pwop->user_version);
+  fin->tid = tid;
+  pwop->objecter_tid = tid;
+  proxywrite_ops[tid] = pwop;
+  in_progress_proxy_ops[soid].push_back(op);
+}
+
+void ReplicatedPG::finish_proxy_write(hobject_t oid, ceph_tid_t tid, int r)
+{
+  dout(10) << __func__ << " " << oid << " tid " << tid
+	   << " " << cpp_strerror(r) << dendl;
+
+  map<ceph_tid_t, ProxyWriteOpRef>::iterator p = proxywrite_ops.find(tid);
+  if (p == proxywrite_ops.end()) {
+    dout(10) << __func__ << " no proxywrite_op found" << dendl;
+    return;
+  }
+  ProxyWriteOpRef pwop = p->second;
+  assert(tid == pwop->objecter_tid);
+  assert(oid == pwop->soid);
+
+  proxywrite_ops.erase(tid);
+
+  map<hobject_t, list<OpRequestRef> >::iterator q = in_progress_proxy_ops.find(oid);
+  if (q == in_progress_proxy_ops.end()) {
+    dout(10) << __func__ << " no in_progress_proxy_ops found" << dendl;
+    delete pwop->ctx;
+    pwop->ctx = NULL;
+    return;
+  }
+  list<OpRequestRef>& in_progress_op = q->second;
+  assert(in_progress_op.size());
+  list<OpRequestRef>::iterator it = std::find(in_progress_op.begin(),
+                                              in_progress_op.end(),
+					      pwop->op);
+  assert(it != in_progress_op.end());
+  in_progress_op.erase(it);
+  if (in_progress_op.size() == 0) {
+    in_progress_proxy_ops.erase(oid);
+  }
+
+  osd->logger->inc(l_osd_tier_proxy_write);
+
+  MOSDOp *m = static_cast<MOSDOp*>(pwop->op->get_req());
+  assert(m != NULL);
+
+  if (m->wants_ondisk() && !pwop->sent_disk) {
+    // send commit.
+    MOSDOpReply *reply = pwop->ctx->reply;
+    if (reply)
+      pwop->ctx->reply = NULL;
+    else {
+      reply = new MOSDOpReply(m, r, get_osdmap()->get_epoch(), 0, true);
+      reply->set_reply_versions(eversion_t(), pwop->user_version);
+    }
+    reply->add_flags(CEPH_OSD_FLAG_ACK | CEPH_OSD_FLAG_ONDISK);
+    dout(10) << " sending commit on " << pwop << " " << reply << dendl;
+    osd->send_message_osd_client(reply, m->get_connection());
+    pwop->sent_disk = true;
+    pwop->ctx->op->mark_commit_sent();
+  } else if (m->wants_ack() && !pwop->sent_ack && !pwop->sent_disk) {
+    // send ack
+    MOSDOpReply *reply = pwop->ctx->reply;
+    if (reply)
+      pwop->ctx->reply = NULL;
+    else {
+      reply = new MOSDOpReply(m, r, get_osdmap()->get_epoch(), 0, true);
+      reply->set_reply_versions(eversion_t(), pwop->user_version);
+    }
+    reply->add_flags(CEPH_OSD_FLAG_ACK);
+    dout(10) << " sending ack on " << pwop << " " << reply << dendl;
+    osd->send_message_osd_client(reply, m->get_connection());
+    pwop->sent_ack = true;
+  }
+
+  delete pwop->ctx;
+  pwop->ctx = NULL;
+}
+
+void ReplicatedPG::cancel_proxy_write(ProxyWriteOpRef pwop)
+{
+  dout(10) << __func__ << " " << pwop->soid << dendl;
+  pwop->canceled = true;
+
+  // cancel objecter op, if we can
+  if (pwop->objecter_tid) {
+    osd->objecter->op_cancel(pwop->objecter_tid, -ECANCELED);
+    delete pwop->ctx;
+    pwop->ctx = NULL;
+    proxywrite_ops.erase(pwop->objecter_tid);
+    pwop->objecter_tid = 0;
   }
 }
 
