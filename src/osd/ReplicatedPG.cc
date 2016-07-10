@@ -1776,7 +1776,11 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   // choose flush/evict mode after create a new object on cache
   if (agent_state && can_create && !obc->obs.exists) {
-      agent_choose_mode();
+    agent_choose_mode();
+
+    dout(20) << "wugy-debug: "
+	<< "agent_choose_mode after create a new object"
+	<< dendl;
   }
 }
 
@@ -2019,6 +2023,10 @@ bool ReplicatedPG::maybe_promote(ObjectContextRef obc,
     if (in_hit_set) {
 	promote_object(obc, missing_oid, oloc, promote_op);
     } else {
+	dout(20) << "wugy-debug: "
+		<< "hit_set_map size: " << agent_state->hit_set_map.size()
+		<< dendl;
+
 	// Check if in other hit sets
 	const hobject_t& oid = obc.get() ? obc->obs.oi.soid : missing_oid;
 	map<time_t, HitSetRef>::reverse_iterator itor;
@@ -6976,6 +6984,10 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
 
   // choose flush/evict mode after promotion
   agent_choose_mode();
+
+  dout(20) << "wugy-debug: "
+	<< "agent_choose_mode after promotion"
+	<< dendl;
 }
 
 void ReplicatedPG::cancel_copy(CopyOpRef cop, bool requeue)
@@ -10714,12 +10726,21 @@ void ReplicatedPG::hit_set_trim(RepGather *repop, unsigned max)
 
 void ReplicatedPG::hit_set_in_memory_trim()
 {
+  /*
   unsigned max = pool.info.hit_set_count;
   unsigned max_in_memory = pool.info.min_read_recency_for_promote > 0 ? pool.info.min_read_recency_for_promote - 1 : 0;
 
   if (max_in_memory > max) {
     max_in_memory = max;
   }
+  */
+
+  unsigned max_in_memory = pool.info.hit_set_count ? pool.info.hit_set_count - 1 : 0;
+  dout(20) << "wugy-debug: "
+	<< "hit_set_count: " << pool.info.hit_set_count << "; "
+	<< "max_in_memory: " << max_in_memory
+	<< dendl;
+
   while (agent_state->hit_set_map.size() > max_in_memory) {
     agent_state->remove_oldest_hit_set();
   }
