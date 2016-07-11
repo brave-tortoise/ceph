@@ -1882,7 +1882,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	// Promote too?
 	if(!can_skip_promote(op)) {
 	  bool been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
-					pool.info.min_write_recency_for_promote, op);
+					pool.info.min_write_recency_for_promote, OpRequestRef());
 	  dout(20) << "wugy-debug: "
 		<< "in_hit_set: " << in_hit_set << "; "
 		<< "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
