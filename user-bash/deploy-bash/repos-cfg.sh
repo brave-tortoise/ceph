@@ -18,4 +18,5 @@ systemctl stop firewalld
 systemctl disable firewalld
 setenforce 0
 sed -i "s/SELINUX=enforcing/SELINUX=disabled/g" /etc/selinux/config
+ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 reboot

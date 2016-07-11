@@ -1854,10 +1854,15 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	  dout(20) << __func__ << " cache pool full, redirect read" << dendl;
 	  do_cache_redirect(op);
 	}
-	return true;
+      } else {
+	if(can_proxy_op) {
+	  dout(20) << __func__ << " cache pool full, proxying write" << dendl;
+	  do_proxy_read(op);
+	} else {
+      	  dout(20) << __func__ << " cache pool full, waiting" << dendl;
+      	  waiting_for_cache_not_full.push_back(op);
+	}
       }
-      dout(20) << __func__ << " cache pool full, waiting" << dendl;
-      waiting_for_cache_not_full.push_back(op);
       return true;
     }
 
@@ -1877,7 +1882,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	// Promote too?
 	if(!can_skip_promote(op)) {
 	  bool been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
-					pool.info.min_write_recency_for_promote, promote_op);
+					pool.info.min_write_recency_for_promote, op);
 	  dout(20) << "wugy-debug: "
 		<< "in_hit_set: " << in_hit_set << "; "
 		<< "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
