@@ -2034,16 +2034,18 @@ bool ReplicatedPG::maybe_promote(ObjectContextRef obc,
 
 	// Check if in other hit sets
 	const hobject_t& oid = obc.get() ? obc->obs.oi.soid : missing_oid;
+	bool in_other_hit_sets = false;
 	map<time_t, HitSetRef>::reverse_iterator itor;
 	for(--recency, itor = agent_state->hit_set_map.rbegin();
 		recency && itor != agent_state->hit_set_map.rend();
 		--recency, ++itor) {
 	  if(itor->second->contains(oid)) {
+	    in_other_hit_sets = true;
 	    break;
 	  }
 	}
 
-	if(recency) {
+	if(in_other_hit_sets) {
 	  promote_object(obc, missing_oid, oloc, promote_op);
 	} else {
 	  // not promote
