@@ -1528,6 +1528,10 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
+  if(obc && !obc->obs.exists) {
+    missing_oid = obc->obs.oi.soid;
+  }
+
   bool in_hit_set = false;
   if (hit_set && !be_flush_op) {
     if(can_create) {
@@ -1536,23 +1540,45 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 	osd->read_cache.adjust_or_add(oid);
     }
 
-    if (missing_oid != hobject_t() && hit_set->contains(missing_oid) && (!op->been_inserted || op->been_in_hit_set)) {
+    /*
+    if(obc && !obc->obs.exists && missing_oid == hobject_t()) {
+	dout(20) << "wugy-debug: "
+		<< "oid: " << oid << "; "
+		<< "obc->obs.oi.soid: " << obc->obs.oi.soid
+		<< dendl;
+    }
+    */
+
+    if(op->been_in_hit_set) {
 	in_hit_set = true;
-	op->been_in_hit_set = true;
-    }
+    } else if(!op->been_inserted) {
+    	if(missing_oid != hobject_t() && hit_set->contains(missing_oid)) {
+	  in_hit_set = true;
+	  op->been_in_hit_set = true;
+    	}
 
-    if (hit_set->is_full() ||
-	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
-	dout(20) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
-      	hit_set_persist();
-    }
+    	/*
+    	if(missing_oid != hobject_t()) {
+    	    dout(20) << "wugy-debug: "
+    	    	<< "missing_oid: " << missing_oid << "; "
+    	    	<< (hit_set->contains(missing_oid) ? "contain" : "not contain") << "; "
+    	    	<< (op->been_inserted ? "been inserted" : "not inserted") << "; "
+    	    	<< (in_hit_set ? "in hit_set" : "not in hit_set")
+    	    	<< dendl;
+    	}
+    	*/
 
-    if(!op->been_inserted) {
+    	if(hit_set->is_full() ||
+	  hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
+	  dout(20) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
+      	  hit_set_persist();
+    	}
+	
     	hit_set->insert(oid);
 	op->been_inserted = true;
 
 	dout(20) << "wugy-debug: "
-		<< " flags " << ceph_osd_flag_string(m->get_flags())
+		<< "insert: " << oid
 		<< dendl;
     }
   }
@@ -1857,7 +1883,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       } else {
 	if(can_proxy_op) {
 	  dout(20) << __func__ << " cache pool full, proxying write" << dendl;
-	  do_proxy_read(op);
+	  do_proxy_write(op, missing_oid);
 	} else {
       	  dout(20) << __func__ << " cache pool full, waiting" << dendl;
       	  waiting_for_cache_not_full.push_back(op);
@@ -2033,13 +2059,12 @@ bool ReplicatedPG::maybe_promote(ObjectContextRef obc,
 		<< dendl;
 
 	// Check if in other hit sets
-	const hobject_t& oid = obc.get() ? obc->obs.oi.soid : missing_oid;
 	bool in_other_hit_sets = false;
 	map<time_t, HitSetRef>::reverse_iterator itor;
 	for(--recency, itor = agent_state->hit_set_map.rbegin();
 		recency && itor != agent_state->hit_set_map.rend();
 		--recency, ++itor) {
-	  if(itor->second->contains(oid)) {
+	  if(itor->second->contains(missing_oid)) {
 	    in_other_hit_sets = true;
 	    break;
 	  }
