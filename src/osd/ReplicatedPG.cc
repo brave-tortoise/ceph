@@ -1528,7 +1528,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
-  if(obc && !obc->obs.exists) {
+  if(!r && obc && !obc->obs.exists) {
     missing_oid = obc->obs.oi.soid;
   }
 
@@ -1540,15 +1540,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 	osd->read_cache.adjust_or_add(oid);
     }
 
-    /*
-    if(obc && !obc->obs.exists && missing_oid == hobject_t()) {
-	dout(20) << "wugy-debug: "
-		<< "oid: " << oid << "; "
-		<< "obc->obs.oi.soid: " << obc->obs.oi.soid
-		<< dendl;
-    }
-    */
-
     if(op->been_in_hit_set) {
 	in_hit_set = true;
     } else if(!op->been_inserted) {
@@ -1556,17 +1547,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 	  in_hit_set = true;
 	  op->been_in_hit_set = true;
     	}
-
-    	/*
-    	if(missing_oid != hobject_t()) {
-    	    dout(20) << "wugy-debug: "
-    	    	<< "missing_oid: " << missing_oid << "; "
-    	    	<< (hit_set->contains(missing_oid) ? "contain" : "not contain") << "; "
-    	    	<< (op->been_inserted ? "been inserted" : "not inserted") << "; "
-    	    	<< (in_hit_set ? "in hit_set" : "not in hit_set")
-    	    	<< dendl;
-    	}
-    	*/
 
     	if(hit_set->is_full() ||
 	  hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
@@ -1588,9 +1568,17 @@ void ReplicatedPG::do_op(OpRequestRef& op)
       return;
   }*/
 
+  dout(20) << "wugy-debug: "
+	<< "do_op: " << ceph_osd_flag_string(m->get_flags())
+	<< dendl;
+
   if ((m->get_flags() & CEPH_OSD_FLAG_IGNORE_CACHE) == 0 &&
       maybe_handle_cache(op, write_ordered, obc, r, missing_oid, false, in_hit_set))
     return;
+
+  dout(20) << "wugy-debug: "
+	<< "not handled by cache!"
+	<< dendl;
 
   // not handled by cache --> cache hit | create new object on cache
   // cache hit: obc && obc->obs.exists
@@ -1926,6 +1914,9 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 
 	// Avoid duplicate promotion
 	if (obc.get() && obc->is_blocked()) {
+	  if(!can_proxy_op) {
+	    wait_for_blocked_object(obc->obs.oi.soid, op);
+	  }
       	  return true;
     	}
 	

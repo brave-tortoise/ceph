@@ -16,10 +16,13 @@
 #define CEPH_SIMPLECACHE_H
 
 #include <map>
+#include <tr1/unordered_map>
 #include <list>
 #include <memory>
 #include "common/Mutex.h"
 #include "common/Cond.h"
+
+using namespace std::tr1;
 
 template <class K, class V>
 class SimpleLRU {
@@ -108,7 +111,7 @@ template <class T>
 class RWLRU {
   Mutex lock;
   size_t max_size;
-  map<T, typename list<T>::iterator> contents;
+  unordered_map<T, typename list<T>::iterator> contents;
   list<T> lru;
 
   void trim_cache() {
@@ -129,7 +132,7 @@ public:
 
   void clear(const T& entry) {
     Mutex::Locker l(lock);
-    typename map<T, typename list<T>::iterator>::iterator i =
+    typename unordered_map<T, typename list<T>::iterator>::iterator i =
       contents.find(entry);
     if (i == contents.end())
       return;
@@ -164,9 +167,76 @@ public:
     _add(entry);
     return;
   }
+};
 
-  size_t get_size() {
-    return max_size;
+
+// ========================================================================
+// mru cache for promotion
+
+template <class K, class V>
+class PromoteMRU {
+  Mutex lock;
+  size_t max_size;
+  unordered_map<K, typename list<pair<K, V> >::iterator> contents;
+  list<pair<K, V> > lru;
+
+  void trim_cache() {
+    while (lru.size() > max_size) {
+      contents.erase(lru.back().first);
+      lru.pop_back();
+    }
+  }
+
+  void _add(const K& key, const V& value) {
+    lru.push_front(make_pair(key, value));
+    contents[key] = lru.begin();
+    trim_cache();
+  }
+
+public:
+  PromoteMRU(size_t max_size) : lock("PromoteMRU::lock"), max_size(max_size) {}
+
+  void clear(const K& key) {
+    Mutex::Locker l(lock);
+    typename unordered_map<K, typename list<pair<K, V> >::iterator>::iterator i =
+      contents.find(key);
+    if (i == contents.end())
+      return;
+    lru.erase(i->second);
+    contents.erase(i);
+  }
+
+  void set_size(size_t new_size) {
+    Mutex::Locker l(lock);
+    max_size = new_size;
+    trim_cache();
+  }
+
+  void adjust_or_add(const K& key, const V& value) {
+    Mutex::Locker l(lock);
+    typename list<pair<K, V> >::iterator loc = contents.count(key) ?
+      contents[key] : lru.end();
+    if (loc != lru.end()) {
+      lru.splice(lru.begin(), lru, loc);
+      return;
+    }
+    _add(key, value);
+    return;
+  }
+
+  bool empty() {
+    Mutex::Locker l(lock);
+    return lru.empty();
+  }
+
+  void pop(K* const key, V* const value) {
+    Mutex::Locker l(lock);
+    if(!lru.empty()) {
+      *key = lru.begin().first;
+      *value = lru.begin().second;
+      contents.erase(lru.front().first);
+      lru.pop_front();
+    }
   }
 };
 
