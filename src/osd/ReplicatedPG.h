@@ -1180,13 +1180,24 @@ protected:
 		      const object_locator_t& oloc,    ///< locator for obc|oid
 		      OpRequestRef op);                ///< [optional] client op
 
+  /**
+   * This function starts an async_promote,
+   * and puts the object into a queue, waiting for promotion.
+   * The queue is a mru cache, so only hot objects are promoted,
+   * and promotion of cold objects are canceled.
+   */
+  void async_promote_object(ObjectContextRef obc,      ///< [optional] obc
+		      const hobject_t& missing_object, ///< oid (if !obc)
+		      const object_locator_t& oloc);   ///< locator for obc|oid
+  // promote an object
+  void promote_work(ObjectContextRef obc,              ///< [optional] obc
+		    const hobject_t& missing_object,   ///< oid (if !obc)
+		    const object_locator_t& oloc);     ///< locator for obc|oid
+
   // check if a promotion is needed
-  bool maybe_promote(ObjectContextRef obc,
-		    const hobject_t& missing_oid,
-		    const object_locator_t& oloc,
-		    bool in_hit_set,
-		    uint32_t recency,
-		    OpRequestRef promote_op);
+  bool maybe_promote(const hobject_t& missing_object,
+		     bool in_hit_set,
+		     uint32_t recency);
 
   /**
    * Check if the op is such that we can skip promote (e.g., DELETE)

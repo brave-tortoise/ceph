@@ -1854,7 +1854,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
   bool can_proxy_op = get_osdmap()->get_up_osd_features() &
     CEPH_FEATURE_OSD_PROXY_FEATURES;
 
-  OpRequestRef promote_op;
+  //OpRequestRef promote_op;
 
   switch (pool.info.cache_mode) {
   case pg_pool_t::CACHEMODE_WRITEBACK:
@@ -1895,12 +1895,16 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 
 	// Promote too?
 	if(!can_skip_promote(op)) {
-	  bool been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
-					pool.info.min_write_recency_for_promote, OpRequestRef());
+	  bool to_promote = maybe_promote(missing_oid, in_hit_set,
+					  pool.info.min_write_recency_for_promote);
+	  if(to_promote) {
+	    async_promote_object(obc, missing_oid, oloc);
+	  }
+
 	  dout(20) << "wugy-debug: "
 		<< "in_hit_set: " << in_hit_set << "; "
 		<< "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
-		<< (been_promoted ? "promote" : "not promote")
+		<< (to_promote ? "promote" : "not promote")
 		<< dendl;
 	}
 
@@ -1908,9 +1912,9 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
     } else {
 	if(can_proxy_op) {
 	  do_proxy_read(op);
-	} else {
+	} /*else {
 	  promote_op = op;	// for non-proxy case promote_object needs this
-	}
+	}*/
 
 	// Avoid duplicate promotion
 	if (obc.get() && obc->is_blocked()) {
@@ -1921,18 +1925,27 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
     	}
 	
 	// Promote too?
-	bool been_promoted = false;
+	bool to_promote = false;
 	if(!can_skip_promote(op)) {
-	  been_promoted = maybe_promote(obc, missing_oid, oloc, in_hit_set,
-					pool.info.min_read_recency_for_promote, promote_op);
+	  to_promote = maybe_promote(missing_oid, in_hit_set,
+				     pool.info.min_read_recency_for_promote);
+
+	  if(to_promote) {
+	    if(can_proxy_op) {
+	      async_promote_object(obc, missing_oid, oloc);
+	    } else {
+	      promote_object(obc, missing_oid, oloc, op);
+	    }
+	  }
+
 	  dout(20) << "wugy-debug: "
 		<< "in_hit_set: " << in_hit_set << "; "
 		<< "min_read_recency_for_promote: " << pool.info.min_read_recency_for_promote << "; "
-		<< (been_promoted ? "promote" : "not promote")
+		<< (to_promote ? "promote" : "not promote")
 		<< dendl;
 	}
 	
-	if(!can_proxy_op && !been_promoted) {
+	if(!can_proxy_op && !to_promote) {
 	  do_cache_redirect(op);
 	}
 
@@ -2017,34 +2030,26 @@ bool ReplicatedPG::can_skip_promote(OpRequestRef op)
   return false;
 }
 
-bool ReplicatedPG::maybe_promote(ObjectContextRef obc,
-				 const hobject_t& missing_oid,
-				 const object_locator_t& oloc,
+bool ReplicatedPG::maybe_promote(const hobject_t& missing_oid,
 				 bool in_hit_set,
-				 uint32_t recency,
-				 OpRequestRef promote_op)
+				 uint32_t recency)
 {
-
   dout(20) << __func__ << " missing_oid " << missing_oid
 	   << "  in_hit_set " << in_hit_set << dendl;
 
   switch(recency) {
   case 0:
-    promote_object(obc, missing_oid, oloc, promote_op);
+    //promote_object(obc, missing_oid, oloc, promote_op);
     break;
   case 1:
     // Check if in the current hit set
-    if(in_hit_set) {
-	promote_object(obc, missing_oid, oloc, promote_op);
-    } else {
+    if(!in_hit_set) {
 	// not promote
 	return false;
     }
     break;
   default:
-    if (in_hit_set) {
-	promote_object(obc, missing_oid, oloc, promote_op);
-    } else {
+    if(!in_hit_set) {
 	dout(20) << "wugy-debug: "
 		<< "hit_set_map size: " << agent_state->hit_set_map.size()
 		<< dendl;
@@ -2061,9 +2066,7 @@ bool ReplicatedPG::maybe_promote(ObjectContextRef obc,
 	  }
 	}
 
-	if(in_other_hit_sets) {
-	  promote_object(obc, missing_oid, oloc, promote_op);
-	} else {
+	if(!in_other_hit_sets) {
 	  // not promote
 	  return false;
 	}
@@ -2483,19 +2486,72 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
     obc = get_object_context(missing_oid, true);
   }
 
-  PromoteCallback *cb = new PromoteCallback(obc, this);
-  object_locator_t my_oloc = oloc;
-  my_oloc.pool = pool.info.tier_of;
-  start_copy(cb, obc, obc->obs.oi.soid, my_oloc, 0,
-	     CEPH_OSD_COPY_FROM_FLAG_IGNORE_OVERLAY |
-	     CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE |
-	     CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE,
-	     obc->obs.oi.soid.snap == CEPH_NOSNAP);
+  hobject_t oid = obc->obs.oi.soid;
+
+  if(osd->promote_start_op(oid)) {
+    osd->promote_dequeue_object(oid);
+
+    PromoteCallback *cb = new PromoteCallback(obc, this);
+    object_locator_t my_oloc = oloc;
+    my_oloc.pool = pool.info.tier_of;
+
+    start_copy(cb, obc, oid, my_oloc, 0,
+	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_OVERLAY |
+	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE |
+	       CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE,
+	       obc->obs.oi.soid.snap == CEPH_NOSNAP);
+  }
 
   assert(obc->is_blocked());
 
   if (op)
-    wait_for_blocked_object(obc->obs.oi.soid, op);
+    wait_for_blocked_object(oid, op);
+}
+
+void ReplicatedPG::async_promote_object(ObjectContextRef obc,
+					const hobject_t& missing_oid,
+				  	const object_locator_t& oloc)
+{
+  hobject_t hoid = obc ? obc->obs.oi.soid : missing_oid;
+  assert(hoid != hobject_t());
+
+  if (scrubber.write_blocked_by_scrub(hoid)) {
+    dout(10) << __func__ << " " << hoid
+	     << " blocked by scrub" << dendl;
+    return;
+  }
+
+  if (!obc) { // we need to create an ObjectContext
+    assert(missing_oid != hobject_t());
+    obc = get_object_context(missing_oid, true);
+  }
+
+  PromoteInfo info = {this, obc, oloc};
+  if(!osd->promote_enqueue_object(obc->obs.oi.soid, info)) {
+    dout(20) << __func__ << " skip (promoting) " << obc->obs.oi << dendl;
+  }
+}
+
+void ReplicatedPG::promote_work(ObjectContextRef obc,
+				const hobject_t& oid,
+				const object_locator_t& oloc)
+{
+  if(agent_state && agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL)
+    return;
+
+  if(osd->promote_start_op(oid)) {
+    PromoteCallback *cb = new PromoteCallback(obc, this);
+    object_locator_t my_oloc = oloc;
+    my_oloc.pool = pool.info.tier_of;
+
+    start_copy(cb, obc, oid, my_oloc, 0,
+	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_OVERLAY |
+	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE |
+	       CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE,
+	       obc->obs.oi.soid.snap == CEPH_NOSNAP);
+  }
+
+  assert(obc->is_blocked());
 }
 
 void ReplicatedPG::execute_ctx(OpContext *ctx)
@@ -7002,6 +7058,8 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
   finish_ctx(tctx, pg_log_entry_t::PROMOTE);
 
   simple_repop_submit(repop);
+
+  osd->promote_finish_op(soid);
 
   osd->logger->inc(l_osd_tier_promote);
 

@@ -307,6 +307,13 @@ public:
 };
 typedef ceph::shared_ptr<DeletingState> DeletingStateRef;
 
+
+struct PromoteInfo {
+  PGRef pg;
+  ObjectContextRef obc;
+  object_locator_t oloc;
+};
+
 class OSD;
 class OSDService {
 public:
@@ -651,6 +658,69 @@ public:
   }
 
 
+  // -- osd read/write lru cache --
+  // hot objects, not evict/flush
+  RWLRU<hobject_t> read_cache;
+  RWLRU<hobject_t> write_cache;
+
+
+  // -- promotion state --
+  Mutex promote_lock;
+  Cond promote_cond;
+  PromoteMRU<hobject_t, PromoteInfo> promote_queue;
+  int promote_ops;
+  unordered_set<hobject_t> promote_oids;
+  struct PromoteThread : public Thread {
+    OSDService *osd;
+    PromoteThread(OSDService *o) : osd(o) {}
+    void *entry() {
+      osd->promote_entry();
+      return NULL;
+    }
+  } promote_thread;
+  bool promote_stop_flag;
+
+  void promote_entry();
+  void promote_stop();
+
+  /// insert an object into promote_queue
+  bool promote_enqueue_object(const hobject_t& oid, const PromoteInfo& info) {
+    Mutex::Locker l(promote_lock);
+    if(!promote_oids.count(oid)) {
+      promote_queue.adjust_or_add(oid, info);
+      promote_cond.Signal();
+      return true;
+    }
+    return false;
+  }
+
+  void promote_dequeue_object(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    promote_queue.remove(oid);
+  }
+
+  /// note start of an async (promote) op
+  bool promote_start_op(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    if(!promote_oids.count(oid)) {
+      ++promote_ops;
+      promote_oids.insert(oid);
+      return true;
+    }
+    return false;
+  }
+
+  /// note finish or cancellation of an async (promote) op
+  void promote_finish_op(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    assert(promote_ops > 0);
+    --promote_ops;
+    assert(promote_oids.count(oid) == 1);
+    promote_oids.erase(oid);
+    promote_cond.Signal();
+  }
+
+
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;
   Finisher objecter_finisher;
@@ -710,11 +780,6 @@ public:
   SharedLRU<epoch_t, const OSDMap> map_cache;
   SimpleLRU<epoch_t, bufferlist> map_bl_cache;
   SimpleLRU<epoch_t, bufferlist> map_bl_inc_cache;
-
-  // osd read cache, not evict objects in cache
-  RWLRU<hobject_t> read_cache;
-  // osd write cache, not flush objects in cache
-  RWLRU<hobject_t> write_cache;
 
   OSDMapRef try_get_map(epoch_t e);
   OSDMapRef get_map(epoch_t e) {

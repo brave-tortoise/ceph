@@ -479,10 +479,13 @@ OPTION(osd_agent_hist_halflife, OPT_INT, 1000)
 // this amount below the threshold to disable.
 OPTION(osd_agent_slop, OPT_FLOAT, .02)
 
-// osd read cache size, not evict objects in cache
+// osd read/write cache size, not evict/flush objects in cache
 OPTION(osd_read_cache_object_count, OPT_INT, 2048)
-// osd write cache size, not flush objects in cache
 OPTION(osd_write_cache_object_count, OPT_INT, 1024)
+
+// promotion params
+OPTION(osd_promote_queue_max_size, OPT_INT, 256)
+OPTION(osd_promote_max_ops_in_flight, OPT_INT, 16)
 
 OPTION(osd_uuid, OPT_UUID, uuid_d())
 OPTION(osd_data, OPT_STR, "/var/lib/ceph/osd/$cluster-$id")

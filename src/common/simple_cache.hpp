@@ -130,7 +130,7 @@ class RWLRU {
 public:
   RWLRU(size_t max_size) : lock("RWLRU::lock"), max_size(max_size) {}
 
-  void clear(const T& entry) {
+  void remove(const T& entry) {
     Mutex::Locker l(lock);
     typename unordered_map<T, typename list<T>::iterator>::iterator i =
       contents.find(entry);
@@ -196,7 +196,7 @@ class PromoteMRU {
 public:
   PromoteMRU(size_t max_size) : lock("PromoteMRU::lock"), max_size(max_size) {}
 
-  void clear(const K& key) {
+  void remove(const K& key) {
     Mutex::Locker l(lock);
     typename unordered_map<K, typename list<pair<K, V> >::iterator>::iterator i =
       contents.find(key);
@@ -232,8 +232,8 @@ public:
   void pop(K* const key, V* const value) {
     Mutex::Locker l(lock);
     if(!lru.empty()) {
-      *key = lru.begin().first;
-      *value = lru.begin().second;
+      *key = lru.front().first;
+      *value = lru.front().second;
       contents.erase(lru.front().first);
       lru.pop_front();
     }

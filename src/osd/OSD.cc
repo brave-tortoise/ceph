@@ -217,6 +217,13 @@ OSDService::OSDService(OSD *osd) :
   agent_stop_flag(false),
   agent_timer_lock("OSD::agent_timer_lock"),
   agent_timer(osd->client_messenger->cct, agent_timer_lock),
+  read_cache(cct->_conf->osd_read_cache_object_count),
+  write_cache(cct->_conf->osd_write_cache_object_count),
+  promote_lock("OSD::promote_lock"),
+  promote_queue(cct->_conf->osd_promote_queue_max_size),
+  promote_ops(0),
+  promote_thread(this),
+  promote_stop_flag(false),
   objecter(new Objecter(osd->client_messenger->cct, osd->objecter_messenger, osd->monc, NULL, 0, 0)),
   objecter_finisher(osd->client_messenger->cct),
   watch_lock("OSD::watch_lock"),
@@ -236,8 +243,6 @@ OSDService::OSDService(OSD *osd) :
   map_cache(cct, cct->_conf->osd_map_cache_size),
   map_bl_cache(cct->_conf->osd_map_cache_size),
   map_bl_inc_cache(cct->_conf->osd_map_cache_size),
-  read_cache(cct->_conf->osd_read_cache_object_count),
-  write_cache(cct->_conf->osd_write_cache_object_count),
   in_progress_split_lock("OSDService::in_progress_split_lock"),
   stat_lock("OSD::stat_lock"),
   full_status_lock("OSDService::full_status_lock"),
@@ -474,6 +479,7 @@ void OSDService::init()
   agent_timer.init();
 
   agent_thread.create();
+  promote_thread.create();
 }
 
 void OSDService::activate_map()
@@ -568,6 +574,59 @@ void OSDService::agent_stop()
   }
   agent_thread.join();
 }
+
+
+// ---- handle promotion ops ----
+
+void OSDService::promote_entry()
+{
+  promote_lock.Lock();
+
+  while(!promote_stop_flag) {
+    if(promote_queue.empty()) {
+      dout(20) << __func__ << " empty queue" << dendl;
+      promote_cond.Wait(promote_lock);
+      continue;
+    }
+
+    if(promote_ops >= g_conf->osd_promote_max_ops_in_flight) {
+      dout(20) << __func__ << " too many promote ops in flight" << dendl;
+      promote_cond.Wait(promote_lock);
+      continue;
+    }
+
+    hobject_t oid;
+    PromoteInfo info;
+    promote_queue.pop(&oid, &info);
+    promote_lock.Unlock();
+    
+    PGRef pg = info.pg;
+    pg->promote_work(info.obc, oid, info.oloc);
+    promote_lock.Lock();
+  }
+
+  promote_lock.Unlock();
+}
+
+void OSDService::promote_stop()
+{
+  {
+    Mutex::Locker l(promote_lock);
+
+    // By this time all ops should be cancelled
+    assert(promote_ops == 0);
+    // By this time all PGs are shutdown and dequeued
+    if(!promote_queue.empty()) {
+      assert(0 == "promote queue not empty");
+    }
+
+    promote_stop_flag = true;
+    promote_cond.Signal();
+  }
+
+  promote_thread.join();
+}
+
 
 // -------------------------------------
 
@@ -2323,6 +2382,9 @@ int OSD::shutdown()
 
   dout(10) << "stopping agent" << dendl;
   service.agent_stop();
+
+  dout(10) << "stopping promote" << dendl;
+  service.promote_stop();
 
   osd_lock.Lock();
 
