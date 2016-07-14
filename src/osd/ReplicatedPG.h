@@ -1405,13 +1405,10 @@ protected:
 
   // -- proxyread --
   map<ceph_tid_t, ProxyReadOpRef> proxyread_ops;
-  //map<hobject_t, list<OpRequestRef> > in_progress_proxy_reads;
 
   void do_proxy_read(OpRequestRef op);
   void finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r);
-  //void kick_proxy_read_blocked(hobject_t& soid);
   void cancel_proxy_read(ProxyReadOpRef prdop);
-  //void cancel_proxy_read_ops(bool requeue);
 
   friend struct C_ProxyRead;
 
