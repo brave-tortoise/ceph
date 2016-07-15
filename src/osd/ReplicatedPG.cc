@@ -1886,12 +1886,12 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
     }
 
     if(op->may_write() || op->may_cache()) {
-	if(can_proxy_op) {
+	/*if(can_proxy_op) {
 	  do_proxy_write(op, missing_oid);
-	} else {
+	} else {*/
 	  promote_object(obc, missing_oid, oloc, op);
 	  return true;
-	}
+	/*}
 
 	// Promote too?
 	if(!can_skip_promote(op)) {
@@ -1908,7 +1908,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 		<< dendl;
 	}
 
-	return true;
+	return true;*/
     } else {
 	if(can_proxy_op) {
 	  do_proxy_read(op);
@@ -2202,20 +2202,6 @@ void ReplicatedPG::finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r)
   complete_read_ctx(r, ctx);
 }
 
-/*
-void ReplicatedPG::kick_proxy_read_blocked(hobject_t& soid)
-{
-  map<hobject_t, list<OpRequestRef> >::iterator p = in_progress_proxy_ops.find(soid);
-  if (p == in_progress_proxy_ops.end())
-    return;
-
-  list<OpRequestRef>& ls = p->second;
-  dout(10) << __func__ << " " << soid << " requeuing " << ls.size() << " requests" << dendl;
-  requeue_ops(ls);
-  in_progress_proxy_ops.erase(p);
-}
-*/
-
 void ReplicatedPG::cancel_proxy_read(ProxyReadOpRef prdop)
 {
   dout(10) << __func__ << " " << prdop->soid << dendl;
@@ -2228,31 +2214,6 @@ void ReplicatedPG::cancel_proxy_read(ProxyReadOpRef prdop)
     prdop->objecter_tid = 0;
   }
 }
-
-/*
-void ReplicatedPG::cancel_proxy_read_ops(bool requeue)
-{
-  dout(10) << __func__ << dendl;
-  map<ceph_tid_t, ProxyReadOpRef>::iterator p = proxyread_ops.begin();
-  while (p != proxyread_ops.end()) {
-    cancel_proxy_read((p++)->second);
-  }
-
-  if (requeue) {
-    map<hobject_t, list<OpRequestRef> >::iterator p =
-      in_progress_proxy_ops.begin();
-    while (p != in_progress_proxy_ops.end()) {
-      list<OpRequestRef>& ls = p->second;
-      dout(10) << __func__ << " " << p->first << " requeuing " << ls.size()
-	       << " requests" << dendl;
-      requeue_ops(ls);
-      in_progress_proxy_ops.erase(p++);
-    }
-  } else {
-    in_progress_proxy_ops.clear();
-  }
-}
-*/
 
 struct C_ProxyWrite_Commit : public Context {
   ReplicatedPGRef pg;
@@ -2488,6 +2449,10 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
 
   hobject_t oid = obc->obs.oi.soid;
 
+  dout(20) << "wugy-debug: "
+	<< "promote: there are " << osd->promote_get_num_ops() << " promote ops in flight"
+	<< dendl;
+
   if(osd->promote_start_op(oid)) {
     osd->promote_dequeue_object(oid);
 
@@ -2539,7 +2504,16 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
   if(agent_state && agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL)
     return;
 
+  dout(20) << "wugy-debug: "
+	<< __func__
+	<< dendl;
+
   if(osd->promote_start_op(oid)) {
+
+    dout(20) << "wugy-debug: "
+	<< "promote_work: there are " << osd->promote_get_num_ops() << " promote ops in flight"
+	<< dendl;
+
     PromoteCallback *cb = new PromoteCallback(obc, this);
     object_locator_t my_oloc = oloc;
     my_oloc.pool = pool.info.tier_of;
@@ -7060,6 +7034,10 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
   simple_repop_submit(repop);
 
   osd->promote_finish_op(soid);
+
+  dout(20) << "wugy-debug: "
+	<< __func__
+	<< dendl;
 
   osd->logger->inc(l_osd_tier_promote);
 

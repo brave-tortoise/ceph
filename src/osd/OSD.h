@@ -720,6 +720,12 @@ public:
     promote_cond.Signal();
   }
 
+  /// get count of active promote ops
+  int promote_get_num_ops() {
+    Mutex::Locker l(promote_lock);
+    return promote_ops;
+  }
+
 
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;

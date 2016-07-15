@@ -6539,11 +6539,6 @@ done:
     ntp->min_write_recency_for_promote = g_conf->osd_tier_default_cache_min_write_recency_for_promote;
     ntp->max_temp_increment = g_conf->osd_tier_default_cache_max_temp_increment;
     ntp->hit_set_decay_factor = g_conf->osd_tier_default_cache_hit_set_decay_factor;
-    dout(20) << "wugy-debug: "
-	<< "OSDMonitor read configs: "
-	<< "min_write_recency_for_promote = " << ntp->min_write_recency_for_promote << "; "
-	<< "max_temp_increment = " << ntp->max_temp_increment
-	<< dendl;
     ntp->hit_set_params = hsp;
     ntp->target_max_bytes = size;
 
