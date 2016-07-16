@@ -110,25 +110,27 @@ public:
 template <class T>
 class RWLRU {
   Mutex lock;
-  size_t max_size;
+  size_t size, max_size;
   unordered_map<T, typename list<T>::iterator> contents;
   list<T> lru;
 
   void trim_cache() {
-    while (lru.size() > max_size) {
+    while (size > max_size) {
+      --size;
       contents.erase(lru.back());
       lru.pop_back();
     }
   }
 
   void _add(const T& entry) {
+    ++size;
     lru.push_front(entry);
     contents[entry] = lru.begin();
     trim_cache();
   }
 
 public:
-  RWLRU(size_t max_size) : lock("RWLRU::lock"), max_size(max_size) {}
+  RWLRU(size_t max_size) : lock("RWLRU::lock"), size(0), max_size(max_size) {}
 
   void remove(const T& entry) {
     Mutex::Locker l(lock);
@@ -136,14 +138,9 @@ public:
       contents.find(entry);
     if (i == contents.end())
       return;
+    --size;
     lru.erase(i->second);
     contents.erase(i);
-  }
-
-  void set_size(size_t new_size) {
-    Mutex::Locker l(lock);
-    max_size = new_size;
-    trim_cache();
   }
 
   bool lookup(const T& entry) {
@@ -171,71 +168,104 @@ public:
 
 
 // ========================================================================
-// mru cache for promotion
+// mrfu cache for promotion
 
 template <class K, class V>
-class PromoteMRU {
+class PromoteMRFU {
   Mutex lock;
-  size_t max_size;
-  unordered_map<K, typename list<pair<K, V> >::iterator> contents;
-  list<pair<K, V> > lru;
+  size_t mru_size, mfu_size;
+  size_t mru_max_size, mfu_max_size;
+  unordered_map<K, typename list<pair<K, V> >::iterator> mru_contents, mfu_contents;
+  list<pair<K, V> > mru, mfu;
 
-  void trim_cache() {
-    while (lru.size() > max_size) {
-      contents.erase(lru.back().first);
-      lru.pop_back();
+  void trim_mru_cache() {
+    while (mru_size > mru_max_size) {
+      --mru_size;
+      mru_contents.erase(mru.back().first);
+      mru.pop_back();
     }
   }
 
+  void trim_mfu_cache() {
+    while (mfu_size > mfu_max_size) {
+      --mfu_size;
+      ++mru_size;
+
+      K& key = mfu.back().first;
+      typename list<pair<K, V> >::iterator loc = (--mfu.end());
+
+      mru_contents[key] = loc;
+      mru.splice(mru.begin(), mfu, loc);
+
+      mfu_contents.erase(key);
+      mfu.pop_back();
+    }
+    trim_mru_cache();
+  }
+
   void _add(const K& key, const V& value) {
-    lru.push_front(make_pair(key, value));
-    contents[key] = lru.begin();
-    trim_cache();
+    ++mru_size;
+    mru.push_front(make_pair(key, value));
+    mru_contents[key] = mru.begin();
+    trim_mru_cache();
   }
 
 public:
-  PromoteMRU(size_t max_size) : lock("PromoteMRU::lock"), max_size(max_size) {}
+  PromoteMRFU(size_t mru_max_size, size_t mfu_max_size) :
+	lock("PromoteMRFU::lock"),
+	mru_size(0), mfu_size(0),
+	mru_max_size(mru_max_size),
+	mfu_max_size(mfu_max_size) {}
 
   void remove(const K& key) {
     Mutex::Locker l(lock);
-    typename unordered_map<K, typename list<pair<K, V> >::iterator>::iterator i =
-      contents.find(key);
-    if (i == contents.end())
-      return;
-    lru.erase(i->second);
-    contents.erase(i);
-  }
-
-  void set_size(size_t new_size) {
-    Mutex::Locker l(lock);
-    max_size = new_size;
-    trim_cache();
+    typename unordered_map<K, typename list<pair<K, V> >::iterator>::iterator i = mfu_contents.find(key);
+    if(i != mfu_contents.end()) {
+      mfu.erase(i->second);
+      mfu_contents.erase(i);
+    } else {
+      i = mru_contents.find(key);
+      if (i == mru_contents.end()) {
+    	mru.erase(i->second);
+    	mru_contents.erase(i);
+      }
+    }
   }
 
   void adjust_or_add(const K& key, const V& value) {
     Mutex::Locker l(lock);
-    typename list<pair<K, V> >::iterator loc = contents.count(key) ?
-      contents[key] : lru.end();
-    if (loc != lru.end()) {
-      lru.splice(lru.begin(), lru, loc);
-      return;
+    typename list<pair<K, V> >::iterator loc;
+    if(mfu_contents.count(key)) {
+      loc = mfu_contents[key];
+      mfu.splice(mfu.begin(), mfu, loc);
+    } else if(mru_contents.count(key)) {
+      --mru_size;
+      ++mfu_size;
+      loc = mru_contents[key];
+      mfu.splice(mfu.begin(), mru, loc);
+      trim_mfu_cache();
+    } else {
+      _add(key, value);
     }
-    _add(key, value);
-    return;
   }
 
   bool empty() {
     Mutex::Locker l(lock);
-    return lru.empty();
+    return mru.empty() && mfu.empty();
   }
 
   void pop(K* const key, V* const value) {
     Mutex::Locker l(lock);
-    if(!lru.empty()) {
-      *key = lru.front().first;
-      *value = lru.front().second;
-      contents.erase(lru.front().first);
-      lru.pop_front();
+    if(!mfu.empty()) {
+      *key = mfu.front().first;
+      *value = mfu.front().second;
+      mfu_contents.erase(*key);
+      mfu.pop_front();
+    } else if(!mru.empty()) {
+      *key = mru.front().first;
+      *value = mru.front().second;
+      mru_contents.erase(*key);
+      mru.pop_front();
     }
   }
 };

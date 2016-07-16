@@ -1563,11 +1563,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
-  /*if (agent_state) {
-    if (agent_choose_mode(false, op))
-      return;
-  }*/
-
   dout(20) << "wugy-debug: "
 	<< "do_op: " << ceph_osd_flag_string(m->get_flags())
 	<< dendl;
@@ -1787,15 +1782,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   ctx->src_obc = src_obc;
 
   execute_ctx(ctx);
-
-  // choose flush/evict mode after create a new object on cache
-  if (agent_state && can_create && !obc->obs.exists) {
-    agent_choose_mode();
-
-    dout(20) << "wugy-debug: "
-	<< "agent_choose_mode after create a new object"
-	<< dendl;
-  }
 }
 
 bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
@@ -1848,13 +1834,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
   }
 
   // older versions do not proxy the feature bits.
-  //bool can_proxy_read = get_osdmap()->get_up_osd_features() &
-    //CEPH_FEATURE_OSD_PROXY_FEATURES;
-
   bool can_proxy_op = get_osdmap()->get_up_osd_features() &
     CEPH_FEATURE_OSD_PROXY_FEATURES;
-
-  //OpRequestRef promote_op;
 
   switch (pool.info.cache_mode) {
   case pg_pool_t::CACHEMODE_WRITEBACK:
@@ -1886,12 +1867,12 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
     }
 
     if(op->may_write() || op->may_cache()) {
-	/*if(can_proxy_op) {
+	if(can_proxy_op) {
 	  do_proxy_write(op, missing_oid);
-	} else {*/
+	} else {
 	  promote_object(obc, missing_oid, oloc, op);
 	  return true;
-	/*}
+	}
 
 	// Promote too?
 	if(!can_skip_promote(op)) {
@@ -1908,13 +1889,11 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 		<< dendl;
 	}
 
-	return true;*/
+	return true;
     } else {
 	if(can_proxy_op) {
 	  do_proxy_read(op);
-	} /*else {
-	  promote_op = op;	// for non-proxy case promote_object needs this
-	}*/
+	}
 
 	// Avoid duplicate promotion
 	if (obc.get() && obc->is_blocked()) {
@@ -2039,7 +2018,6 @@ bool ReplicatedPG::maybe_promote(const hobject_t& missing_oid,
 
   switch(recency) {
   case 0:
-    //promote_object(obc, missing_oid, oloc, promote_op);
     break;
   case 1:
     // Check if in the current hit set

@@ -220,7 +220,7 @@ OSDService::OSDService(OSD *osd) :
   read_cache(cct->_conf->osd_read_cache_object_count),
   write_cache(cct->_conf->osd_write_cache_object_count),
   promote_lock("OSD::promote_lock"),
-  promote_queue(cct->_conf->osd_promote_queue_max_size),
+  promote_queue(cct->_conf->osd_promote_mru_queue_max_size, cct->_conf->osd_promote_mfu_queue_max_size),
   promote_ops(0),
   promote_thread(this),
   promote_stop_flag(false),

@@ -667,7 +667,7 @@ public:
   // -- promotion state --
   Mutex promote_lock;
   Cond promote_cond;
-  PromoteMRU<hobject_t, PromoteInfo> promote_queue;
+  PromoteMRFU<hobject_t, PromoteInfo> promote_queue;
   int promote_ops;
   unordered_set<hobject_t> promote_oids;
   struct PromoteThread : public Thread {
