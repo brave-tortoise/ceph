@@ -225,7 +225,7 @@ public:
       mfu_contents.erase(i);
     } else {
       i = mru_contents.find(key);
-      if (i == mru_contents.end()) {
+      if (i != mru_contents.end()) {
     	mru.erase(i->second);
     	mru_contents.erase(i);
       }

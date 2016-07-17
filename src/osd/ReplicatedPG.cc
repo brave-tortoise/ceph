@@ -1865,22 +1865,26 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
         }
         return true;
       } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
-	  dout(0) << "wugy-dubeg: evict idle mode" << dendl;
+	dout(0) << "wugy-dubeg: evict idle mode" << dendl;
 	if(osd->promote_get_num_ops() < g_conf->osd_promote_max_ops_in_flight) {
-	  if(obc && obc->is_blocked()) {
-	    wait_for_blocked_object(obc->obs.oi.soid, op);
-	    return true;
-	  }
-	  if(!can_skip_promote(op)) {
-	    promote_object(obc, missing_oid, oloc, op);
-	    return true;
+	  if(op->may_write() || op->may_cache()) {
+	    if(!can_skip_promote(op)) {
+	      promote_object(obc, missing_oid, oloc, op);
+	      return true;
+	    }
+	    return false;
 	  } else {
+	    // Avoid duplicate promotion
+	    if (obc.get() && obc->is_blocked()) {
+	      wait_for_blocked_object(obc->obs.oi.soid, op);
+      	      return true;
+    	    }
+	    if(!can_skip_promote(op)) {
+	      promote_object(obc, missing_oid, oloc, op);
+	      return true;
+	    }
 	    return false;
           }
-        } else {
-	  //dout(0) << "wugy-dubeg: slow promote" << dendl;
-	  //if(op->may_write() || op->may_cache()) {
-	  //}
         }
       }
     }
@@ -11337,9 +11341,6 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
 
   // evict mode
   uint64_t warm_target = pool.info.cache_target_warm_ratio_micro;
-  dout(0) << "wugy-debug: "
-	<< "warm_target: " << warm_target
-	<< dendl;
   uint64_t evict_target = pool.info.cache_target_full_ratio_micro;
   uint64_t evict_slop = (float)evict_target * g_conf->osd_agent_slop;
   if (restart || agent_state->evict_mode < TierAgentState::EVICT_MODE_SOME)
