@@ -4038,6 +4038,8 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
   pi->stripe_width = stripe_width;
   pi->cache_target_dirty_ratio_micro =
     g_conf->osd_pool_default_cache_target_dirty_ratio * 1000000;
+  pi->cache_target_warm_ratio_micro =
+    g_conf->osd_pool_default_cache_target_warm_ratio * 1000000;
   pi->cache_target_full_ratio_micro =
     g_conf->osd_pool_default_cache_target_full_ratio * 1000000;
   pi->cache_min_flush_age = g_conf->osd_pool_default_cache_min_flush_age;
