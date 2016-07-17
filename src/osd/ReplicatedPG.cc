@@ -1782,6 +1782,11 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   ctx->src_obc = src_obc;
 
   execute_ctx(ctx);
+
+  // choose flush mode after a write op
+  if(agent_state && op->may_write() && !obc->obs.oi.is_dirty()) {
+    agent_choose_mode();
+  }
 }
 
 bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
@@ -1839,26 +1844,35 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 
   switch (pool.info.cache_mode) {
   case pg_pool_t::CACHEMODE_WRITEBACK:
-    if (agent_state &&
-	agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL) {
-      if (!op->may_write() && !op->may_cache() && !write_ordered) {
-	if (can_proxy_op) {
-	  dout(20) << __func__ << " cache pool full, proxying read" << dendl;
-	  do_proxy_read(op);
-	} else {
-	  dout(20) << __func__ << " cache pool full, redirect read" << dendl;
-	  do_cache_redirect(op);
-	}
-      } else {
-	if(can_proxy_op) {
-	  dout(20) << __func__ << " cache pool full, proxying write" << dendl;
-	  do_proxy_write(op, missing_oid);
-	} else {
-      	  dout(20) << __func__ << " cache pool full, waiting" << dendl;
-      	  waiting_for_cache_not_full.push_back(op);
-	}
+    if (agent_state) {
+      if(agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL) {
+        if (!op->may_write() && !op->may_cache() && !write_ordered) {
+          if (can_proxy_op) {
+            dout(20) << __func__ << " cache pool full, proxying read" << dendl;
+            do_proxy_read(op);
+          } else {
+            dout(20) << __func__ << " cache pool full, redirect read" << dendl;
+            do_cache_redirect(op);
+          }
+        } else {
+          if(can_proxy_op) {
+            dout(20) << __func__ << " cache pool full, proxying write" << dendl;
+            do_proxy_write(op, missing_oid);
+          } else {
+	    dout(20) << __func__ << " cache pool full, waiting" << dendl;
+	    waiting_for_cache_not_full.push_back(op);
+          }
+        }
+        return true;
+      } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
+	if(osd->promote_get_num_ops() < g_conf->osd_promote_max_ops_in_flight) {
+	  promote_object(obc, missing_oid, oloc, op);
+	  return true;
+        } /*else {
+	  if(op->may_write() || op->may_cache()) {
+	    
+	  }*/
       }
-      return true;
     }
 
     if(!hit_set) {
@@ -10941,7 +10955,7 @@ bool ReplicatedPG::agent_work(int start_max)
 	!osd->write_cache.lookup(*p) &&
 	agent_maybe_flush(obc))
       ++started;
-    if (agent_state->evict_mode != TierAgentState::EVICT_MODE_IDLE &&
+    if (agent_state->evict_mode > TierAgentState::EVICT_MODE_WARM &&
 	!osd->read_cache.lookup(*p) &&
 	agent_maybe_evict(obc))
       ++started;
@@ -11315,22 +11329,12 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
 	   << " full " << ((float)full_micro / 1000000.0)
 	   << dendl;
 
-  // flush mode
-  uint64_t flush_target = pool.info.cache_target_dirty_ratio_micro;
-  uint64_t flush_slop = (float)flush_target * g_conf->osd_agent_slop;
-  if (restart || agent_state->flush_mode == TierAgentState::FLUSH_MODE_IDLE)
-    flush_target += flush_slop;
-  else
-    flush_target -= MIN(flush_target, flush_slop);
-
-  if (dirty_micro > flush_target) {
-    flush_mode = TierAgentState::FLUSH_MODE_ACTIVE;
-  }
 
   // evict mode
+  uint64_t warm_target = pool.info.cache_target_warm_ratio_micro;
   uint64_t evict_target = pool.info.cache_target_full_ratio_micro;
   uint64_t evict_slop = (float)evict_target * g_conf->osd_agent_slop;
-  if (restart || agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE)
+  if (restart || agent_state->evict_mode < TierAgentState::EVICT_MODE_SOME)
     evict_target += evict_slop;
   else
     evict_target -= MIN(evict_target, evict_slop);
@@ -11356,12 +11360,26 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
       evict_effort = inc;
     assert(evict_effort >= inc && evict_effort <= 1000000);
     dout(30) << __func__ << " evict_effort " << was << " quantized by " << inc << " to " << evict_effort << dendl;
+  } else if (full_micro > warm_target) {
+    evict_mode = TierAgentState::EVICT_MODE_WARM;
+  } else {
+    goto skip_calc;
+  }
+
+
+  // flush mode
+  uint64_t flush_target = pool.info.cache_target_dirty_ratio_micro;
+  uint64_t flush_slop = (float)flush_target * g_conf->osd_agent_slop;
+  if (restart || agent_state->flush_mode == TierAgentState::FLUSH_MODE_IDLE)
+    flush_target += flush_slop;
+  else
+    flush_target -= MIN(flush_target, flush_slop);
+
+  if (dirty_micro > flush_target) {
+    flush_mode = TierAgentState::FLUSH_MODE_ACTIVE;
   }
 }
 
-  //uint64_t max_dirty_objects = flush_target * pool.info.target_max_objects / 1000000 / divisor;
-  //dout(20) << "wugy-debug: max_dirty_objects: " << max_dirty_objects
-  //	<< "; object_contexts max_size: " << object_contexts.max_size << dendl;
 
 skip_calc:
   bool old_idle = agent_state->is_idle();

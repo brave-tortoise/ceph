@@ -914,6 +914,8 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_unsigned("target_max_objects", target_max_objects);
   f->dump_unsigned("cache_target_dirty_ratio_micro",
 		   cache_target_dirty_ratio_micro);
+  f->dump_unsigned("cache_target_warm_ratio_micro",
+		   cache_target_warm_ratio_micro);
   f->dump_unsigned("cache_target_full_ratio_micro",
 		   cache_target_full_ratio_micro);
   f->dump_unsigned("cache_min_flush_age", cache_min_flush_age);
@@ -1242,7 +1244,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
-  ENCODE_START(19, 5, bl);
+  ENCODE_START(20, 5, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1287,12 +1289,13 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(max_temp_increment, bl);
   ::encode(hit_set_decay_factor, bl);
   ::encode(min_write_recency_for_promote, bl);
+  ::encode(cache_target_warm_ratio_micro, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(19, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(20, 5, 5, bl);
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1416,6 +1419,11 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   } else {
     min_write_recency_for_promote = 1;
   }
+  if (struct_v >= 20) {
+    ::decode(cache_target_warm_ratio_micro, bl);
+  } else {
+    cache_target_warm_ratio_micro = 0;
+  }
   DECODE_FINISH(bl);
   calc_pg_masks();
   calc_temp_inc();
@@ -1468,6 +1476,7 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.target_max_bytes = 1238132132;
   a.target_max_objects = 1232132;
   a.cache_target_dirty_ratio_micro = 187232;
+  a.cache_target_warm_ratio_micro = 687222;
   a.cache_target_full_ratio_micro = 987222;
   a.cache_min_flush_age = 231;
   a.cache_min_evict_age = 2321;

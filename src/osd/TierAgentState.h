@@ -23,7 +23,6 @@ struct TierAgentState {
   bool delaying;
 
   /// histogram of ages we've encountered
-  //pow2_hist_t atime_hist;
   pow2_hist_new_t temp_hist;
   int hist_age;
 
@@ -49,13 +48,15 @@ struct TierAgentState {
   }
 
   enum evict_mode_t {
-    EVICT_MODE_IDLE,      // no need to evict anything
+    EVICT_MODE_IDLE,      // no need to flush/evict anything, always promote
+    EVICT_MODE_WARM,	  // no need to evict anything
     EVICT_MODE_SOME,      // evict some things as we are near the target
     EVICT_MODE_FULL,      // evict anything
   } evict_mode;     ///< current evict behavior
   static const char *get_evict_mode_name(evict_mode_t m) {
     switch (m) {
     case EVICT_MODE_IDLE: return "idle";
+    case EVICT_MODE_WARM: return "warm";
     case EVICT_MODE_SOME: return "some";
     case EVICT_MODE_FULL: return "full";
     default: assert(0 == "bad evict mode");
@@ -83,7 +84,7 @@ struct TierAgentState {
     return
       delaying ||
       (flush_mode == FLUSH_MODE_IDLE &&
-      evict_mode == EVICT_MODE_IDLE);
+      evict_mode < EVICT_MODE_SOME);
   }
 
   /// add archived HitSet
