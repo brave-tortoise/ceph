@@ -3039,6 +3039,7 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
          var == "hit_set_count" || var == "hit_set_fpp" ||
          var == "target_max_objects" || var == "target_max_bytes" ||
          var == "cache_target_full_ratio" ||
+         var == "cache_target_warm_ratio" ||
          var == "cache_target_dirty_ratio" ||
          var == "cache_min_flush_age" || var == "cache_min_evict_age")) {
       ss << "pool '" << poolstr
@@ -3098,6 +3099,11 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
                          p->cache_target_dirty_ratio_micro);
         f->dump_float("cache_target_dirty_ratio",
                       ((float)p->cache_target_dirty_ratio_micro/1000000));
+      } else if (var == "cache_target_warm_ratio") {
+        f->dump_unsigned("cache_target_warm_ratio_micro",
+                         p->cache_target_warm_ratio_micro);
+        f->dump_float("cache_target_warm_ratio",
+                      ((float)p->cache_target_warm_ratio_micro/1000000));
       } else if (var == "cache_target_full_ratio") {
         f->dump_unsigned("cache_target_full_ratio_micro",
                          p->cache_target_full_ratio_micro);
@@ -3159,6 +3165,9 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
       } else if (var == "cache_target_dirty_ratio") {
         ss << "cache_target_dirty_ratio: "
           << ((float)p->cache_target_dirty_ratio_micro/1000000);
+      } else if (var == "cache_target_warm_ratio") {
+        ss << "cache_target_warm_ratio: "
+          << ((float)p->cache_target_warm_ratio_micro/1000000);
       } else if (var == "cache_target_full_ratio") {
         ss << "cache_target_full_ratio: "
           << ((float)p->cache_target_full_ratio_micro/1000000);
@@ -4165,7 +4174,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       (var == "hit_set_type" || var == "hit_set_period" ||
        var == "hit_set_count" || var == "hit_set_fpp" ||
        var == "target_max_objects" || var == "target_max_bytes" ||
-       var == "cache_target_full_ratio" || var == "cache_target_dirty_ratio" ||
+       var == "cache_target_full_ratio" || var == "cache_target_dirty_ratio" || var == "cache_target_warm_ratio" ||
        var == "cache_min_flush_age" || var == "cache_min_evict_age")) {
     ss << "pool '" << poolstr << "' is not a tier pool: variable not applicable";
     return -EACCES;
@@ -4395,6 +4404,16 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       return -ERANGE;
     }
     p.cache_target_dirty_ratio_micro = uf;
+  } else if (var == "cache_target_warm_ratio") {
+    if (floaterr.length()) {
+      ss << "error parsing float '" << val << "': " << floaterr;
+      return -EINVAL;
+    }
+    if (f < 0 || f > 1.0) {
+      ss << "value must be in the range 0..1";
+      return -ERANGE;
+    }
+    p.cache_target_warm_ratio_micro = uf;
   } else if (var == "cache_target_full_ratio") {
     if (floaterr.length()) {
       ss << "error parsing float '" << val << "': " << floaterr;
