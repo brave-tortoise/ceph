@@ -1864,7 +1864,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
           }
         }
         return true;
-      } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
+      }/* else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
 	if(osd->promote_get_num_ops() < g_conf->osd_promote_max_ops_in_flight) {
 	  //dout(0) << "wugy-dubeg: fast promote" << dendl;
 	  promote_object(obc, missing_oid, oloc, op);
@@ -1874,7 +1874,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	  //if(op->may_write() || op->may_cache()) {
 	  //}
         }
-      }
+      }*/
     }
 
     if(!hit_set) {
