@@ -484,9 +484,9 @@ OPTION(osd_read_cache_object_count, OPT_INT, 2048)
 OPTION(osd_write_cache_object_count, OPT_INT, 1024)
 
 // promotion params
-OPTION(osd_promote_mru_queue_max_size, OPT_INT, 64)
-OPTION(osd_promote_mfu_queue_max_size, OPT_INT, 64)
-OPTION(osd_promote_max_ops_in_flight, OPT_INT, 2)
+OPTION(osd_promote_mru_queue_max_size, OPT_INT, 128)
+OPTION(osd_promote_mfu_queue_max_size, OPT_INT, 32)
+OPTION(osd_promote_max_ops_in_flight, OPT_INT, 8)
 
 OPTION(osd_uuid, OPT_UUID, uuid_d())
 OPTION(osd_data, OPT_STR, "/var/lib/ceph/osd/$cluster-$id")

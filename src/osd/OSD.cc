@@ -8759,6 +8759,40 @@ int OSD::init_op_flags(OpRequestRef& op)
         break;
       }
 
+    case CEPH_OSD_OP_DELETE:
+      // if we get a delete with FAILOK we can skip handle cache. without
+      // FAILOK we still need to promote (or do something smarter) to
+      // determine whether to return ENOENT or 0.
+      if (iter == m->ops.begin() &&
+	  iter->op.flags == CEPH_OSD_OP_FLAG_FAILOK) {
+	op->set_skip_handle_cache();
+      }
+      // skip promotion when proxying a delete op
+      if (m->ops.size() == 1) {
+	op->set_skip_promote();
+      }
+      break;
+
+    case CEPH_OSD_OP_CACHE_TRY_FLUSH:
+    case CEPH_OSD_OP_CACHE_FLUSH:
+    case CEPH_OSD_OP_CACHE_EVICT:
+      // If try_flush/flush/evict is the only op, can skip handle cache.
+      if (m->ops.size() == 1) {
+	op->set_skip_handle_cache();
+      }
+      break;
+
+    case CEPH_OSD_OP_READ:
+    case CEPH_OSD_OP_SYNC_READ:
+    case CEPH_OSD_OP_SPARSE_READ:
+    case CEPH_OSD_OP_WRITEFULL:
+      if (m->ops.size() == 1 &&
+          (iter->op.flags & CEPH_OSD_OP_FLAG_FADVISE_NOCACHE ||
+           iter->op.flags & CEPH_OSD_OP_FLAG_FADVISE_DONTNEED)) {
+        op->set_skip_promote();
+      }
+      break;
+
     default:
       break;
     }
