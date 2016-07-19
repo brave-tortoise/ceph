@@ -1857,8 +1857,13 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
         }
         return true;
       } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
-	if(op->need_skip_promote())
+	if(op->may_write_full()) {
 	  return false;
+	}
+	if(op->need_skip_promote()) {
+	  do_proxy_write(op, missing_oid);
+	  return true;
+	}
 	if(osd->promote_get_num_ops() < g_conf->osd_promote_max_ops_in_flight) {
 	  if(write_ordered) {
 	    promote_object(obc, missing_oid, oloc, op);
@@ -1875,47 +1880,52 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
     }
 
     if(write_ordered) {
-    	bool to_promote = maybe_promote(missing_oid, in_hit_set, pool.info.min_write_recency_for_promote);
-	if(op->need_skip_promote()) {
-	  if(to_promote) {
-	    return false;
-	  } else {
-	    do_proxy_write(op, missing_oid);
-	    return true;
-	  }
-	}
-
+      if(op->need_skip_promote()) {
 	do_proxy_write(op, missing_oid);
-	if(to_promote) {
-	  async_promote_object(obc, missing_oid, oloc);
-	}
-
-	dout(20) << "wugy-debug: "
-		<< "in_hit_set: " << in_hit_set << "; "
-		<< "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
-		<< (to_promote ? "promote" : "not promote")
-		<< dendl;
-
 	return true;
+      }
+
+      bool to_promote = maybe_promote(missing_oid, in_hit_set, pool.info.min_write_recency_for_promote);
+      if(op->may_write_full()) {
+	if(to_promote) {
+	  return false;
+	} else {
+	  do_proxy_write(op, missing_oid);
+	  return true;
+	}
+      }
+
+      do_proxy_write(op, missing_oid);
+      if(to_promote) {
+	async_promote_object(obc, missing_oid, oloc);
+      }
+
+      dout(20) << "wugy-debug: "
+	<< "in_hit_set: " << in_hit_set << "; "
+	<< "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
+	<< (to_promote ? "promote" : "not promote")
+	<< dendl;
+
+      return true;
     } else {
-	do_proxy_read(op);
-	// Avoid duplicate promotion
-	if(obc.get() && obc->is_blocked()) {
-      	  return true;
-    	}
+      do_proxy_read(op);
+      // Avoid duplicate promotion
+      if(obc.get() && obc->is_blocked()) {
+      	return true;
+      }
 
-    	bool to_promote = maybe_promote(missing_oid, in_hit_set, pool.info.min_read_recency_for_promote);
-	if(to_promote) {
-	  async_promote_object(obc, missing_oid, oloc);
-	}
+      bool to_promote = maybe_promote(missing_oid, in_hit_set, pool.info.min_read_recency_for_promote);
+      if(to_promote) {
+	async_promote_object(obc, missing_oid, oloc);
+      }
 
-	dout(20) << "wugy-debug: "
-		<< "in_hit_set: " << in_hit_set << "; "
-		<< "min_read_recency_for_promote: " << pool.info.min_read_recency_for_promote << "; "
-		<< (to_promote ? "promote" : "not promote")
-		<< dendl;
+      dout(20) << "wugy-debug: "
+	<< "in_hit_set: " << in_hit_set << "; "
+	<< "min_read_recency_for_promote: " << pool.info.min_read_recency_for_promote << "; "
+	<< (to_promote ? "promote" : "not promote")
+	<< dendl;
 	
-	return true;
+      return true;
     }
 
   case pg_pool_t::CACHEMODE_FORWARD:

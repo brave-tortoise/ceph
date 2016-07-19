@@ -8789,7 +8789,7 @@ int OSD::init_op_flags(OpRequestRef& op)
       if (m->ops.size() == 1 &&
           (iter->op.flags & CEPH_OSD_OP_FLAG_FADVISE_NOCACHE ||
            iter->op.flags & CEPH_OSD_OP_FLAG_FADVISE_DONTNEED)) {
-        op->set_skip_promote();
+        op->set_write_full();
       }
       break;
 
