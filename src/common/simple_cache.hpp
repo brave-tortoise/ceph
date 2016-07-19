@@ -170,18 +170,23 @@ public:
 // ========================================================================
 // mrfu cache for promotion
 
+enum CacheType {
+  CEPH_PROMOTE_L1_CACHE,
+  CEPH_PROMOTE_L2_CACHE,
+};
+
 template <class K, class V>
 class PromoteMRFU {
   Mutex lock;
   size_t mru_size, mfu_size;
   size_t mru_max_size, mfu_max_size;
-  unordered_map<K, typename list<pair<K, V> >::iterator> mru_contents, mfu_contents;
+  unordered_map<K, pair<CacheType, typename list<pair<K, V> >::iterator> > contents;
   list<pair<K, V> > mru, mfu;
 
   void trim_mru_cache() {
     while (mru_size > mru_max_size) {
       --mru_size;
-      mru_contents.erase(mru.back().first);
+      contents.erase(mru.back().first);
       mru.pop_back();
     }
   }
@@ -194,11 +199,9 @@ class PromoteMRFU {
       K& key = mfu.back().first;
       typename list<pair<K, V> >::iterator loc = (--mfu.end());
 
-      mru_contents[key] = loc;
       mru.splice(mru.begin(), mfu, loc);
-
-      mfu_contents.erase(key);
       mfu.pop_back();
+      contents[key].first = CEPH_PROMOTE_L2_CACHE;
     }
     trim_mru_cache();
   }
@@ -206,7 +209,7 @@ class PromoteMRFU {
   void _add(const K& key, const V& value) {
     ++mru_size;
     mru.push_front(make_pair(key, value));
-    mru_contents[key] = mru.begin();
+    contents[key] = make_pair(CEPH_PROMOTE_L2_CACHE, mru.begin());
     trim_mru_cache();
   }
 
@@ -219,31 +222,30 @@ public:
 
   void remove(const K& key) {
     Mutex::Locker l(lock);
-    typename unordered_map<K, typename list<pair<K, V> >::iterator>::iterator i = mfu_contents.find(key);
-    if(i != mfu_contents.end()) {
-      mfu.erase(i->second);
-      mfu_contents.erase(i);
-    } else {
-      i = mru_contents.find(key);
-      if (i != mru_contents.end()) {
-    	mru.erase(i->second);
-    	mru_contents.erase(i);
+    typename unordered_map<K, pair<CacheType, typename list<pair<K, V> >::iterator> >::iterator i = contents.find(key);
+    if(i != contents.end()) {
+      if(i->second.first == CEPH_PROMOTE_L1_CACHE) {
+      	mfu.erase(i->second.second);
+      } else {
+    	mru.erase(i->second.second);
       }
+      contents.erase(i);
     }
   }
 
   void adjust_or_add(const K& key, const V& value) {
     Mutex::Locker l(lock);
-    typename list<pair<K, V> >::iterator loc;
-    if(mfu_contents.count(key)) {
-      loc = mfu_contents[key];
-      mfu.splice(mfu.begin(), mfu, loc);
-    } else if(mru_contents.count(key)) {
-      --mru_size;
-      ++mfu_size;
-      loc = mru_contents[key];
-      mfu.splice(mfu.begin(), mru, loc);
-      trim_mfu_cache();
+    if(contents.count(key)) {
+      typename list<pair<K, V> >::iterator loc = contents[key].second;
+      if(contents[key].first == CEPH_PROMOTE_L1_CACHE) {  // mfu
+        mfu.splice(mfu.begin(), mfu, loc);
+      } else {	// mru
+        --mru_size;
+        ++mfu_size;
+        mfu.splice(mfu.begin(), mru, loc);
+	contents[key].first = CEPH_PROMOTE_L1_CACHE;
+        trim_mfu_cache();
+      }
     } else {
       _add(key, value);
     }
@@ -251,7 +253,7 @@ public:
 
   bool empty() {
     Mutex::Locker l(lock);
-    return mru.empty() && mfu.empty();
+    return contents.empty();
   }
 
   void pop(K* const key, V* const value) {
@@ -259,12 +261,12 @@ public:
     if(!mfu.empty()) {
       *key = mfu.front().first;
       *value = mfu.front().second;
-      mfu_contents.erase(*key);
+      contents.erase(*key);
       mfu.pop_front();
     } else if(!mru.empty()) {
       *key = mru.front().first;
       *value = mru.front().second;
-      mru_contents.erase(*key);
+      contents.erase(*key);
       mru.pop_front();
     }
   }

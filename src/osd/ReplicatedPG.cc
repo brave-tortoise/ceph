@@ -1534,7 +1534,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   bool in_hit_set = false;
   if (hit_set && !be_flush_op) {
-    if(can_create) {
+    if(write_ordered) {
 	osd->write_cache.adjust_or_add(oid);
     } else if(op->may_read()) {
 	osd->read_cache.adjust_or_add(oid);
@@ -1779,13 +1779,18 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     return;
   }
 
+  bool was_dirty = obc->obs.oi.is_dirty();
+  bool was_whiteout = obc->obs.oi.is_whiteout();
+
   op->mark_started();
   ctx->src_obc = src_obc;
 
   execute_ctx(ctx);
 
-  // choose flush mode after a write op
-  if(agent_state && op->may_write() && !obc->obs.oi.is_dirty()) {
+  if(agent_state &&
+	((!was_dirty && obc->obs.oi.is_dirty()) ||
+	 (!was_whiteout && obc->obs.oi.is_whiteout()))) {
+    dout(20) << "wugy-debug: agent_choose_mode" << dendl;
     agent_choose_mode();
   }
 }
@@ -1847,12 +1852,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
           dout(20) << __func__ << " cache pool full, proxying write" << dendl;
           do_proxy_write(op, missing_oid);
 	} else {
-	  //if(obc.get() && obc->is_blocked()) {
-	    // wait_for_blocked_object(obc->obs.oi.soid, op);
-	  //} else {
-            dout(20) << __func__ << " cache pool full, proxying read" << dendl;
-            do_proxy_read(op);
-	  //}
+          dout(20) << __func__ << " cache pool full, proxying read" << dendl;
+          do_proxy_read(op);
         }
         return true;
       } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
@@ -1864,11 +1865,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	  } else {
 	    do_proxy_read(op);
 	    // Avoid duplicate promotion
-	    if(obc.get() && obc->is_blocked()) {
-	      //wait_for_blocked_object(obc->obs.oi.soid, op);
-	      return true;
-    	    } else {
-	      //promote_object(obc, missing_oid, oloc, op);
+	    if(!obc || !obc->is_blocked()) {
 	      async_promote_object(obc, missing_oid, oloc);
 	    }
           }
@@ -1902,10 +1899,6 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	return true;
     } else {
 	do_proxy_read(op);
-
-	if(op->need_skip_promote()) {
-	  return true;
-	}
 	// Avoid duplicate promotion
 	if(obc.get() && obc->is_blocked()) {
       	  return true;
@@ -1988,28 +1981,6 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
   }
   return false;
 }
-
-/*
-bool ReplicatedPG::can_skip_promote(OpRequestRef op)
-{
-  MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
-  if (m->ops.empty())
-    return false;
-  // if we get a delete with FAILOK we can skip promote.  without
-  // FAILOK we still need to promote (or do something smarter) to
-  // determine whether to return ENOENT or 0.
-  if (m->ops[0].op.op == CEPH_OSD_OP_DELETE) {
-    dout(20) << "wugy-debug: delete"
-	<< "ops.size: " << m->ops.size()
-	<< dendl;
-  }
-
-  if (m->ops[0].op.op == CEPH_OSD_OP_DELETE &&
-      (m->ops[0].op.flags & CEPH_OSD_OP_FLAG_FAILOK))
-    return true;
-  return false;
-}
-*/
 
 bool ReplicatedPG::maybe_promote(const hobject_t& missing_oid,
 				 bool in_hit_set,
