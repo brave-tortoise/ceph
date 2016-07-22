@@ -207,6 +207,11 @@ public:
       mru.pop_front();
     }
   }
+
+  int get_size() {
+    Mutex::Locker l(lock);
+    return contents.size();
+  }
 };
 
 

@@ -10843,8 +10843,7 @@ bool ReplicatedPG::agent_work(int start_max)
 
   assert(!deleting);
 
-  //if (agent_state->is_idle()) {
-  if(agent_state->evict_mode < TierAgentState::EVICT_MODE_SOME) {
+  if (agent_state->is_idle()) {
     dout(10) << __func__ << " idle, stopping" << dendl;
     unlock();
     return true;
@@ -10860,8 +10859,6 @@ bool ReplicatedPG::agent_work(int start_max)
 	   << dendl;
   assert(is_primary());
   assert(is_active());
-
-  //agent_load_hit_sets();
 
   const pg_pool_t *base_pool = get_osdmap()->get_pg_pool(pool.info.tier_of);
   assert(base_pool);
@@ -11208,7 +11205,7 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
       num_dirty = 0;
   }
 
-  dout(0) << __func__
+  dout(20) << __func__
 	   << " flush_mode: "
 	   << TierAgentState::get_flush_mode_name(agent_state->flush_mode)
 	   << " evict_mode: "
@@ -11224,8 +11221,9 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
 	   << " pool.info.target_max_objects: " << pool.info.target_max_objects
 	   << dendl;
 
-  dout(0) << "wugy-debug: "
+  dout(20) << "wugy-debug: "
 	<< "rw_cache size = " << rw_cache.get_size()
+	<< "; promote cache size = " << osd->promote_queue.get_size()
 	<< dendl;
 
   // get dirty, full ratios
