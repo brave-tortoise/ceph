@@ -105,69 +105,6 @@ public:
 
 
 // ========================================================================
-// lru cache for io access
-
-template <class T>
-class RWLRU {
-  Mutex lock;
-  size_t size, max_size;
-  unordered_map<T, typename list<T>::iterator> contents;
-  list<T> lru;
-
-  void trim_cache() {
-    while (size > max_size) {
-      --size;
-      contents.erase(lru.back());
-      lru.pop_back();
-    }
-  }
-
-  void _add(const T& entry) {
-    ++size;
-    lru.push_front(entry);
-    contents[entry] = lru.begin();
-    trim_cache();
-  }
-
-public:
-  RWLRU(size_t max_size) : lock("RWLRU::lock"), size(0), max_size(max_size) {}
-
-  void remove(const T& entry) {
-    Mutex::Locker l(lock);
-    typename unordered_map<T, typename list<T>::iterator>::iterator i =
-      contents.find(entry);
-    if (i == contents.end())
-      return;
-    --size;
-    lru.erase(i->second);
-    contents.erase(i);
-  }
-
-  bool lookup(const T& entry) {
-    Mutex::Locker l(lock);
-    typename list<T>::iterator loc = contents.count(entry) ?
-      contents[entry] : lru.end();
-    if (loc != lru.end()) {
-      return true;
-    }
-    return false;
-  }
-
-  void adjust_or_add(const T& entry) {
-    Mutex::Locker l(lock);
-    typename list<T>::iterator loc = contents.count(entry) ?
-      contents[entry] : lru.end();
-    if (loc != lru.end()) {
-      lru.splice(lru.begin(), lru, loc);
-      return;
-    }
-    _add(entry);
-    return;
-  }
-};
-
-
-// ========================================================================
 // mrfu cache for promotion
 
 enum CacheType {
@@ -271,5 +208,118 @@ public:
     }
   }
 };
+
+
+// ========================================================================
+// lru cache
+
+template <class T>
+class LRUCache {
+  Mutex lock;
+  list<T> lru;
+  typedef typename list<T>::iterator LRUIter;
+  unordered_map<T, LRUIter> contents;
+
+  void _add(const T& entry) {
+    lru.push_front(entry);
+    contents[entry] = lru.begin();
+  }
+
+public:
+  LRUCache() : lock("LRUCache::lock") {}
+
+  void remove(const T& entry) {
+    Mutex::Locker l(lock);
+    typename unordered_map<T, LRUIter>::iterator i = contents.find(entry);
+    if(i != contents.end()) {
+      lru.erase(i->second);
+      contents.erase(i);
+    }
+  }
+
+  bool lookup(const T& entry) {
+    Mutex::Locker l(lock);
+    if(contents.count(entry)) {
+      return true;
+    }
+    return false;
+  }
+
+  void adjust_or_add(const T& entry) {
+    Mutex::Locker l(lock);
+    if(contents.count(entry)) {
+      LRUIter loc = contents[entry];
+      lru.splice(lru.begin(), lru, loc);
+      return;
+    }
+    _add(entry);
+    return;
+  }
+
+  void pop(T* const entry) {
+    Mutex::Locker l(lock);
+    if(contents.size()) {
+      *entry = lru.back();
+      lru.pop_back();
+      contents.erase(*entry);
+    }
+  }
+
+  int get_size() {
+    Mutex::Locker l(lock);
+    return contents.size();
+  }
+};
+
+
+/*
+// ========================================================================
+// fifo cache
+
+template <class K, class V>
+class FIFOCache {
+  Mutex lock;
+  list<pair<K, V> > fifo;
+  typedef typename list<pair<K, V> >::iterator fifoIter;
+  unordered_map<K, fifoIter> contents;
+
+  void _add(const K& key, const V& value) {
+    fifo.push_front(make_pair(key, value));
+    contents[key] = fifo.begin();
+  }
+
+public:
+  FIFOCache() :	lock("FIFOCache::lock") {}
+
+  void remove(const K& key) {
+    Mutex::Locker l(lock);
+    typename unordered_map<K, fifoIter>::iterator i = contents.find(key);
+    if(i != contents.end()) {
+      fifo.erase(i->second);
+      contents.erase(i);
+    }
+  }
+
+  void add(const K& key, const V& value) {
+    Mutex::Locker l(lock);
+    _add(key, value);
+  }
+
+  bool empty() {
+    Mutex::Locker l(lock);
+    return contents.empty();
+  }
+
+  void pop_back(K* const key, V* const value) {
+    Mutex::Locker l(lock);
+    if(contens.size()) {
+      *key = fifo.back().first;
+      *value = fifo.back().second;
+      contents.erase(*key);
+      fifo.pop_back();
+    }
+  }
+};
+*/
 
 #endif

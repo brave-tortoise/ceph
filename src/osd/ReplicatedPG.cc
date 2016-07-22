@@ -1534,11 +1534,11 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   bool in_hit_set = false;
   if (hit_set && !be_flush_op) {
-    if(write_ordered) {
+    /*if(write_ordered) {
 	osd->write_cache.adjust_or_add(oid);
     } else if(op->may_read()) {
 	osd->read_cache.adjust_or_add(oid);
-    }
+    }*/
 
     if(op->been_in_hit_set) {
 	in_hit_set = true;
@@ -1779,20 +1779,26 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     return;
   }
 
-  bool was_dirty = obc->obs.oi.is_dirty();
-  bool was_whiteout = obc->obs.oi.is_whiteout();
+  //bool was_dirty = obc->obs.oi.is_dirty();
+  //bool was_whiteout = obc->obs.oi.is_whiteout();
 
   op->mark_started();
   ctx->src_obc = src_obc;
 
   execute_ctx(ctx);
 
+  if(agent_state && obc->obs.exists && !obc->obs.oi.is_whiteout()) {
+    rw_cache.adjust_or_add(obc->obs.oi.soid);
+  }
+
+  /*
   if(agent_state &&
 	((!was_dirty && obc->obs.oi.is_dirty()) ||
 	 (!was_whiteout && obc->obs.oi.is_whiteout()))) {
     dout(20) << "wugy-debug: agent_choose_mode" << dendl;
     agent_choose_mode();
   }
+  */
 }
 
 bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
@@ -5484,6 +5490,7 @@ inline int ReplicatedPG::_delete_oid(OpContext *ctx, bool no_whiteout)
     ctx->delta_stats.num_whiteouts++;
     t->touch(soid);
     osd->logger->inc(l_osd_tier_whiteout);
+    //rw_cache.remove(soid);
     return 0;
   }
 
@@ -6995,6 +7002,7 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
   simple_repop_submit(repop);
 
   osd->promote_finish_op(soid);
+  rw_cache.adjust_or_add(soid);
 
   dout(20) << "wugy-debug: "
 	<< __func__
@@ -7381,6 +7389,18 @@ int ReplicatedPG::try_flush_mark_clean(FlushOpRef fop)
       cancel_flush(fop, false);
       return -ECANCELED;
     }
+  }
+
+  // successfully flushed, can we evict this object?
+  if (!fop->op && agent_maybe_evict(obc, true)) {
+    osd->logger->inc(l_osd_tier_clean);
+    if (fop->on_flush) {
+      Context *on_flush = fop->on_flush;
+      fop->on_flush = NULL;
+      on_flush->complete(0);
+    }
+    flush_ops.erase(oid);
+    return 0;
   }
 
   // successfully flushed; can we clear the dirty bit?
@@ -10823,7 +10843,8 @@ bool ReplicatedPG::agent_work(int start_max)
 
   assert(!deleting);
 
-  if (agent_state->is_idle()) {
+  //if (agent_state->is_idle()) {
+  if(agent_state->evict_mode < TierAgentState::EVICT_MODE_SOME) {
     dout(10) << __func__ << " idle, stopping" << dendl;
     unlock();
     return true;
@@ -10840,54 +10861,37 @@ bool ReplicatedPG::agent_work(int start_max)
   assert(is_primary());
   assert(is_active());
 
-  agent_load_hit_sets();
+  //agent_load_hit_sets();
 
   const pg_pool_t *base_pool = get_osdmap()->get_pg_pool(pool.info.tier_of);
   assert(base_pool);
 
-  int ls_min = 1;
   int ls_max = 10; // FIXME?
-
-  // list some objects.  this conveniently lists clones (oldest to
-  // newest) before heads... the same order we want to flush in.
-  //
-  // NOTE: do not flush the Sequencer.  we will assume that the
-  // listing we get back is imprecise.
-  vector<hobject_t> ls;
-  hobject_t next;
-  int r = pgbackend->objects_list_partial(agent_state->position, ls_min, ls_max,
-					  0 /* no filtering by snapid */,
-					  &ls, &next);
-  assert(r >= 0);
-  dout(20) << __func__ << " got " << ls.size() << " objects" << dendl;
   int started = 0;
-  for (vector<hobject_t>::iterator p = ls.begin();
-       p != ls.end();
-       ++p) {
-    /*if(object_contexts.lookup(*p)) {
-      dout(20) << __func__ << " skip (hot object)" << *p << dendl;
-      osd->logger->inc(l_osd_agent_skip);
-      continue;
-    }*/
-    if (p->nspace == cct->_conf->osd_hit_set_namespace) {
-      dout(20) << __func__ << " skip (hit set) " << *p << dendl;
+  hobject_t oid;
+
+  while(ls_max--) {
+    rw_cache.pop(&oid);
+
+    if (oid.nspace == cct->_conf->osd_hit_set_namespace) {
+      dout(20) << __func__ << " skip (hit set) " << oid << dendl;
       osd->logger->inc(l_osd_agent_skip);
       continue;
     }
-    if (is_degraded_or_backfilling_object(*p)) {
-      dout(20) << __func__ << " skip (degraded) " << *p << dendl;
+    if (is_degraded_or_backfilling_object(oid)) {
+      dout(20) << __func__ << " skip (degraded) " << oid << dendl;
       osd->logger->inc(l_osd_agent_skip);
       continue;
     }
-    if (is_missing_object(p->get_head())) {
-      dout(20) << __func__ << " skip (missing head) " << *p << dendl;
+    if (is_missing_object(oid.get_head())) {
+      dout(20) << __func__ << " skip (missing head) " << oid << dendl;
       osd->logger->inc(l_osd_agent_skip);
       continue;
     }
-    ObjectContextRef obc = get_object_context(*p, false, NULL);
+    ObjectContextRef obc = get_object_context(oid, false, NULL);
     if (!obc) {
       // we didn't flush; we may miss something here.
-      dout(20) << __func__ << " skip (no obc) " << *p << dendl;
+      dout(20) << __func__ << " skip (no obc) " << oid << dendl;
       osd->logger->inc(l_osd_agent_skip);
       continue;
     }
@@ -10920,70 +10924,16 @@ bool ReplicatedPG::agent_work(int start_max)
       continue;
     }
 
-    if (agent_state->flush_mode != TierAgentState::FLUSH_MODE_IDLE &&
-	!osd->write_cache.lookup(*p) &&
-	agent_maybe_flush(obc))
+    if(!agent_maybe_evict(obc) && agent_maybe_flush(obc)) {
       ++started;
-    if (agent_state->evict_mode > TierAgentState::EVICT_MODE_WARM &&
-	!osd->read_cache.lookup(*p) &&
-	agent_maybe_evict(obc))
-      ++started;
+    }
+
+    // too many flush ops in flight
     if (started >= start_max) {
-      // If finishing early, set "next" to the next object
-      if (++p != ls.end())
-	next = *p;
       break;
     }
   }
 
-  dout(20) << "wugy-debug: "
-	<< "hist_age: " << agent_state->hist_age
-	<< "; temp_hist total: " << agent_state->temp_hist.total
-	<< dendl;
-
-  if (++agent_state->hist_age > g_conf->osd_agent_hist_halflife) {
-    dout(20) << __func__ << " resetting atime and temp histograms" << dendl;
-    agent_state->hist_age = 0;
-    //agent_state->atime_hist.decay();
-    agent_state->temp_hist.decay();
-  }
-
-  // Total objects operated on so far
-  int total_started = agent_state->started + started;
-  bool need_delay = false;
-
-  dout(20) << __func__ << " start pos " << agent_state->position
-    << " next start pos " << next
-    << " started " << total_started << dendl;
-
-  // See if we've made a full pass over the object hash space
-  // This might check at most ls_max objects a second time to notice that
-  // we've checked every objects at least once.
-  if (agent_state->position < agent_state->start && next >= agent_state->start) {
-    dout(20) << __func__ << " wrap around " << agent_state->start << dendl;
-    if (total_started == 0)
-      need_delay = true;
-    else
-      total_started = 0;
-    agent_state->start = next;
-  }
-  agent_state->started = total_started;
-
-  // See if we are starting from beginning
-  if (next.is_max())
-    agent_state->position = hobject_t();
-  else
-    agent_state->position = next;
-
-  // Discard old in memory HitSets
-  hit_set_in_memory_trim();
-
-  if (need_delay) {
-    assert(agent_state->delaying == false);
-    agent_delay();
-    unlock();
-    return false;
-  }
   agent_choose_mode();
   unlock();
   return true;
@@ -11060,7 +11010,7 @@ bool ReplicatedPG::agent_maybe_flush(ObjectContextRef& obc)
     osd->logger->inc(l_osd_agent_skip);
     return false;
   }
-
+/*
   utime_t now = ceph_clock_now(NULL);
   utime_t ob_local_mtime;
   if (obc->obs.oi.local_mtime != utime_t()) {
@@ -11077,7 +11027,7 @@ bool ReplicatedPG::agent_maybe_flush(ObjectContextRef& obc)
     osd->logger->inc(l_osd_agent_skip);
     return false;
   }
-
+*/
   if (osd->agent_is_active_oid(obc->obs.oi.soid)) {
     dout(20) << __func__ << " skip (flushing) " << obc->obs.oi << dendl;
     osd->logger->inc(l_osd_agent_skip);
@@ -11105,10 +11055,10 @@ bool ReplicatedPG::agent_maybe_flush(ObjectContextRef& obc)
   return true;
 }
 
-bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
+bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc, bool after_flush)
 {
   const hobject_t& soid = obc->obs.oi.soid;
-  if (obc->obs.oi.is_dirty()) {
+  if (!after_flush && obc->obs.oi.is_dirty()) {
     dout(20) << __func__ << " skip (dirty) " << obc->obs.oi << dendl;
     return false;
   }
@@ -11129,6 +11079,7 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     }
   }
 
+  /*
   if (agent_state->evict_mode != TierAgentState::EVICT_MODE_FULL) {
     // is this object cold enough?
     int temp = 0;
@@ -11147,12 +11098,13 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     if (temp_lower >= agent_state->evict_effort)
       return false;
   }
+  */
 
   if (!obc->get_write(OpRequestRef())) {
     dout(20) << __func__ << " skip (cannot get lock) " << obc->obs.oi << dendl;
     return false;
   }
-
+  
   dout(10) << __func__ << " evicting " << obc->obs.oi << dendl;
   RepGather *repop = simple_repop_create(obc);
   OpContext *ctx = repop->ctx;
@@ -11162,6 +11114,8 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
   int r = _delete_oid(ctx, true);
   if (obc->obs.oi.is_omap())
     ctx->delta_stats.num_objects_omap--;
+  if (obc->obs.oi.is_dirty())
+    --ctx->delta_stats.num_objects_dirty;
   assert(r == 0);
   finish_ctx(ctx, pg_log_entry_t::DELETE, false);
   simple_repop_submit(repop);
@@ -11254,7 +11208,7 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
       num_dirty = 0;
   }
 
-  dout(10) << __func__
+  dout(0) << __func__
 	   << " flush_mode: "
 	   << TierAgentState::get_flush_mode_name(agent_state->flush_mode)
 	   << " evict_mode: "
@@ -11269,6 +11223,10 @@ bool ReplicatedPG::agent_choose_mode(bool restart, OpRequestRef op)
 	   << " pool.info.target_max_bytes: " << pool.info.target_max_bytes
 	   << " pool.info.target_max_objects: " << pool.info.target_max_objects
 	   << dendl;
+
+  dout(0) << "wugy-debug: "
+	<< "rw_cache size = " << rw_cache.get_size()
+	<< dendl;
 
   // get dirty, full ratios
   uint64_t dirty_micro = 0;

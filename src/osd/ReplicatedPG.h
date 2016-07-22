@@ -894,6 +894,9 @@ protected:
   RepGather *simple_repop_create(ObjectContextRef obc);
   void simple_repop_submit(RepGather *repop);
 
+  // objects in cache
+  LRUCache<hobject_t> rw_cache;
+
   // hot/cold tracking
   HitSetRef hit_set;        ///< currently accumulating HitSet
   utime_t hit_set_start_stamp;    ///< time the current HitSet started recording
@@ -920,7 +923,7 @@ protected:
   void agent_setup();       ///< initialize agent state
   bool agent_work(int max); ///< entry point to do some agent work
   bool agent_maybe_flush(ObjectContextRef& obc);  ///< maybe flush
-  bool agent_maybe_evict(ObjectContextRef& obc);  ///< maybe evict
+  bool agent_maybe_evict(ObjectContextRef& obc, bool after_flush = false);  ///< maybe evict
 
   void agent_load_hit_sets();  ///< load HitSets, if needed
 
