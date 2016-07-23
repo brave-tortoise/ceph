@@ -500,6 +500,14 @@ public:
   }
 };
 
+void OSDService::agent_queue_timer(PGRef pg) {
+  // Queue a timer to call agent_choose_mode for this pg in 5 seconds
+  agent_timer_lock.Lock();
+  Context *cb = new AgentTimeoutCB(pg);
+  agent_timer.add_event_after(g_conf->osd_agent_delay_time, cb);
+  agent_timer_lock.Unlock();
+}
+
 void OSDService::agent_entry()
 {
   dout(10) << __func__ << " start" << dendl;
@@ -541,11 +549,7 @@ void OSDService::agent_entry()
 	<< " seconds" << dendl;
 
       osd->logger->inc(l_osd_tier_delay);
-      // Queue a timer to call agent_choose_mode for this pg in 5 seconds
-      agent_timer_lock.Lock();
-      Context *cb = new AgentTimeoutCB(pg);
-      agent_timer.add_event_after(g_conf->osd_agent_delay_time, cb);
-      agent_timer_lock.Unlock();
+      agent_queue_timer(pg);
     }
     agent_lock.Lock();
   }

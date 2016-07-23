@@ -81,10 +81,7 @@ struct TierAgentState {
 
   /// false if we have any work to do
   bool is_idle() const {
-    return
-      delaying ||
-      (//flush_mode == FLUSH_MODE_IDLE &&
-      evict_mode < EVICT_MODE_SOME);
+    return (delaying || evict_mode < EVICT_MODE_SOME);
   }
 
   /// add archived HitSet

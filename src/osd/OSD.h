@@ -585,6 +585,7 @@ public:
   Mutex agent_timer_lock;
   SafeTimer agent_timer;
 
+  void agent_queue_timer(PGRef pg);
   void agent_entry();
   void agent_stop();
 
