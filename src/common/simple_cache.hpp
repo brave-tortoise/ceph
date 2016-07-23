@@ -200,11 +200,13 @@ public:
       *value = mfu.front().second;
       contents.erase(*key);
       mfu.pop_front();
+      --mfu_size;
     } else if(!mru.empty()) {
       *key = mru.front().first;
       *value = mru.front().second;
       contents.erase(*key);
       mru.pop_front();
+      --mru_size;
     }
   }
 

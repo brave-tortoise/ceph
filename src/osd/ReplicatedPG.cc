@@ -1534,12 +1534,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   bool in_hit_set = false;
   if (hit_set && !be_flush_op) {
-    /*if(write_ordered) {
-	osd->write_cache.adjust_or_add(oid);
-    } else if(op->may_read()) {
-	osd->read_cache.adjust_or_add(oid);
-    }*/
-
     if(op->been_in_hit_set) {
 	in_hit_set = true;
     } else if(!op->been_inserted) {
@@ -2462,21 +2456,23 @@ void ReplicatedPG::async_promote_object(ObjectContextRef obc,
   if(!osd->promote_enqueue_object(obc->obs.oi.soid, info)) {
     dout(20) << __func__ << " skip (promoting) " << obc->obs.oi << dendl;
   }
+
+  dout(20) << "wugy-debug: "
+	<< __func__ 
+	<< "; promote_queue size = " << osd->promote_queue.get_size()
+	<< dendl;
 }
 
 void ReplicatedPG::promote_work(ObjectContextRef obc,
 				const hobject_t& oid,
 				const object_locator_t& oloc)
 {
-  if(agent_state && agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL)
+  if(agent_state && agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL) {
+    dout(20) << "wugy-debug: evict_mode_full" << dendl;
     return;
-
-  dout(20) << "wugy-debug: "
-	<< __func__
-	<< dendl;
+  }
 
   if(osd->promote_start_op(oid)) {
-
     dout(20) << "wugy-debug: "
 	<< "promote_work: there are " << osd->promote_get_num_ops() << " promote ops in flight"
 	<< dendl;
