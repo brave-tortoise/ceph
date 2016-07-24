@@ -314,10 +314,6 @@ struct PromoteInfo {
   object_locator_t oloc;
 };
 
-struct FlushInfo {
-  PGRef pg;
-  ObjectContextRef obc;
-};
 
 class OSD;
 class OSDService {
@@ -663,17 +659,11 @@ public:
     return agent_ops;
   }
 
-  /*
-  // -- osd read/write lru cache --
-  // hot objects, not evict/flush
-  RWLRU<hobject_t> read_cache;
-  RWLRU<hobject_t> write_cache;
-  */
 
   // -- promotion state --
   Mutex promote_lock;
   Cond promote_cond;
-  PromoteMRFU<hobject_t, PromoteInfo> promote_queue;
+  MRUCache<hobject_t, PromoteInfo> promote_queue;
   int promote_ops;
   unordered_set<hobject_t> promote_oids;
   struct PromoteThread : public Thread {
@@ -690,16 +680,33 @@ public:
   void promote_stop();
 
   /// insert an object into promote_queue
-  bool promote_enqueue_object(const hobject_t& oid, const PromoteInfo& info) {
+  void promote_enqueue_object(const hobject_t& oid, const PromoteInfo& info) {
     Mutex::Locker l(promote_lock);
-    if(!promote_oids.count(oid)) {
-      promote_queue.adjust_or_add(oid, info);
-      promote_cond.Signal();
-      return true;
+    PromoteInfo*ret = promote_queue.adjust_or_add(oid, info);
+    if(ret) {
+      PGRef pg = ret->pg;
+      pg->candidate_enqueue_object(oid);
     }
+    promote_cond.Signal();
+  }
+
+  /// adjust priority of an object in promote_queue
+  bool promote_adjust_object(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    if(promote_queue.adjust_or_lookup(oid))
+      return true;
+    return false;
+  }
+  
+  /// lookup an object in promote_queue
+  bool promote_lookup_object(const hobject_t& oid) {
+    Mutex::Locker l(promote_lock);
+    if(promote_queue.lookup(oid))
+      return true;
     return false;
   }
 
+  /// remove an object from promote_queue
   void promote_dequeue_object(const hobject_t& oid) {
     Mutex::Locker l(promote_lock);
     promote_queue.remove(oid);

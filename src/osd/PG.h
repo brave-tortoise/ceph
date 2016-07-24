@@ -2267,6 +2267,7 @@ public:
   virtual void agent_clear() = 0;
   virtual void agent_choose_mode_restart() = 0;
 
+  virtual void candidate_enqueue_object(const hobject_t& oid) = 0;
   virtual void promote_work(ObjectContextRef obc, const hobject_t& oid, const object_locator_t& oloc) = 0;
 };
 

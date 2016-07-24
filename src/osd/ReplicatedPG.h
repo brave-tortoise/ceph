@@ -897,11 +897,18 @@ protected:
   // objects in cache
   LRUCache<hobject_t> rw_cache;
 
+  // candidate objects for promotion
+  FIFOCache<hobject_t> candidates_queue;
+
   // hot/cold tracking
   HitSetRef hit_set;        ///< currently accumulating HitSet
   utime_t hit_set_start_stamp;    ///< time the current HitSet started recording
 
   map<time_t,HitSetRef> hit_set_flushing; ///< currently being written, not yet readable
+
+  void candidate_enqueue_object(const hobject_t& oid) {
+    candidates_queue.add(oid);
+  }
 
   void hit_set_clear();     ///< discard any HitSet state
   void hit_set_setup();     ///< initialize HitSet state
@@ -1165,9 +1172,8 @@ protected:
   inline bool maybe_handle_cache(OpRequestRef op,
 				 bool write_ordered,
 				 ObjectContextRef obc, int r,
-				 const hobject_t& missing_oid,
-				 bool must_promote,
-				 bool in_hit_set = false);
+				 hobject_t& missing_oid,
+				 bool must_promote);
   /**
    * This helper function tells the client to redirect their request elsewhere.
    */
@@ -1198,9 +1204,9 @@ protected:
 		    const object_locator_t& oloc);     ///< locator for obc|oid
 
   // check if a promotion is needed
-  bool maybe_promote(const hobject_t& missing_object,
+  /*bool maybe_promote(const hobject_t& missing_object,
 		     bool in_hit_set,
-		     uint32_t recency);
+		     uint32_t recency);*/
 
   /**
    * Check if the op is such that we can skip promote (e.g., DELETE)

@@ -1219,6 +1219,7 @@ ReplicatedPG::ReplicatedPG(OSDService *o, OSDMapRef curmap,
   pgbackend(
     PGBackend::build_pg_backend(
       _pool.info, curmap, this, coll_t(p), coll_t::make_temp_coll(p), o->store, cct)),
+  candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
   object_contexts(o->cct, g_conf->osd_pg_object_context_cache_count),
   snapset_contexts_lock("ReplicatedPG::snapset_contexts"),
   new_backfill(false),
@@ -1528,6 +1529,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
+  /*
   if(!r && obc && !obc->obs.exists) {
     missing_oid = obc->obs.oi.soid;
   }
@@ -1535,27 +1537,28 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   bool in_hit_set = false;
   if (hit_set && !be_flush_op) {
     if(op->been_in_hit_set) {
-	in_hit_set = true;
+      in_hit_set = true;
     } else if(!op->been_inserted) {
-    	if(missing_oid != hobject_t() && hit_set->contains(missing_oid)) {
-	  in_hit_set = true;
-	  op->been_in_hit_set = true;
-    	}
+      if(missing_oid != hobject_t() && hit_set->contains(missing_oid)) {
+	in_hit_set = true;
+	op->been_in_hit_set = true;
+      }
 
-    	if(hit_set->is_full() ||
-	  hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
-	  dout(20) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
-      	  hit_set_persist();
-    	}
+      if(hit_set->is_full() ||
+	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
+	dout(20) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
+      	hit_set_persist();
+      }
 	
-    	hit_set->insert(oid);
-	op->been_inserted = true;
+      hit_set->insert(oid);
+      op->been_inserted = true;
 
-	dout(20) << "wugy-debug: "
-		<< "insert: " << oid
-		<< dendl;
+      dout(20) << "wugy-debug: "
+	<< "insert: " << oid
+	<< dendl;
     }
   }
+  */
 
   dout(20) << "wugy-debug: "
 	<< "do_op: " << ceph_osd_flag_string(m->get_flags())
@@ -1563,7 +1566,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   if ((m->get_flags() & CEPH_OSD_FLAG_IGNORE_CACHE) == 0 &&
 	!op->need_skip_handle_cache() &&
-      	maybe_handle_cache(op, write_ordered, obc, r, missing_oid, false, in_hit_set))
+      	maybe_handle_cache(op, write_ordered, obc, r, missing_oid, false))
     return;
 
   dout(20) << "wugy-debug: "
@@ -1798,9 +1801,8 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 				      bool write_ordered,
 				      ObjectContextRef obc,
-                                      int r, const hobject_t& missing_oid,
-				      bool must_promote,
-				      bool in_hit_set)
+                                      int r, hobject_t& missing_oid,
+				      bool must_promote)
 {
   // return quickly if caching is not enabled
   if (pool.info.cache_mode == pg_pool_t::CACHEMODE_NONE)
@@ -1811,13 +1813,11 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	     << (obc->obs.exists ? "exists" : "DNE")
 	     << " missing_oid " << missing_oid
 	     << " must_promote " << (int)must_promote
-	     << " in_hit_set " << (int)in_hit_set
 	     << dendl;
   else
     dout(25) << __func__ << " (no obc)"
 	     << " missing_oid " << missing_oid
 	     << " must_promote " << (int)must_promote
-	     << " in_hit_set " << (int)in_hit_set
 	     << dendl;
 
   // if it is write-ordered and blocked, stop now
@@ -1834,6 +1834,10 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 
   if (obc.get() && obc->obs.exists) {
     return false;
+  }
+
+  if(obc && missing_oid == hobject_t()) {
+    missing_oid = obc->obs.oi.soid;
   }
 
   MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
@@ -1855,6 +1859,9 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
           dout(20) << __func__ << " cache pool full, proxying read" << dendl;
           do_proxy_read(op);
         }
+	if(!op->need_skip_promote() && !osd->promote_lookup_object(missing_oid)) {
+	  candidates_queue.adjust_or_add(missing_oid);
+	}
         return true;
       } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
 	if(op->may_write_full()) {
@@ -1885,9 +1892,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	return true;
       }
 
-      bool to_promote = maybe_promote(missing_oid, in_hit_set, pool.info.min_write_recency_for_promote);
       if(op->may_write_full()) {
-	if(to_promote) {
+	if(candidates_queue.adjust_or_add(missing_oid)) {
 	  return false;
 	} else {
 	  do_proxy_write(op, missing_oid);
@@ -1896,17 +1902,17 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       }
 
       do_proxy_write(op, missing_oid);
-      if(to_promote) {
-	async_promote_object(obc, missing_oid, oloc);
+
+      if(!osd->promote_adjust_object(missing_oid)) {
+        if(candidates_queue.promote_or_add(missing_oid)) {
+          dout(20) << "wugy-debug: write op -> promote" << dendl;
+	  async_promote_object(obc, missing_oid, oloc);
+        } else {
+	  dout(20) << "wugy-debug: write op -> not promote" << dendl;
+        }
       }
-
-      dout(20) << "wugy-debug: "
-	<< "in_hit_set: " << in_hit_set << "; "
-	<< "min_write_recency_for_promote: " << pool.info.min_write_recency_for_promote << "; "
-	<< (to_promote ? "promote" : "not promote")
-	<< dendl;
-
       return true;
+
     } else {
       do_proxy_read(op);
       // Avoid duplicate promotion
@@ -1914,17 +1920,14 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	return true;
       }
 
-      bool to_promote = maybe_promote(missing_oid, in_hit_set, pool.info.min_read_recency_for_promote);
-      if(to_promote) {
-	async_promote_object(obc, missing_oid, oloc);
+      if(!osd->promote_adjust_object(missing_oid)) {
+        if(candidates_queue.promote_or_add(missing_oid)) {
+          dout(20) << "wugy-debug: read op -> promote" << dendl;
+	  async_promote_object(obc, missing_oid, oloc);
+        } else {
+          dout(20) << "wugy-debug: read op -> not promote" << dendl;
+        }
       }
-
-      dout(20) << "wugy-debug: "
-	<< "in_hit_set: " << in_hit_set << "; "
-	<< "min_read_recency_for_promote: " << pool.info.min_read_recency_for_promote << "; "
-	<< (to_promote ? "promote" : "not promote")
-	<< dendl;
-	
       return true;
     }
 
@@ -1992,6 +1995,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
   return false;
 }
 
+/*
 bool ReplicatedPG::maybe_promote(const hobject_t& missing_oid,
 				 bool in_hit_set,
 				 uint32_t recency)
@@ -2037,6 +2041,7 @@ bool ReplicatedPG::maybe_promote(const hobject_t& missing_oid,
 
   return true;
 }
+*/
 
 void ReplicatedPG::do_cache_redirect(OpRequestRef op)
 {
@@ -2388,32 +2393,26 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
 				  const object_locator_t& oloc,
 				  OpRequestRef op)
 {
-  hobject_t hoid = obc ? obc->obs.oi.soid : missing_oid;
-  assert(hoid != hobject_t());
-  if (scrubber.write_blocked_by_scrub(hoid)) {
-    dout(10) << __func__ << " " << hoid
+  if (scrubber.write_blocked_by_scrub(missing_oid)) {
+    dout(10) << __func__ << " " << missing_oid
 	     << " blocked by scrub" << dendl;
     if (op) {
       waiting_for_active.push_back(op);
-      dout(10) << __func__ << " " << hoid
+      dout(10) << __func__ << " " << missing_oid
 	       << " placing op in waiting_for_active" << dendl;
     } else {
-      dout(10) << __func__ << " " << hoid
+      dout(10) << __func__ << " " << missing_oid
 	       << " no op, dropping on the floor" << dendl;
     }
     return;
   }
+
   if (!obc) { // we need to create an ObjectContext
     assert(missing_oid != hobject_t());
     obc = get_object_context(missing_oid, true);
   }
 
   hobject_t oid = obc->obs.oi.soid;
-
-  dout(20) << "wugy-debug: "
-	<< "promote: there are " << osd->promote_get_num_ops() << " promote ops in flight"
-	<< dendl;
-
   if(osd->promote_start_op(oid)) {
     osd->promote_dequeue_object(oid);
 
@@ -2438,24 +2437,8 @@ void ReplicatedPG::async_promote_object(ObjectContextRef obc,
 					const hobject_t& missing_oid,
 				  	const object_locator_t& oloc)
 {
-  hobject_t hoid = obc ? obc->obs.oi.soid : missing_oid;
-  assert(hoid != hobject_t());
-
-  if (scrubber.write_blocked_by_scrub(hoid)) {
-    dout(10) << __func__ << " " << hoid
-	     << " blocked by scrub" << dendl;
-    return;
-  }
-
-  if (!obc) { // we need to create an ObjectContext
-    assert(missing_oid != hobject_t());
-    obc = get_object_context(missing_oid, true);
-  }
-
   PromoteInfo info = {this, obc, oloc};
-  if(!osd->promote_enqueue_object(obc->obs.oi.soid, info)) {
-    dout(20) << __func__ << " skip (promoting) " << obc->obs.oi << dendl;
-  }
+  osd->promote_enqueue_object(missing_oid, info);
 
   dout(20) << "wugy-debug: "
 	<< __func__ 
@@ -2467,9 +2450,16 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
 				const hobject_t& oid,
 				const object_locator_t& oloc)
 {
-  if(agent_state && agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL) {
-    dout(20) << "wugy-debug: evict_mode_full" << dendl;
+  if (scrubber.write_blocked_by_scrub(oid)) {
+    candidates_queue.add(oid);
+    dout(10) << __func__ << " " << oid
+	     << " blocked by scrub" << dendl;
     return;
+  }
+
+  if (!obc) { // we need to create an ObjectContext
+    assert(oid != hobject_t());
+    obc = get_object_context(oid, true);
   }
 
   if(osd->promote_start_op(oid)) {
