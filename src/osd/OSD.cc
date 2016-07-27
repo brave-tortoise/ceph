@@ -491,6 +491,7 @@ void OSDService::activate_map()
   agent_lock.Unlock();
 }
 
+/*
 class AgentTimeoutCB : public Context {
   PGRef pg;
 public:
@@ -507,6 +508,7 @@ void OSDService::agent_queue_timer(PGRef pg) {
   agent_timer.add_event_after(g_conf->osd_agent_delay_time, cb);
   agent_timer_lock.Unlock();
 }
+*/
 
 void OSDService::agent_entry()
 {
@@ -543,14 +545,16 @@ void OSDService::agent_entry()
     PGRef pg = *agent_queue_pos;
     int max = g_conf->osd_agent_max_ops - agent_ops;
     agent_lock.Unlock();
-    if (!pg->agent_work(max)) {
+
+    pg->agent_work(max);
+    /*if (!pg->agent_work(max)) {
       dout(10) << __func__ << " " << *pg
 	<< " no agent_work, delay for " << g_conf->osd_agent_delay_time
 	<< " seconds" << dendl;
 
       osd->logger->inc(l_osd_tier_delay);
       agent_queue_timer(pg);
-    }
+    }*/
     agent_lock.Lock();
   }
   agent_lock.Unlock();

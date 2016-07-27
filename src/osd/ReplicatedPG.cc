@@ -10357,7 +10357,7 @@ void ReplicatedPG::hit_set_setup()
 
   // FIXME: discard any previous data for now
   hit_set_create();
-  agent_load_hit_sets();
+  //agent_load_hit_sets();
 
   // include any writes we know about from the pg log.  this doesn't
   // capture reads, but it is better than nothing!
@@ -10981,7 +10981,7 @@ void ReplicatedPG::agent_delay()
   if (agent_state) {
     assert(agent_state->delaying == false);
     agent_state->delaying = true;
-    osd->agent_queue_timer(this);
+    //osd->agent_queue_timer(this);
   }
 }
 
@@ -11140,9 +11140,9 @@ skip_calc:
     if (!restart && !old_idle) {
       osd->agent_disable_pg(this, old_effort);
     }
-    if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
+    /*if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
       agent_delay();
-    }
+    }*/
   } else {
     if (restart || old_idle) {
       osd->agent_enable_pg(this, agent_state->evict_effort);
