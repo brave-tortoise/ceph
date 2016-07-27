@@ -480,8 +480,17 @@ OPTION(osd_agent_hist_halflife, OPT_INT, 1000)
 OPTION(osd_agent_slop, OPT_FLOAT, .02)
 
 // osd read/write cache size, not evict/flush objects in cache
-OPTION(osd_read_cache_object_count, OPT_INT, 2048)
-OPTION(osd_write_cache_object_count, OPT_INT, 1024)
+//OPTION(osd_read_cache_object_count, OPT_INT, 2048)
+//OPTION(osd_write_cache_object_count, OPT_INT, 1024)
+
+//OPTION(osd_rw_ghost_cache_max_size, OPT_INT, 32)
+//OPTION(osd_rw_resident_victim_ratio, OPT_INT, 8)
+
+// rw_cache params
+OPTION(osd_rw_cache_insert_pos_percentile, OPT_INT, 50)   // position of a new object inserted in rw_cache
+OPTION(osd_rw_cache_persist_update_count, OPT_INT, 1000)
+OPTION(osd_rw_cache_persist_period, OPT_INT, 1200)
+OPTION(osd_rw_cache_namespace, OPT_STR, ".ceph-internal") // rados namespace for rw_cache tracking
 
 // promotion params
 OPTION(osd_promote_candidate_queue_max_size, OPT_INT, 64)

@@ -1219,6 +1219,8 @@ ReplicatedPG::ReplicatedPG(OSDService *o, OSDMapRef curmap,
   pgbackend(
     PGBackend::build_pg_backend(
       _pool.info, curmap, this, coll_t(p), coll_t::make_temp_coll(p), o->store, cct)),
+  //rw_cache(cct->_conf->osd_rw_ghost_cache_max_size, cct->_conf->osd_rw_resident_victim_ratio),
+  rw_cache(cct->_conf->osd_rw_cache_insert_pos_percentile, cct->_conf->osd_rw_cache_persist_update_count),
   candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
   object_contexts(o->cct, g_conf->osd_pg_object_context_cache_count),
   snapset_contexts_lock("ReplicatedPG::snapset_contexts"),
@@ -1529,37 +1531,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     }
   }
 
-  /*
-  if(!r && obc && !obc->obs.exists) {
-    missing_oid = obc->obs.oi.soid;
-  }
-
-  bool in_hit_set = false;
-  if (hit_set && !be_flush_op) {
-    if(op->been_in_hit_set) {
-      in_hit_set = true;
-    } else if(!op->been_inserted) {
-      if(missing_oid != hobject_t() && hit_set->contains(missing_oid)) {
-	in_hit_set = true;
-	op->been_in_hit_set = true;
-      }
-
-      if(hit_set->is_full() ||
-	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
-	dout(20) << "wugy-debug: pgid: " << info.pgid << "; insert count: " << hit_set->insert_count() << dendl;
-      	hit_set_persist();
-      }
-	
-      hit_set->insert(oid);
-      op->been_inserted = true;
-
-      dout(20) << "wugy-debug: "
-	<< "insert: " << oid
-	<< dendl;
-    }
-  }
-  */
-
   dout(20) << "wugy-debug: "
 	<< "do_op: " << ceph_osd_flag_string(m->get_flags())
 	<< dendl;
@@ -1776,9 +1747,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     return;
   }
 
-  //bool was_dirty = obc->obs.oi.is_dirty();
-  //bool was_whiteout = obc->obs.oi.is_whiteout();
-
   op->mark_started();
   ctx->src_obc = src_obc;
 
@@ -1786,16 +1754,13 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   if(agent_state && obc->obs.exists && !obc->obs.oi.is_whiteout()) {
     rw_cache.adjust_or_add(obc->obs.oi.soid);
-  }
 
-  /*
-  if(agent_state &&
-	((!was_dirty && obc->obs.oi.is_dirty()) ||
-	 (!was_whiteout && obc->obs.oi.is_whiteout()))) {
-    dout(20) << "wugy-debug: agent_choose_mode" << dendl;
-    agent_choose_mode();
+    if(rw_cache.to_persist() ||
+	//rw_cache_persist_start_stamp + pool.info.rw_cache_persist_period <= m->get_recv_stamp()) {
+	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
+      hit_set_persist();
+    }
   }
-  */
 }
 
 bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
@@ -1994,54 +1959,6 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
   }
   return false;
 }
-
-/*
-bool ReplicatedPG::maybe_promote(const hobject_t& missing_oid,
-				 bool in_hit_set,
-				 uint32_t recency)
-{
-  dout(20) << __func__ << " missing_oid " << missing_oid
-	   << "  in_hit_set " << in_hit_set << dendl;
-
-  switch(recency) {
-  case 0:
-    break;
-  case 1:
-    // Check if in the current hit set
-    if(!in_hit_set) {
-	// not promote
-	return false;
-    }
-    break;
-  default:
-    if(!in_hit_set) {
-	dout(20) << "wugy-debug: "
-		<< "hit_set_map size: " << agent_state->hit_set_map.size()
-		<< dendl;
-
-	// Check if in other hit sets
-	bool in_other_hit_sets = false;
-	map<time_t, HitSetRef>::reverse_iterator itor;
-	for(--recency, itor = agent_state->hit_set_map.rbegin();
-		recency && itor != agent_state->hit_set_map.rend();
-		--recency, ++itor) {
-	  if(itor->second->contains(missing_oid)) {
-	    in_other_hit_sets = true;
-	    break;
-	  }
-	}
-
-	if(!in_other_hit_sets) {
-	  // not promote
-	  return false;
-	}
-    }
-    break;
-  }
-
-  return true;
-}
-*/
 
 void ReplicatedPG::do_cache_redirect(OpRequestRef op)
 {
@@ -5476,7 +5393,7 @@ inline int ReplicatedPG::_delete_oid(OpContext *ctx, bool no_whiteout)
     ctx->delta_stats.num_whiteouts++;
     t->touch(soid);
     osd->logger->inc(l_osd_tier_whiteout);
-    //rw_cache.remove(soid);
+    rw_cache.adjust_to_cold(soid);
     return 0;
   }
 
@@ -6988,7 +6905,7 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
   simple_repop_submit(repop);
 
   osd->promote_finish_op(soid);
-  rw_cache.adjust_or_add(soid);
+  rw_cache.add(soid);
 
   dout(20) << "wugy-debug: "
 	<< __func__
@@ -10393,17 +10310,16 @@ void ReplicatedPG::check_local()
 }
 
 
-
 // ===========================
 // hit sets
 
 hobject_t ReplicatedPG::get_hit_set_current_object(utime_t stamp)
 {
   ostringstream ss;
-  ss << "hit_set_" << info.pgid.pgid << "_current_" << stamp;
+  ss << "rw_cache_" << info.pgid.pgid << "_current_" << stamp;
   hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
 		 info.pgid.ps(), info.pgid.pool(),
-		 cct->_conf->osd_hit_set_namespace);
+		 cct->_conf->osd_rw_cache_namespace);
   dout(20) << __func__ << " " << hoid << dendl;
   return hoid;
 }
@@ -10411,10 +10327,10 @@ hobject_t ReplicatedPG::get_hit_set_current_object(utime_t stamp)
 hobject_t ReplicatedPG::get_hit_set_archive_object(utime_t start, utime_t end)
 {
   ostringstream ss;
-  ss << "hit_set_" << info.pgid.pgid << "_archive_" << start << "_" << end;
+  ss << "rw_cache_" << info.pgid.pgid << "_archive_" << start << "_" << end;
   hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
 		 info.pgid.ps(), info.pgid.pool(),
-		 cct->_conf->osd_hit_set_namespace);
+		 cct->_conf->osd_rw_cache_namespace);
   dout(20) << __func__ << " " << hoid << dendl;
   return hoid;
 }
@@ -10441,17 +10357,18 @@ void ReplicatedPG::hit_set_setup()
 
   // FIXME: discard any previous data for now
   hit_set_create();
+  agent_load_hit_sets();
 
   // include any writes we know about from the pg log.  this doesn't
   // capture reads, but it is better than nothing!
-  hit_set_apply_log();
+  //hit_set_apply_log();
 }
 
 void ReplicatedPG::hit_set_create()
 {
   utime_t now = ceph_clock_now(NULL);
   // make a copy of the params to modify
-  HitSet::Params params(pool.info.hit_set_params);
+  /*HitSet::Params params(pool.info.hit_set_params);
 
   dout(20) << __func__ << " " << params << dendl;
   if (pool.info.hit_set_params.get_type() == HitSet::TYPE_BLOOM) {
@@ -10484,7 +10401,7 @@ void ReplicatedPG::hit_set_create()
     dout(10) << __func__ << " target_size " << p->target_size
 	     << " fpp " << p->get_fpp() << dendl;
   }
-  hit_set.reset(new HitSet(params));
+  hit_set.reset(new HitSet(params));*/
   hit_set_start_stamp = now;
 }
 
@@ -10531,12 +10448,11 @@ void ReplicatedPG::hit_set_persist()
 {
   dout(10) << __func__  << dendl;
   bufferlist bl;
-  unsigned max = pool.info.hit_set_count;
+  unsigned max = 1; //pool.info.hit_set_count;
 
   utime_t now = ceph_clock_now(cct);
   RepGather *repop;
   hobject_t oid;
-  time_t flush_time = 0;
 
   // See what start is going to be used later
   utime_t start = info.hit_set.current_info.begin;
@@ -10587,24 +10503,12 @@ void ReplicatedPG::hit_set_persist()
   if (!info.hit_set.current_info.begin)
     info.hit_set.current_info.begin = hit_set_start_stamp;
 
-  hit_set->seal();
-  ::encode(*hit_set, bl);
+  ::encode(rw_cache, bl);
   info.hit_set.current_info.end = now;
   dout(20) << __func__ << " archive " << oid << dendl;
 
-  if (agent_state) {
-    agent_state->add_hit_set(info.hit_set.current_info.begin, hit_set);
-    hit_set_in_memory_trim();
-  }
-
-  // hold a ref until it is flushed to disk
-  hit_set_flushing[info.hit_set.current_info.begin] = hit_set;
-  flush_time = info.hit_set.current_info.begin;
-
   ObjectContextRef obc = get_object_context(oid, true);
   repop = simple_repop_create(obc);
-  if (flush_time != 0)
-    repop->on_applied = new C_HitSetFlushing(this, flush_time);
   OpContext *ctx = repop->ctx;
   ctx->at_version = get_next_version();
   ctx->updated_hset_history = info.hit_set;
@@ -10752,15 +10656,6 @@ void ReplicatedPG::hit_set_trim(RepGather *repop, unsigned max)
 
 void ReplicatedPG::hit_set_in_memory_trim()
 {
-  /*
-  unsigned max = pool.info.hit_set_count;
-  unsigned max_in_memory = pool.info.min_read_recency_for_promote > 0 ? pool.info.min_read_recency_for_promote - 1 : 0;
-
-  if (max_in_memory > max) {
-    max_in_memory = max;
-  }
-  */
-
   unsigned max_in_memory = pool.info.hit_set_count ? pool.info.hit_set_count - 1 : 0;
   dout(20) << "wugy-debug: "
 	<< "hit_set_count: " << pool.info.hit_set_count << "; "
@@ -10854,7 +10749,8 @@ bool ReplicatedPG::agent_work(int start_max)
   hobject_t oid;
 
   while(ls_max--) {
-    rw_cache.pop(&oid);
+    if(!rw_cache.pop(&oid))
+      break;
 
     if (oid.nspace == cct->_conf->osd_hit_set_namespace) {
       dout(20) << __func__ << " skip (hit set) " << oid << dendl;
@@ -10924,54 +10820,37 @@ bool ReplicatedPG::agent_work(int start_max)
 
 void ReplicatedPG::agent_load_hit_sets()
 {
-  if (agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
-    return;
-  }
-
-  if (agent_state->hit_set_map.size() < info.hit_set.history.size()) {
-    dout(10) << __func__ << dendl;
-    for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
-	 p != info.hit_set.history.end(); ++p) {
-      if (agent_state->hit_set_map.count(p->begin.sec()) == 0) {
-	dout(10) << __func__ << " loading " << p->begin << "-"
-		 << p->end << dendl;
-	if (!pool.info.is_replicated()) {
-	  // FIXME: EC not supported here yet
-	  derr << __func__ << " on non-replicated pool" << dendl;
-	  break;
-	}
-
-	// check if it's still in flight
-	if (hit_set_flushing.count(p->begin)) {
-	  agent_state->add_hit_set(p->begin.sec(), hit_set_flushing[p->begin]);
-	  continue;
-	}
-
-	hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
-	if (is_unreadable_object(oid)) {
-	  dout(10) << __func__ << " unreadable " << oid << ", waiting" << dendl;
-	  break;
-	}
-
-	ObjectContextRef obc = get_object_context(oid, false);
-	if (!obc) {
-	  derr << __func__ << ": could not load hitset " << oid << dendl;
-	  break;
-	}
-
-	bufferlist bl;
-	{
-	  obc->ondisk_read_lock();
-	  int r = osd->store->read(coll, oid, 0, 0, bl);
-	  assert(r >= 0);
-	  obc->ondisk_read_unlock();
-	}
-	HitSetRef hs(new HitSet);
-	bufferlist::iterator pbl = bl.begin();
-	::decode(*hs, pbl);
-	agent_state->add_hit_set(p->begin.sec(), hs);
-      }
+  dout(10) << __func__ << dendl;
+  for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
+	p != info.hit_set.history.end(); ++p) {
+    dout(10) << __func__ << " loading " << p->begin << "-" << p->end << dendl;
+    if (!pool.info.is_replicated()) {
+      // FIXME: EC not supported here yet
+      derr << __func__ << " on non-replicated pool" << dendl;
+      break;
     }
+
+    hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
+    if (is_unreadable_object(oid)) {
+      dout(10) << __func__ << " unreadable " << oid << ", waiting" << dendl;
+      break;
+    }
+
+    ObjectContextRef obc = get_object_context(oid, false);
+    if (!obc) {
+      derr << __func__ << ": could not load hitset " << oid << dendl;
+      break;
+    }
+
+    bufferlist bl;
+    {
+      obc->ondisk_read_lock();
+      int r = osd->store->read(coll, oid, 0, 0, bl);
+      assert(r >= 0);
+      obc->ondisk_read_unlock();
+    }
+    bufferlist::iterator pbl = bl.begin();
+    ::decode(rw_cache, pbl);
   }
 }
 
@@ -11061,27 +10940,6 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc, bool after_flush)
       return false;
     }
   }
-
-  /*
-  if (agent_state->evict_mode != TierAgentState::EVICT_MODE_FULL) {
-    // is this object cold enough?
-    int temp = 0;
-    if(hit_set)
-	agent_estimate_temp(soid, &temp);
-    
-    uint64_t temp_lower = 0;
-    agent_state->temp_hist.add(temp);
-    agent_state->temp_hist.get_position_micro(temp, &temp_lower);
-
-    dout(20) << "wugy-debug: "
-	    << "temp = " << temp << "; "
-	    << "hotter than: " << temp_lower << " objects; "
-	    << "evict effort: " << agent_state->evict_effort << dendl;
-
-    if (temp_lower >= agent_state->evict_effort)
-      return false;
-  }
-  */
 
   if (!obc->get_write(OpRequestRef())) {
     dout(20) << __func__ << " skip (cannot get lock) " << obc->obs.oi << dendl;
@@ -11249,7 +11107,6 @@ void ReplicatedPG::agent_choose_mode(bool restart)
     evict_mode = TierAgentState::EVICT_MODE_WARM;
   }
 }
-
 
 skip_calc:
   bool old_idle = agent_state->is_idle();
