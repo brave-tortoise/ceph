@@ -10357,6 +10357,7 @@ void ReplicatedPG::hit_set_setup()
 
   // FIXME: discard any previous data for now
   hit_set_create();
+  agent_load_hit_sets();
 
   // include any writes we know about from the pg log.  this doesn't
   // capture reads, but it is better than nothing!
@@ -10703,8 +10704,6 @@ void ReplicatedPG::agent_setup()
   }
 
   agent_choose_mode();
-
-  agent_load_hit_sets();
 
   dout(20) << "wugy-debug: start scan pg" << dendl;
   while(rw_cache_scan_pg()) {}
