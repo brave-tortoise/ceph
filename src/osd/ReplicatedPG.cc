@@ -10709,7 +10709,7 @@ void ReplicatedPG::agent_setup()
   dout(20) << "wugy-debug: start scan pg. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
-  while(rw_cache_scan_pg()) {}
+  //while(rw_cache_scan_pg()) {}
   dout(20) << "wugy-debug: finish scan pg. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
