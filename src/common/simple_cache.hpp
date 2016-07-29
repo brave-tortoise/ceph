@@ -419,6 +419,16 @@ public:
     }
   }
 
+  void lookup_or_add(const T& entry) {
+    Mutex::Locker l(lock);
+    ++update_count;
+    if(contents.count(entry)) {
+      return;
+    } else {
+      _add_to_middle(entry);
+    }
+  }
+
   bool pop(T* const entry) {
     Mutex::Locker l(lock);
     ++update_count;

@@ -10357,7 +10357,6 @@ void ReplicatedPG::hit_set_setup()
 
   // FIXME: discard any previous data for now
   hit_set_create();
-  //agent_load_hit_sets();
 
   // include any writes we know about from the pg log.  this doesn't
   // capture reads, but it is better than nothing!
@@ -10704,6 +10703,14 @@ void ReplicatedPG::agent_setup()
   }
 
   agent_choose_mode();
+
+  agent_load_hit_sets();
+
+  dout(20) << "wugy-debug: start scan pg" << dendl;
+  while(rw_cache_scan_pg()) {}
+  dout(20) << "wugy-debug: finish scan pg. "
+	<< "rw_cache size = " << rw_cache.get_size()
+	<< dendl;
 }
 
 void ReplicatedPG::agent_clear()
@@ -10852,6 +10859,46 @@ void ReplicatedPG::agent_load_hit_sets()
     bufferlist::iterator pbl = bl.begin();
     ::decode(rw_cache, pbl);
   }
+}
+
+bool ReplicatedPG::rw_cache_scan_pg()
+{
+  int ls_min = 1;
+  int ls_max = 10; // FIXME?
+
+  vector<hobject_t> ls;
+  hobject_t next;
+  int r = pgbackend->objects_list_partial(agent_state->position, ls_min, ls_max,
+					  0 /* no filtering by snapid */,
+					  &ls, &next);
+  assert(r >= 0);
+  dout(20) << __func__ << " got " << ls.size() << " objects" << dendl;
+
+  for (vector<hobject_t>::iterator p = ls.begin();
+       p != ls.end();
+       ++p) {
+    if (p->nspace == cct->_conf->osd_hit_set_namespace) {
+      dout(20) << __func__ << " skip (hit set) " << *p << dendl;
+      continue;
+    }    
+    rw_cache.lookup_or_add(*p);
+  }
+
+  // See if we've made a full pass over the object hash space
+  // This might check at most ls_max objects a second time to notice that
+  // we've checked every objects at least once.
+  if (agent_state->position < agent_state->start && next >= agent_state->start) {
+    dout(20) << __func__ << " wrap around " << agent_state->start << dendl;
+    return false;
+  }
+
+  // See if we are starting from beginning
+  if (next.is_max())
+    agent_state->position = hobject_t();
+  else
+    agent_state->position = next;
+
+  return true;
 }
 
 struct C_AgentFlushStartStop : public Context {
@@ -11047,11 +11094,6 @@ void ReplicatedPG::agent_choose_mode(bool restart)
 	   << " num_user_objects: " << num_user_objects
 	   << " num_user_bytes: " << num_user_bytes
 	   << dendl;
-
-  dout(20) << "wugy-debug: "
-	<< "rw_cache size = " << rw_cache.get_size()
-	<< "; promote cache size = " << osd->promote_queue.get_size()
-	<< dendl;
 
   // get full ratios
   uint64_t full_micro = 0;
