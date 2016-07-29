@@ -1755,13 +1755,11 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   if(agent_state && obc->obs.exists && !obc->obs.oi.is_whiteout()) {
     rw_cache.adjust_or_add(obc->obs.oi.soid);
 
-    /*
     if(rw_cache.to_persist() ||
 	//rw_cache_persist_start_stamp + pool.info.rw_cache_persist_period <= m->get_recv_stamp()) {
 	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
       hit_set_persist();
     }
-    */
   }
 }
 
@@ -10359,7 +10357,7 @@ void ReplicatedPG::hit_set_setup()
 
   // FIXME: discard any previous data for now
   hit_set_create();
-  //agent_load_hit_sets();
+  agent_load_hit_sets();
 
   // include any writes we know about from the pg log.  this doesn't
   // capture reads, but it is better than nothing!
@@ -10404,6 +10402,7 @@ void ReplicatedPG::hit_set_create()
 	     << " fpp " << p->get_fpp() << dendl;
   }
   hit_set.reset(new HitSet(params));*/
+
   hit_set_start_stamp = now;
 }
 
@@ -10707,8 +10706,10 @@ void ReplicatedPG::agent_setup()
 
   agent_choose_mode();
 
-  dout(20) << "wugy-debug: start scan pg" << dendl;
-  //while(rw_cache_scan_pg()) {}
+  dout(20) << "wugy-debug: start scan pg. "
+	<< "rw_cache size = " << rw_cache.get_size()
+	<< dendl;
+  while(rw_cache_scan_pg()) {}
   dout(20) << "wugy-debug: finish scan pg. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
