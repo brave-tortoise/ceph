@@ -388,8 +388,8 @@ public:
     ++update_count;
     typename unordered_map<T, LRUIter>::iterator i = contents.find(entry);
     if(i != contents.end()) {
-      LRUIter loc = i->second;
       int pos = contents.size() * percentile / 100;
+      LRUIter loc = lru.begin();
       advance(loc, pos);
       lru.splice(loc, lru, i->second);
     } else {
@@ -421,10 +421,10 @@ public:
 
   void lookup_or_add(const T& entry) {
     Mutex::Locker l(lock);
-    ++update_count;
     if(contents.count(entry)) {
       return;
     } else {
+      ++update_count;
       _add_to_middle(entry);
     }
   }
