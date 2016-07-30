@@ -1753,6 +1753,8 @@ void ReplicatedPG::do_op(OpRequestRef& op)
   execute_ctx(ctx);
 
   if(agent_state && obc->obs.exists && !obc->obs.oi.is_whiteout()) {
+    dout(20) << "wugy-debug: "
+	<< "oid: " << obc->obs.oi.soid << dendl;
     rw_cache.adjust_or_add(obc->obs.oi.soid);
 
     if(rw_cache.to_persist() ||

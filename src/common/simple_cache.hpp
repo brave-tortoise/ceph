@@ -362,38 +362,19 @@ public:
 	percentile(percentile),
 	update_count(0), persist_update_count(persist_update_count) {}
 
-  /*
-  void remove(const T& entry) {
-    Mutex::Locker l(lock);
-    typename unordered_map<T, LRUIter>::iterator i = contents.find(entry);
-    if(i != contents.end()) {
-      lru.erase(i->second);
-      contents.erase(i);
-    }
-  }
-  */
-
-  /*
-  bool lookup(const T& entry) {
-    Mutex::Locker l(lock);
-    if(contents.count(entry)) {
-      return true;
-    }
-    return false;
-  }
-  */
-
   void add(const T& entry) {
     Mutex::Locker l(lock);
     ++update_count;
     typename unordered_map<T, LRUIter>::iterator i = contents.find(entry);
     if(i != contents.end()) {
-      int pos = contents.size() * percentile / 100;
+      /*int pos = contents.size() * percentile / 100;
       LRUIter loc = lru.begin();
       advance(loc, pos);
-      lru.splice(loc, lru, i->second);
+      lru.splice(loc, lru, i->second);*/
+      lru.splice(lru.begin(), lru, i->second);
     } else {
-      _add_to_middle(entry);
+      //_add_to_middle(entry);
+      _add_to_front(entry);
     }
   }
 
@@ -425,14 +406,15 @@ public:
       return;
     } else {
       ++update_count;
-      _add_to_middle(entry);
+      //_add_to_middle(entry);
+      _add_to_front(entry);
     }
   }
 
   bool pop(T* const entry) {
     Mutex::Locker l(lock);
-    ++update_count;
     if(contents.size()) {
+      ++update_count;
       *entry = lru.back();
       lru.pop_back();
       contents.erase(*entry);
