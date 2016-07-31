@@ -367,14 +367,12 @@ public:
     ++update_count;
     typename unordered_map<T, LRUIter>::iterator i = contents.find(entry);
     if(i != contents.end()) {
-      /*int pos = contents.size() * percentile / 100;
+      int pos = contents.size() * percentile / 100;
       LRUIter loc = lru.begin();
       advance(loc, pos);
-      lru.splice(loc, lru, i->second);*/
-      lru.splice(lru.begin(), lru, i->second);
+      lru.splice(loc, lru, i->second);
     } else {
-      //_add_to_middle(entry);
-      _add_to_front(entry);
+      _add_to_middle(entry);
     }
   }
 
@@ -406,8 +404,7 @@ public:
       return;
     } else {
       ++update_count;
-      //_add_to_middle(entry);
-      _add_to_front(entry);
+      _add_to_middle(entry);
     }
   }
 

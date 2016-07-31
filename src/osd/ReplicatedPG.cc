@@ -10359,11 +10359,18 @@ void ReplicatedPG::hit_set_setup()
 
   // FIXME: discard any previous data for now
   hit_set_create();
-  agent_load_hit_sets();
+  if(!rw_cache.get_size() && !agent_load_hit_sets())
+    dout(0) << "wugy-debug: fail to load cache" << dendl;
 
   // include any writes we know about from the pg log.  this doesn't
   // capture reads, but it is better than nothing!
-  //hit_set_apply_log();
+  dout(0) << "wugy-debug: start apply log. "
+	<< "rw_cache size = " << rw_cache.get_size()
+	<< dendl;
+  hit_set_apply_log();
+  dout(0) << "wugy-debug: finish apply log. "
+	<< "rw_cache size = " << rw_cache.get_size()
+	<< dendl;
 }
 
 void ReplicatedPG::hit_set_create()
@@ -10416,8 +10423,8 @@ void ReplicatedPG::hit_set_create()
  */
 bool ReplicatedPG::hit_set_apply_log()
 {
-  if (!hit_set)
-    return false;
+  /*if (!hit_set)
+    return false;*/
 
   eversion_t to = info.last_update;
   eversion_t from = info.hit_set.current_last_update;
@@ -10431,7 +10438,8 @@ bool ReplicatedPG::hit_set_apply_log()
   while (p != pg_log.get_log().log.rend() && p->version > to)
     ++p;
   while (p != pg_log.get_log().log.rend() && p->version > from) {
-    hit_set->insert(p->soid);
+    //hit_set->insert(p->soid);
+    rw_cache.adjust_or_add(p->soid);
     ++p;
   }
 
@@ -10708,11 +10716,11 @@ void ReplicatedPG::agent_setup()
 
   agent_choose_mode();
 
-  dout(20) << "wugy-debug: start scan pg. "
+  dout(0) << "wugy-debug: start scan pg. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
   while(rw_cache_scan_pg()) {}
-  dout(20) << "wugy-debug: finish scan pg. "
+  dout(0) << "wugy-debug: finish scan pg. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
 }
@@ -10829,7 +10837,7 @@ bool ReplicatedPG::agent_work(int start_max)
   return true;
 }
 
-void ReplicatedPG::agent_load_hit_sets()
+bool ReplicatedPG::agent_load_hit_sets()
 {
   dout(10) << __func__ << dendl;
   for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
@@ -10862,7 +10870,9 @@ void ReplicatedPG::agent_load_hit_sets()
     }
     bufferlist::iterator pbl = bl.begin();
     ::decode(rw_cache, pbl);
+    return true;
   }
+  return false;
 }
 
 bool ReplicatedPG::rw_cache_scan_pg()
