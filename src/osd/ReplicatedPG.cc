@@ -10359,16 +10359,17 @@ void ReplicatedPG::hit_set_setup()
 
   // FIXME: discard any previous data for now
   hit_set_create();
+
   if(!rw_cache.get_size() && !agent_load_hit_sets())
-    dout(0) << "wugy-debug: fail to load cache" << dendl;
+    dout(20) << "wugy-debug: fail to load cache" << dendl;
 
   // include any writes we know about from the pg log.  this doesn't
   // capture reads, but it is better than nothing!
-  dout(0) << "wugy-debug: start apply log. "
+  dout(20) << "wugy-debug: start apply log. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
   hit_set_apply_log();
-  dout(0) << "wugy-debug: finish apply log. "
+  dout(20) << "wugy-debug: finish apply log. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
 }
@@ -10376,42 +10377,6 @@ void ReplicatedPG::hit_set_setup()
 void ReplicatedPG::hit_set_create()
 {
   utime_t now = ceph_clock_now(NULL);
-  // make a copy of the params to modify
-  /*HitSet::Params params(pool.info.hit_set_params);
-
-  dout(20) << __func__ << " " << params << dendl;
-  if (pool.info.hit_set_params.get_type() == HitSet::TYPE_BLOOM) {
-    BloomHitSet::Params *p =
-      static_cast<BloomHitSet::Params*>(params.impl.get());
-
-    // convert false positive rate so it holds up across the full period
-    p->set_fpp(p->get_fpp() / pool.info.hit_set_count);
-    if (p->get_fpp() <= 0.0)
-      p->set_fpp(.01);  // fpp cannot be zero!
-
-    // if we don't have specified size, estimate target size based on the
-    // previous bin!
-    if (p->target_size == 0 && hit_set) {
-      utime_t dur = now - hit_set_start_stamp;
-      unsigned unique = hit_set->approx_unique_insert_count();
-      dout(20) << __func__ << " previous set had approx " << unique
-	       << " unique items over " << dur << " seconds" << dendl;
-      p->target_size = (double)unique * (double)pool.info.hit_set_period
-		     / (double)dur;
-    }
-    if (p->target_size < static_cast<uint64_t>(g_conf->osd_hit_set_min_size))
-      p->target_size = g_conf->osd_hit_set_min_size;
-
-    if (p->target_size > static_cast<uint64_t>(g_conf->osd_hit_set_max_size))
-      p->target_size = g_conf->osd_hit_set_max_size;
-
-    p->seed = now.sec();
-
-    dout(10) << __func__ << " target_size " << p->target_size
-	     << " fpp " << p->get_fpp() << dendl;
-  }
-  hit_set.reset(new HitSet(params));*/
-
   hit_set_start_stamp = now;
 }
 
@@ -10423,9 +10388,6 @@ void ReplicatedPG::hit_set_create()
  */
 bool ReplicatedPG::hit_set_apply_log()
 {
-  /*if (!hit_set)
-    return false;*/
-
   eversion_t to = info.last_update;
   eversion_t from = info.hit_set.current_last_update;
   if (to <= from) {
@@ -10716,13 +10678,15 @@ void ReplicatedPG::agent_setup()
 
   agent_choose_mode();
 
-  dout(0) << "wugy-debug: start scan pg. "
+/*
+  dout(20) << "wugy-debug: start scan pg. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
   while(rw_cache_scan_pg()) {}
-  dout(0) << "wugy-debug: finish scan pg. "
+  dout(20) << "wugy-debug: finish scan pg. "
 	<< "rw_cache size = " << rw_cache.get_size()
 	<< dendl;
+*/
 }
 
 void ReplicatedPG::agent_clear()
@@ -10840,8 +10804,10 @@ bool ReplicatedPG::agent_work(int start_max)
 bool ReplicatedPG::agent_load_hit_sets()
 {
   dout(10) << __func__ << dendl;
-  for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
-	p != info.hit_set.history.end(); ++p) {
+  //for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
+//	p != info.hit_set.history.end(); ++p) {
+  for(list<pg_hit_set_info_t>::reverse_iterator p = info.hit_set.history.rbegin();
+	p != info.hit_set.history.rend(); ++p) {
     dout(10) << __func__ << " loading " << p->begin << "-" << p->end << dendl;
     if (!pool.info.is_replicated()) {
       // FIXME: EC not supported here yet
@@ -10875,6 +10841,7 @@ bool ReplicatedPG::agent_load_hit_sets()
   return false;
 }
 
+/*
 bool ReplicatedPG::rw_cache_scan_pg()
 {
   int ls_min = 1;
@@ -10883,7 +10850,7 @@ bool ReplicatedPG::rw_cache_scan_pg()
   vector<hobject_t> ls;
   hobject_t next;
   int r = pgbackend->objects_list_partial(agent_state->position, ls_min, ls_max,
-					  0 /* no filtering by snapid */,
+					  0,
 					  &ls, &next);
   assert(r >= 0);
   dout(20) << __func__ << " got " << ls.size() << " objects" << dendl;
@@ -10914,6 +10881,7 @@ bool ReplicatedPG::rw_cache_scan_pg()
 
   return true;
 }
+*/
 
 struct C_AgentFlushStartStop : public Context {
   ReplicatedPGRef pg;

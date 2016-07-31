@@ -914,7 +914,7 @@ protected:
   void rw_cache_trim(RepGather *repop); ///< discard old rw_cache archive object
   */
 
-  bool rw_cache_scan_pg();
+  //bool rw_cache_scan_pg();
 
   void candidate_enqueue_object(const hobject_t& oid) {
     candidates_queue.add(oid);
