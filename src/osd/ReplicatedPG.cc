@@ -1219,9 +1219,9 @@ ReplicatedPG::ReplicatedPG(OSDService *o, OSDMapRef curmap,
   pgbackend(
     PGBackend::build_pg_backend(
       _pool.info, curmap, this, coll_t(p), coll_t::make_temp_coll(p), o->store, cct)),
+  candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
   //rw_cache(cct->_conf->osd_rw_ghost_cache_max_size, cct->_conf->osd_rw_resident_victim_ratio),
   rw_cache(cct->_conf->osd_rw_cache_insert_pos_percentile, cct->_conf->osd_rw_cache_persist_update_count),
-  candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
   object_contexts(o->cct, g_conf->osd_pg_object_context_cache_count),
   snapset_contexts_lock("ReplicatedPG::snapset_contexts"),
   new_backfill(false),
@@ -1760,7 +1760,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     if(rw_cache.to_persist() ||
 	//rw_cache_persist_start_stamp + pool.info.rw_cache_persist_period <= m->get_recv_stamp()) {
 	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
-      hit_set_persist();
+      rw_cache_persist();
     }
   }
 }
@@ -10318,7 +10318,7 @@ void ReplicatedPG::check_local()
 hobject_t ReplicatedPG::get_hit_set_current_object(utime_t stamp)
 {
   ostringstream ss;
-  ss << "rw_cache_" << info.pgid.pgid << "_current_" << stamp;
+  ss << "hit_set_" << info.pgid.pgid << "_current_" << stamp;
   hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
 		 info.pgid.ps(), info.pgid.pool(),
 		 cct->_conf->osd_rw_cache_namespace);
@@ -10329,7 +10329,31 @@ hobject_t ReplicatedPG::get_hit_set_current_object(utime_t stamp)
 hobject_t ReplicatedPG::get_hit_set_archive_object(utime_t start, utime_t end)
 {
   ostringstream ss;
-  ss << "rw_cache_" << info.pgid.pgid << "_archive_" << start << "_" << end;
+  ss << "hit_set_" << info.pgid.pgid << "_archive_" << start << "_" << end;
+  hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
+		 info.pgid.ps(), info.pgid.pool(),
+		 cct->_conf->osd_rw_cache_namespace);
+  dout(20) << __func__ << " " << hoid << dendl;
+  return hoid;
+}
+
+/*
+hobject_t ReplicatedPG::get_rw_cache_temp_object()
+{
+  ostringstream ss;
+  ss << "rw_cache_" << info.pgid.pgid << "_temp_";
+  hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
+		 info.pgid.ps(), info.pgid.pool(),
+		 cct->_conf->osd_rw_cache_namespace);
+  dout(20) << __func__ << " " << hoid << dendl;
+  return hoid;
+}
+*/
+
+hobject_t ReplicatedPG::get_rw_cache_archive_object()
+{
+  ostringstream ss;
+  ss << "rw_cache_" << info.pgid.pgid << "_archive_";
   hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
 		 info.pgid.ps(), info.pgid.pool(),
 		 cct->_conf->osd_rw_cache_namespace);
@@ -10360,7 +10384,7 @@ void ReplicatedPG::hit_set_setup()
   // FIXME: discard any previous data for now
   hit_set_create();
 
-  if(!rw_cache.get_size() && !agent_load_hit_sets())
+  if(!rw_cache.get_size() && !agent_load_rw_cache())
     dout(20) << "wugy-debug: fail to load cache" << dendl;
 
   // include any writes we know about from the pg log.  this doesn't
@@ -10416,6 +10440,154 @@ struct C_HitSetFlushing : public Context {
     pg->hit_set_flushing.erase(hit_set_name);
   }
 };
+
+void ReplicatedPG::rw_cache_persist()
+{
+  dout(10) << __func__  << dendl;
+  bufferlist bl;
+  utime_t now = ceph_clock_now(cct);
+  RepGather *repop;
+  //hobject_t oid;
+  //oid = get_hit_set_archive_object(start, now);
+  hobject_t oid = get_rw_cache_archive_object();
+
+  // If backfill is in progress and we could possibly overlap with the
+  // hit_set_* objects, back off.  Since these all have
+  // hobject_t::hash set to pgid.ps(), and those sort first, we can
+  // look just at that.  This is necessary because our transactions
+  // may include a modify of the new hit_set *and* a delete of the
+  // old one, and this may span the backfill boundary.
+  for (set<pg_shard_t>::iterator p = backfill_targets.begin();
+       p != backfill_targets.end();
+       ++p) {
+    assert(peer_info.count(*p));
+    const pg_info_t& pi = peer_info[*p];
+    if (pi.last_backfill == hobject_t() ||
+	pi.last_backfill.get_hash() == info.pgid.ps()) {
+      dout(10) << __func__ << " backfill target osd." << *p
+	       << " last_backfill has not progressed past pgid ps"
+	       << dendl;
+      return;
+    }
+  }
+
+  //if (!info.hit_set.current_info.begin)
+  //  info.hit_set.current_info.begin = hit_set_start_stamp;
+
+  ::encode(rw_cache, bl);
+  //info.hit_set.current_info.end = now;
+  //dout(20) << __func__ << " archive " << oid << dendl;
+
+  ObjectContextRef obc = get_object_context(oid, true);
+  repop = simple_repop_create(obc);
+  OpContext *ctx = repop->ctx;
+  ctx->at_version = get_next_version();
+  ctx->updated_hset_history = info.hit_set;
+  pg_hit_set_history_t &updated_hit_set_hist = *(ctx->updated_hset_history);
+
+  /*
+  if (updated_hit_set_hist.current_last_stamp != utime_t()) {
+    // FIXME: we cheat slightly here by bundling in a remove on a object
+    // other the RepGather object.  we aren't carrying an ObjectContext for
+    // the deleted object over this period.
+    hobject_t old_obj =
+      get_hit_set_current_object(updated_hit_set_hist.current_last_stamp);
+    ctx->log.push_back(
+      pg_log_entry_t(pg_log_entry_t::DELETE,
+		     old_obj,
+		     ctx->at_version,
+		     updated_hit_set_hist.current_last_update,
+		     0,
+		     osd_reqid_t(),
+		     ctx->mtime));
+    if (pool.info.require_rollback()) {
+      if (ctx->log.back().mod_desc.rmobject(ctx->at_version.version)) {
+	ctx->op_t->stash(old_obj, ctx->at_version.version);
+      } else {
+	ctx->op_t->remove(old_obj);
+      }
+    } else {
+      ctx->op_t->remove(old_obj);
+      ctx->log.back().mod_desc.mark_unrollbackable();
+    }
+    ++ctx->at_version.version;
+
+    struct stat st;
+    int r = osd->store->stat(
+      coll,
+      ghobject_t(old_obj, ghobject_t::NO_GEN, pg_whoami.shard),
+      &st);
+    assert(r == 0);
+    --ctx->delta_stats.num_objects;
+    ctx->delta_stats.num_bytes -= st.st_size;
+  }
+  */
+
+
+  updated_hit_set_hist.current_last_update = info.last_update; // *after* above remove!
+  //updated_hit_set_hist.current_info.version = ctx->at_version;
+  //updated_hit_set_hist.history.push_back(updated_hit_set_hist.current_info);
+
+  hit_set_create();
+  /*
+  updated_hit_set_hist.current_info = pg_hit_set_info_t();
+  updated_hit_set_hist.current_last_stamp = utime_t();
+  */
+
+  if(obc->obs.exists) {
+    ctx->op_t->truncate(oid, 0);
+  } else {
+    ctx->delta_stats.num_objects++;
+    ctx->delta_stats.num_objects_hit_set_archive++;
+    ctx->delta_stats.num_bytes += bl.length();
+    ctx->delta_stats.num_bytes_hit_set_archive += bl.length();
+  }
+
+  // fabricate an object_info_t and SnapSet
+  obc->obs.oi.version = ctx->at_version;
+  obc->obs.oi.mtime = now;
+  obc->obs.oi.size = bl.length();
+  obc->obs.exists = true;
+  obc->obs.oi.set_data_digest(bl.crc32c(-1));
+  ctx->new_obs = obc->obs;
+
+  obc->ssc->snapset.head_exists = true;
+  ctx->new_snapset = obc->ssc->snapset;
+
+  bufferlist bss;
+  ::encode(ctx->new_snapset, bss);
+  bufferlist boi(sizeof(ctx->new_obs.oi));
+  ::encode(ctx->new_obs.oi, boi);
+
+  ctx->op_t->append(oid, 0, bl.length(), bl, 0);
+  setattr_maybe_cache(ctx->obc, ctx, ctx->op_t, OI_ATTR, boi);
+  setattr_maybe_cache(ctx->obc, ctx, ctx->op_t, SS_ATTR, bss);
+  ctx->log.push_back(
+    pg_log_entry_t(
+      pg_log_entry_t::MODIFY,
+      oid,
+      ctx->at_version,
+      eversion_t(),
+      0,
+      osd_reqid_t(),
+      ctx->mtime)
+    );
+  if (pool.info.require_rollback()) {
+    ctx->log.back().mod_desc.create();
+  } else {
+    ctx->log.back().mod_desc.mark_unrollbackable();
+  }
+
+  //hit_set_trim(repop, max);
+
+  info.stats.stats.add(ctx->delta_stats);
+  if (scrubber.active) {
+    if (oid < scrubber.start)
+      scrub_cstat.add(ctx->delta_stats);
+  }
+
+  simple_repop_submit(repop);
+}
 
 void ReplicatedPG::hit_set_persist()
 {
@@ -10735,7 +10907,7 @@ bool ReplicatedPG::agent_work(int start_max)
     if(!rw_cache.pop(&oid))
       break;
 
-    if (oid.nspace == cct->_conf->osd_hit_set_namespace) {
+    if (oid.nspace == cct->_conf->osd_rw_cache_namespace) {
       dout(20) << __func__ << " skip (hit set) " << oid << dendl;
       osd->logger->inc(l_osd_agent_skip);
       continue;
@@ -10798,6 +10970,34 @@ bool ReplicatedPG::agent_work(int start_max)
 
   agent_choose_mode();
   unlock();
+  return true;
+}
+
+bool ReplicatedPG::agent_load_rw_cache()
+{
+  dout(10) << __func__ << dendl;
+
+  hobject_t oid = get_rw_cache_archive_object();
+  if (is_unreadable_object(oid)) {
+    dout(10) << __func__ << " unreadable " << oid << ", waiting" << dendl;
+    return false;
+  }
+
+  ObjectContextRef obc = get_object_context(oid, false);
+  if (!obc) {
+    derr << __func__ << ": could not rw cache " << oid << dendl;
+    return false;
+  }
+
+  bufferlist bl;
+  {
+    obc->ondisk_read_lock();
+    int r = osd->store->read(coll, oid, 0, 0, bl);
+    assert(r >= 0);
+    obc->ondisk_read_unlock();
+  }
+  bufferlist::iterator pbl = bl.begin();
+  ::decode(rw_cache, pbl);
   return true;
 }
 

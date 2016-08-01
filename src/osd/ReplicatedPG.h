@@ -894,12 +894,12 @@ protected:
   RepGather *simple_repop_create(ObjectContextRef obc);
   void simple_repop_submit(RepGather *repop);
 
+  // candidate objects for promotion
+  FIFOCache<hobject_t> candidates_queue;
+
   // objects in cache
   LRUCache<hobject_t> rw_cache;
   //utime_t rw_cache_persist_start_stamp;
-
-  // candidate objects for promotion
-  FIFOCache<hobject_t> candidates_queue;
 
   // hot/cold tracking
   HitSetRef hit_set;        ///< currently accumulating HitSet
@@ -907,14 +907,11 @@ protected:
 
   map<time_t,HitSetRef> hit_set_flushing; ///< currently being written, not yet readable
 
-  /*
+  //hobject_t get_rw_cache_temp_object();
+  hobject_t get_rw_cache_archive_object();
   void rw_cache_persist();   ///< persist rw_cache info
-  hobject_t get_rw_cache_current_object(utime_t stamp);
-  hobject_t get_rw_cache_archive_object(utime_t start, utime_t end);
   void rw_cache_trim(RepGather *repop); ///< discard old rw_cache archive object
-  */
-
-  //bool rw_cache_scan_pg();
+  bool agent_load_rw_cache();  ///< load HitSets, if needed
 
   void candidate_enqueue_object(const hobject_t& oid) {
     candidates_queue.add(oid);
