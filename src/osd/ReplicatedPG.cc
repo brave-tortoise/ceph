@@ -1759,7 +1759,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
     if(rw_cache.to_persist() ||
 	//rw_cache_persist_start_stamp + pool.info.rw_cache_persist_period <= m->get_recv_stamp()) {
-	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
+	rw_cache_persist_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
       rw_cache_persist();
     }
   }
@@ -10380,28 +10380,6 @@ void ReplicatedPG::hit_set_setup()
     //hit_set_remove_all();  // FIXME: implement me soon
     return;
   }
-
-  // FIXME: discard any previous data for now
-  hit_set_create();
-
-  if(!rw_cache.get_size() && !agent_load_rw_cache())
-    dout(20) << "wugy-debug: fail to load cache" << dendl;
-
-  // include any writes we know about from the pg log.  this doesn't
-  // capture reads, but it is better than nothing!
-  dout(20) << "wugy-debug: start apply log. "
-	<< "rw_cache size = " << rw_cache.get_size()
-	<< dendl;
-  hit_set_apply_log();
-  dout(20) << "wugy-debug: finish apply log. "
-	<< "rw_cache size = " << rw_cache.get_size()
-	<< dendl;
-}
-
-void ReplicatedPG::hit_set_create()
-{
-  utime_t now = ceph_clock_now(NULL);
-  hit_set_start_stamp = now;
 }
 
 /**
@@ -10410,7 +10388,7 @@ void ReplicatedPG::hit_set_create()
  * this would only happen after peering, to at least capture writes
  * during an interval that was potentially lost.
  */
-bool ReplicatedPG::hit_set_apply_log()
+bool ReplicatedPG::rw_cache_apply_log()
 {
   eversion_t to = info.last_update;
   eversion_t from = info.hit_set.current_last_update;
@@ -10424,7 +10402,6 @@ bool ReplicatedPG::hit_set_apply_log()
   while (p != pg_log.get_log().log.rend() && p->version > to)
     ++p;
   while (p != pg_log.get_log().log.rend() && p->version > from) {
-    //hit_set->insert(p->soid);
     rw_cache.adjust_or_add(p->soid);
     ++p;
   }
@@ -10432,24 +10409,9 @@ bool ReplicatedPG::hit_set_apply_log()
   return true;
 }
 
-struct C_HitSetFlushing : public Context {
-  ReplicatedPGRef pg;
-  time_t hit_set_name;
-  C_HitSetFlushing(ReplicatedPG *p, time_t n) : pg(p), hit_set_name(n) { }
-  void finish(int r) {
-    pg->hit_set_flushing.erase(hit_set_name);
-  }
-};
-
 void ReplicatedPG::rw_cache_persist()
 {
   dout(10) << __func__  << dendl;
-  bufferlist bl;
-  utime_t now = ceph_clock_now(cct);
-  RepGather *repop;
-  //hobject_t oid;
-  //oid = get_hit_set_archive_object(start, now);
-  hobject_t oid = get_rw_cache_archive_object();
 
   // If backfill is in progress and we could possibly overlap with the
   // hit_set_* objects, back off.  Since these all have
@@ -10471,68 +10433,21 @@ void ReplicatedPG::rw_cache_persist()
     }
   }
 
-  //if (!info.hit_set.current_info.begin)
-  //  info.hit_set.current_info.begin = hit_set_start_stamp;
+  utime_t now = ceph_clock_now(cct);
+  rw_cache_persist_start_stamp = now;
 
+  bufferlist bl;
   ::encode(rw_cache, bl);
-  //info.hit_set.current_info.end = now;
-  //dout(20) << __func__ << " archive " << oid << dendl;
 
+  hobject_t oid = get_rw_cache_archive_object();
   ObjectContextRef obc = get_object_context(oid, true);
-  repop = simple_repop_create(obc);
+
+  RepGather *repop = simple_repop_create(obc);
   OpContext *ctx = repop->ctx;
   ctx->at_version = get_next_version();
   ctx->updated_hset_history = info.hit_set;
   pg_hit_set_history_t &updated_hit_set_hist = *(ctx->updated_hset_history);
-
-  /*
-  if (updated_hit_set_hist.current_last_stamp != utime_t()) {
-    // FIXME: we cheat slightly here by bundling in a remove on a object
-    // other the RepGather object.  we aren't carrying an ObjectContext for
-    // the deleted object over this period.
-    hobject_t old_obj =
-      get_hit_set_current_object(updated_hit_set_hist.current_last_stamp);
-    ctx->log.push_back(
-      pg_log_entry_t(pg_log_entry_t::DELETE,
-		     old_obj,
-		     ctx->at_version,
-		     updated_hit_set_hist.current_last_update,
-		     0,
-		     osd_reqid_t(),
-		     ctx->mtime));
-    if (pool.info.require_rollback()) {
-      if (ctx->log.back().mod_desc.rmobject(ctx->at_version.version)) {
-	ctx->op_t->stash(old_obj, ctx->at_version.version);
-      } else {
-	ctx->op_t->remove(old_obj);
-      }
-    } else {
-      ctx->op_t->remove(old_obj);
-      ctx->log.back().mod_desc.mark_unrollbackable();
-    }
-    ++ctx->at_version.version;
-
-    struct stat st;
-    int r = osd->store->stat(
-      coll,
-      ghobject_t(old_obj, ghobject_t::NO_GEN, pg_whoami.shard),
-      &st);
-    assert(r == 0);
-    --ctx->delta_stats.num_objects;
-    ctx->delta_stats.num_bytes -= st.st_size;
-  }
-  */
-
-
   updated_hit_set_hist.current_last_update = info.last_update; // *after* above remove!
-  //updated_hit_set_hist.current_info.version = ctx->at_version;
-  //updated_hit_set_hist.history.push_back(updated_hit_set_hist.current_info);
-
-  hit_set_create();
-  /*
-  updated_hit_set_hist.current_info = pg_hit_set_info_t();
-  updated_hit_set_hist.current_last_stamp = utime_t();
-  */
 
   if(obc->obs.exists) {
     ctx->op_t->truncate(oid, 0);
@@ -10578,8 +10493,6 @@ void ReplicatedPG::rw_cache_persist()
     ctx->log.back().mod_desc.mark_unrollbackable();
   }
 
-  //hit_set_trim(repop, max);
-
   info.stats.stats.add(ctx->delta_stats);
   if (scrubber.active) {
     if (oid < scrubber.start)
@@ -10587,229 +10500,6 @@ void ReplicatedPG::rw_cache_persist()
   }
 
   simple_repop_submit(repop);
-}
-
-void ReplicatedPG::hit_set_persist()
-{
-  dout(10) << __func__  << dendl;
-  bufferlist bl;
-  unsigned max = 1; //pool.info.hit_set_count;
-
-  utime_t now = ceph_clock_now(cct);
-  RepGather *repop;
-  hobject_t oid;
-
-  // See what start is going to be used later
-  utime_t start = info.hit_set.current_info.begin;
-  if (!start)
-     start = hit_set_start_stamp;
-
-  // If any archives are degraded we skip this persist request
-  // account for the additional entry being added below
-  for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
-       p != info.hit_set.history.end();
-       ++p) {
-    hobject_t aoid = get_hit_set_archive_object(p->begin, p->end);
-
-    // Once we hit a degraded object just skip further trim
-    if (is_degraded_or_backfilling_object(aoid))
-      return;
-    if (scrubber.write_blocked_by_scrub(aoid))
-      return;
-  }
-
-  oid = get_hit_set_archive_object(start, now);
-  // If the current object is degraded we skip this persist request
-  if (is_degraded_or_backfilling_object(oid))
-    return;
-  if (scrubber.write_blocked_by_scrub(oid))
-    return;
-
-  // If backfill is in progress and we could possibly overlap with the
-  // hit_set_* objects, back off.  Since these all have
-  // hobject_t::hash set to pgid.ps(), and those sort first, we can
-  // look just at that.  This is necessary because our transactions
-  // may include a modify of the new hit_set *and* a delete of the
-  // old one, and this may span the backfill boundary.
-  for (set<pg_shard_t>::iterator p = backfill_targets.begin();
-       p != backfill_targets.end();
-       ++p) {
-    assert(peer_info.count(*p));
-    const pg_info_t& pi = peer_info[*p];
-    if (pi.last_backfill == hobject_t() ||
-	pi.last_backfill.get_hash() == info.pgid.ps()) {
-      dout(10) << __func__ << " backfill target osd." << *p
-	       << " last_backfill has not progressed past pgid ps"
-	       << dendl;
-      return;
-    }
-  }
-
-  if (!info.hit_set.current_info.begin)
-    info.hit_set.current_info.begin = hit_set_start_stamp;
-
-  ::encode(rw_cache, bl);
-  info.hit_set.current_info.end = now;
-  dout(20) << __func__ << " archive " << oid << dendl;
-
-  ObjectContextRef obc = get_object_context(oid, true);
-  repop = simple_repop_create(obc);
-  OpContext *ctx = repop->ctx;
-  ctx->at_version = get_next_version();
-  ctx->updated_hset_history = info.hit_set;
-  pg_hit_set_history_t &updated_hit_set_hist = *(ctx->updated_hset_history);
-
-  if (updated_hit_set_hist.current_last_stamp != utime_t()) {
-    // FIXME: we cheat slightly here by bundling in a remove on a object
-    // other the RepGather object.  we aren't carrying an ObjectContext for
-    // the deleted object over this period.
-    hobject_t old_obj =
-      get_hit_set_current_object(updated_hit_set_hist.current_last_stamp);
-    ctx->log.push_back(
-      pg_log_entry_t(pg_log_entry_t::DELETE,
-		     old_obj,
-		     ctx->at_version,
-		     updated_hit_set_hist.current_last_update,
-		     0,
-		     osd_reqid_t(),
-		     ctx->mtime));
-    if (pool.info.require_rollback()) {
-      if (ctx->log.back().mod_desc.rmobject(ctx->at_version.version)) {
-	ctx->op_t->stash(old_obj, ctx->at_version.version);
-      } else {
-	ctx->op_t->remove(old_obj);
-      }
-    } else {
-      ctx->op_t->remove(old_obj);
-      ctx->log.back().mod_desc.mark_unrollbackable();
-    }
-    ++ctx->at_version.version;
-
-    struct stat st;
-    int r = osd->store->stat(
-      coll,
-      ghobject_t(old_obj, ghobject_t::NO_GEN, pg_whoami.shard),
-      &st);
-    assert(r == 0);
-    --ctx->delta_stats.num_objects;
-    ctx->delta_stats.num_bytes -= st.st_size;
-  }
-
-  updated_hit_set_hist.current_last_update = info.last_update; // *after* above remove!
-  updated_hit_set_hist.current_info.version = ctx->at_version;
-
-  updated_hit_set_hist.history.push_back(updated_hit_set_hist.current_info);
-  hit_set_create();
-  updated_hit_set_hist.current_info = pg_hit_set_info_t();
-  updated_hit_set_hist.current_last_stamp = utime_t();
-
-  // fabricate an object_info_t and SnapSet
-  obc->obs.oi.version = ctx->at_version;
-  obc->obs.oi.mtime = now;
-  obc->obs.oi.size = bl.length();
-  obc->obs.exists = true;
-  obc->obs.oi.set_data_digest(bl.crc32c(-1));
-
-  ctx->new_obs = obc->obs;
-
-  obc->ssc->snapset.head_exists = true;
-  ctx->new_snapset = obc->ssc->snapset;
-
-  ctx->delta_stats.num_objects++;
-  ctx->delta_stats.num_objects_hit_set_archive++;
-  ctx->delta_stats.num_bytes += bl.length();
-  ctx->delta_stats.num_bytes_hit_set_archive += bl.length();
-
-  bufferlist bss;
-  ::encode(ctx->new_snapset, bss);
-  bufferlist boi(sizeof(ctx->new_obs.oi));
-  ::encode(ctx->new_obs.oi, boi);
-
-  ctx->op_t->append(oid, 0, bl.length(), bl, 0);
-  setattr_maybe_cache(ctx->obc, ctx, ctx->op_t, OI_ATTR, boi);
-  setattr_maybe_cache(ctx->obc, ctx, ctx->op_t, SS_ATTR, bss);
-  ctx->log.push_back(
-    pg_log_entry_t(
-      pg_log_entry_t::MODIFY,
-      oid,
-      ctx->at_version,
-      eversion_t(),
-      0,
-      osd_reqid_t(),
-      ctx->mtime)
-    );
-  if (pool.info.require_rollback()) {
-    ctx->log.back().mod_desc.create();
-  } else {
-    ctx->log.back().mod_desc.mark_unrollbackable();
-  }
-
-  hit_set_trim(repop, max);
-
-  info.stats.stats.add(ctx->delta_stats);
-  if (scrubber.active) {
-    if (oid < scrubber.start)
-      scrub_cstat.add(ctx->delta_stats);
-  }
-
-  simple_repop_submit(repop);
-}
-
-void ReplicatedPG::hit_set_trim(RepGather *repop, unsigned max)
-{
-  assert(repop->ctx->updated_hset_history);
-  pg_hit_set_history_t &updated_hit_set_hist =
-    *(repop->ctx->updated_hset_history);
-  for (unsigned num = updated_hit_set_hist.history.size(); num > max; --num) {
-    list<pg_hit_set_info_t>::iterator p = updated_hit_set_hist.history.begin();
-    assert(p != updated_hit_set_hist.history.end());
-    hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
-
-    assert(!is_degraded_or_backfilling_object(oid));
-
-    dout(20) << __func__ << " removing " << oid << dendl;
-    ++repop->ctx->at_version.version;
-    repop->ctx->log.push_back(
-        pg_log_entry_t(pg_log_entry_t::DELETE,
-		       oid,
-		       repop->ctx->at_version,
-		       p->version,
-		       0,
-		       osd_reqid_t(),
-		       repop->ctx->mtime));
-    if (pool.info.require_rollback()) {
-      if (repop->ctx->log.back().mod_desc.rmobject(
-	  repop->ctx->at_version.version)) {
-	repop->ctx->op_t->stash(oid, repop->ctx->at_version.version);
-      } else {
-	repop->ctx->op_t->remove(oid);
-      }
-    } else {
-      repop->ctx->op_t->remove(oid);
-      repop->ctx->log.back().mod_desc.mark_unrollbackable();
-    }
-    updated_hit_set_hist.history.pop_front();
-
-    ObjectContextRef obc = get_object_context(oid, false);
-    assert(obc);
-    --repop->ctx->delta_stats.num_objects;
-    --repop->ctx->delta_stats.num_objects_hit_set_archive;
-    repop->ctx->delta_stats.num_bytes -= obc->obs.oi.size;
-    repop->ctx->delta_stats.num_bytes_hit_set_archive -= obc->obs.oi.size;
-  }
-}
-
-void ReplicatedPG::hit_set_in_memory_trim()
-{
-  unsigned max_in_memory = pool.info.hit_set_count ? pool.info.hit_set_count - 1 : 0;
-  dout(20) << "wugy-debug: "
-	<< "hit_set_count: " << pool.info.hit_set_count << "; "
-	<< "max_in_memory: " << max_in_memory
-	<< dendl;
-
-  while (agent_state->hit_set_map.size() > max_in_memory) {
-    agent_state->remove_oldest_hit_set();
-  }
 }
 
 
@@ -10849,6 +10539,22 @@ void ReplicatedPG::agent_setup()
   }
 
   agent_choose_mode();
+
+  utime_t now = ceph_clock_now(NULL);
+  rw_cache_persist_start_stamp = now;
+
+  if(!rw_cache.get_size() && !agent_load_rw_cache())
+    dout(20) << "wugy-debug: fail to load cache" << dendl;
+
+  // include any writes we know about from the pg log.  this doesn't
+  // capture reads, but it is better than nothing!
+  dout(20) << "wugy-debug: start apply log. "
+	<< "rw_cache size = " << rw_cache.get_size()
+	<< dendl;
+  rw_cache_apply_log();
+  dout(20) << "wugy-debug: finish apply log. "
+	<< "rw_cache size = " << rw_cache.get_size()
+	<< dendl;
 
 /*
   dout(20) << "wugy-debug: start scan pg. "
@@ -10985,7 +10691,7 @@ bool ReplicatedPG::agent_load_rw_cache()
 
   ObjectContextRef obc = get_object_context(oid, false);
   if (!obc) {
-    derr << __func__ << ": could not rw cache " << oid << dendl;
+    dout(20) << __func__ << ": could not rw cache " << oid << dendl;
     return false;
   }
 
@@ -10999,46 +10705,6 @@ bool ReplicatedPG::agent_load_rw_cache()
   bufferlist::iterator pbl = bl.begin();
   ::decode(rw_cache, pbl);
   return true;
-}
-
-bool ReplicatedPG::agent_load_hit_sets()
-{
-  dout(10) << __func__ << dendl;
-  //for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
-//	p != info.hit_set.history.end(); ++p) {
-  for(list<pg_hit_set_info_t>::reverse_iterator p = info.hit_set.history.rbegin();
-	p != info.hit_set.history.rend(); ++p) {
-    dout(10) << __func__ << " loading " << p->begin << "-" << p->end << dendl;
-    if (!pool.info.is_replicated()) {
-      // FIXME: EC not supported here yet
-      derr << __func__ << " on non-replicated pool" << dendl;
-      break;
-    }
-
-    hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
-    if (is_unreadable_object(oid)) {
-      dout(10) << __func__ << " unreadable " << oid << ", waiting" << dendl;
-      break;
-    }
-
-    ObjectContextRef obc = get_object_context(oid, false);
-    if (!obc) {
-      derr << __func__ << ": could not load hitset " << oid << dendl;
-      break;
-    }
-
-    bufferlist bl;
-    {
-      obc->ondisk_read_lock();
-      int r = osd->store->read(coll, oid, 0, 0, bl);
-      assert(r >= 0);
-      obc->ondisk_read_unlock();
-    }
-    bufferlist::iterator pbl = bl.begin();
-    ::decode(rw_cache, pbl);
-    return true;
-  }
-  return false;
 }
 
 /*
@@ -11101,24 +10767,7 @@ bool ReplicatedPG::agent_maybe_flush(ObjectContextRef& obc)
     osd->logger->inc(l_osd_agent_skip);
     return false;
   }
-/*
-  utime_t now = ceph_clock_now(NULL);
-  utime_t ob_local_mtime;
-  if (obc->obs.oi.local_mtime != utime_t()) {
-    ob_local_mtime = obc->obs.oi.local_mtime;
-  } else {
-    ob_local_mtime = obc->obs.oi.mtime;
-  }
-  bool evict_mode_full =
-    (agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL);
-  if (!evict_mode_full &&
-      obc->obs.oi.soid.snap == CEPH_NOSNAP &&  // snaps immutable; don't delay
-      (ob_local_mtime + utime_t(pool.info.cache_min_flush_age, 0) > now)) {
-    dout(20) << __func__ << " skip (too young) " << obc->obs.oi << dendl;
-    osd->logger->inc(l_osd_agent_skip);
-    return false;
-  }
-*/
+
   if (osd->agent_is_active_oid(obc->obs.oi.soid)) {
     dout(20) << __func__ << " skip (flushing) " << obc->obs.oi << dendl;
     osd->logger->inc(l_osd_agent_skip);

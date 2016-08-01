@@ -259,68 +259,6 @@ public:
   }
 };
 
-/*
-// ========================================================================
-// lru cache
-template <class T>
-class LRUCache {
-  Mutex lock;
-  list<T> lru;
-  typedef typename list<T>::iterator LRUIter;
-  unordered_map<T, LRUIter> contents;
-
-  void _add(const T& entry) {
-    lru.push_front(entry);
-    contents[entry] = lru.begin();
-  }
-
-public:
-  LRUCache() : lock("LRUCache::lock") {}
-
-  void remove(const T& entry) {
-    Mutex::Locker l(lock);
-    typename unordered_map<T, LRUIter>::iterator i = contents.find(entry);
-    if(i != contents.end()) {
-      lru.erase(i->second);
-      contents.erase(i);
-    }
-  }
-
-  bool lookup(const T& entry) {
-    Mutex::Locker l(lock);
-    if(contents.count(entry)) {
-      return true;
-    }
-    return false;
-  }
-
-  void adjust_or_add(const T& entry) {
-    Mutex::Locker l(lock);
-    if(contents.count(entry)) {
-      LRUIter loc = contents[entry];
-      lru.splice(lru.begin(), lru, loc);
-      return;
-    }
-    _add(entry);
-    return;
-  }
-
-  void pop(T* const entry) {
-    Mutex::Locker l(lock);
-    if(contents.size()) {
-      *entry = lru.back();
-      lru.pop_back();
-      contents.erase(*entry);
-    }
-  }
-
-  int get_size() {
-    Mutex::Locker l(lock);
-    return contents.size();
-  }
-};
-*/
-
 // ========================================================================
 // lru cache
 template <class T>

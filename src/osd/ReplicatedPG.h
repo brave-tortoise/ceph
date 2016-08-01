@@ -899,7 +899,7 @@ protected:
 
   // objects in cache
   LRUCache<hobject_t> rw_cache;
-  //utime_t rw_cache_persist_start_stamp;
+  utime_t rw_cache_persist_start_stamp;
 
   // hot/cold tracking
   HitSetRef hit_set;        ///< currently accumulating HitSet
@@ -907,11 +907,10 @@ protected:
 
   map<time_t,HitSetRef> hit_set_flushing; ///< currently being written, not yet readable
 
-  //hobject_t get_rw_cache_temp_object();
   hobject_t get_rw_cache_archive_object();
   void rw_cache_persist();   ///< persist rw_cache info
-  void rw_cache_trim(RepGather *repop); ///< discard old rw_cache archive object
-  bool agent_load_rw_cache();  ///< load HitSets, if needed
+  bool agent_load_rw_cache();  ///< load rw_cache, if needed
+  bool rw_cache_apply_log(); ///< apply log entries to update in-memory rw_cache
 
   void candidate_enqueue_object(const hobject_t& oid) {
     candidates_queue.add(oid);
