@@ -951,19 +951,6 @@ void pg_pool_t::calc_pg_masks()
   pgp_num_mask = (1 << calc_bits_of(pgp_num-1)) - 1;
 }
 
-void pg_pool_t::calc_temp_inc()
-{
-  if(!hit_set_count)	return;
-
-  uint32_t inc = max_temp_increment;
-  uint32_t len = hit_set_count - 1;
-  temp_increment.resize(len);
-  for(uint32_t i = 0; i < len; i++) {
-    inc = inc * hit_set_decay_factor / 100;
-    temp_increment[i] = inc;
-  }
-}
-
 unsigned pg_pool_t::get_pg_num_divisor(pg_t pgid) const
 {
   if (pg_num == pg_num_mask + 1)
@@ -1426,7 +1413,6 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   }
   DECODE_FINISH(bl);
   calc_pg_masks();
-  calc_temp_inc();
 }
 
 void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)

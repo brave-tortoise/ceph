@@ -920,7 +920,7 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
 	  }
 
 	  // skip internal namespace
-	  if (candidate.get_namespace() == cct->_conf->osd_hit_set_namespace)
+	  if (candidate.get_namespace() == cct->_conf->osd_rw_cache_namespace)
 	    continue;
 
 	  // skip wrong namespace
@@ -1758,7 +1758,6 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     rw_cache.adjust_or_add(obc->obs.oi.soid);
 
     if(rw_cache.to_persist() ||
-	//rw_cache_persist_start_stamp + pool.info.rw_cache_persist_period <= m->get_recv_stamp()) {
 	rw_cache_persist_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
       rw_cache_persist();
     }
@@ -10337,19 +10336,6 @@ hobject_t ReplicatedPG::get_hit_set_archive_object(utime_t start, utime_t end)
   return hoid;
 }
 
-/*
-hobject_t ReplicatedPG::get_rw_cache_temp_object()
-{
-  ostringstream ss;
-  ss << "rw_cache_" << info.pgid.pgid << "_temp_";
-  hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
-		 info.pgid.ps(), info.pgid.pool(),
-		 cct->_conf->osd_rw_cache_namespace);
-  dout(20) << __func__ << " " << hoid << dendl;
-  return hoid;
-}
-*/
-
 hobject_t ReplicatedPG::get_rw_cache_archive_object()
 {
   ostringstream ss;
@@ -10366,7 +10352,6 @@ void ReplicatedPG::hit_set_clear()
   dout(20) << __func__ << dendl;
   hit_set.reset();
   hit_set_start_stamp = utime_t();
-  hit_set_flushing.clear();
 }
 
 void ReplicatedPG::hit_set_setup()
@@ -10614,7 +10599,7 @@ bool ReplicatedPG::agent_work(int start_max)
       break;
 
     if (oid.nspace == cct->_conf->osd_rw_cache_namespace) {
-      dout(20) << __func__ << " skip (hit set) " << oid << dendl;
+      dout(20) << __func__ << " skip (rw cache) " << oid << dendl;
       osd->logger->inc(l_osd_agent_skip);
       continue;
     }
@@ -10724,8 +10709,8 @@ bool ReplicatedPG::rw_cache_scan_pg()
   for (vector<hobject_t>::iterator p = ls.begin();
        p != ls.end();
        ++p) {
-    if (p->nspace == cct->_conf->osd_hit_set_namespace) {
-      dout(20) << __func__ << " skip (hit set) " << *p << dendl;
+    if (p->nspace == cct->_conf->osd_rw_cache_namespace) {
+      dout(20) << __func__ << " skip (rw cache) " << *p << dendl;
       continue;
     }    
     rw_cache.lookup_or_add(*p);
@@ -11013,9 +10998,6 @@ skip_calc:
     if (!restart && !old_idle) {
       osd->agent_disable_pg(this, old_effort);
     }
-    /*if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
-      agent_delay();
-    }*/
   } else {
     if (restart || old_idle) {
       osd->agent_enable_pg(this, agent_state->evict_effort);
@@ -11025,6 +11007,7 @@ skip_calc:
   }
 }
 
+/*
 void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
 {
   assert(hit_set);
@@ -11055,6 +11038,7 @@ void ReplicatedPG::agent_estimate_temp(const hobject_t& oid, int *temp)
     }
   }
 }
+*/
 
 // ==========================================================================================
 // SCRUB
@@ -11123,7 +11107,7 @@ void ReplicatedPG::_scrub(
     if (soid.snap != CEPH_SNAPDIR)
       stat.num_objects++;
 
-    if (soid.nspace == cct->_conf->osd_hit_set_namespace)
+    if (soid.nspace == cct->_conf->osd_rw_cache_namespace)
       stat.num_objects_hit_set_archive++;
 
     // new snapset?
@@ -11207,7 +11191,7 @@ void ReplicatedPG::_scrub(
     } else {
       stat.num_bytes += oi.size;
     }
-    if (soid.nspace == cct->_conf->osd_hit_set_namespace)
+    if (soid.nspace == cct->_conf->osd_rw_cache_namespace)
       stat.num_bytes_hit_set_archive += oi.size;
 
     if (!soid.is_snapdir()) {

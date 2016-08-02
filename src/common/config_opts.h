@@ -489,7 +489,7 @@ OPTION(osd_agent_slop, OPT_FLOAT, .02)
 // rw_cache params
 OPTION(osd_rw_cache_insert_pos_percentile, OPT_INT, 50)   // position of a new object inserted in rw_cache
 OPTION(osd_rw_cache_persist_update_count, OPT_INT, 1000)
-OPTION(osd_rw_cache_persist_period, OPT_INT, 1200)
+//OPTION(osd_rw_cache_persist_period, OPT_INT, 1200)
 OPTION(osd_rw_cache_namespace, OPT_STR, ".ceph-internal") // rados namespace for rw_cache tracking
 
 // promotion params

@@ -897,35 +897,28 @@ protected:
   // candidate objects for promotion
   FIFOCache<hobject_t> candidates_queue;
 
+  void candidate_enqueue_object(const hobject_t& oid) {
+    candidates_queue.add(oid);
+  }
+
   // objects in cache
   LRUCache<hobject_t> rw_cache;
   utime_t rw_cache_persist_start_stamp;
-
-  // hot/cold tracking
-  HitSetRef hit_set;        ///< currently accumulating HitSet
-  utime_t hit_set_start_stamp;    ///< time the current HitSet started recording
-
-  map<time_t,HitSetRef> hit_set_flushing; ///< currently being written, not yet readable
 
   hobject_t get_rw_cache_archive_object();
   void rw_cache_persist();   ///< persist rw_cache info
   bool agent_load_rw_cache();  ///< load rw_cache, if needed
   bool rw_cache_apply_log(); ///< apply log entries to update in-memory rw_cache
 
-  void candidate_enqueue_object(const hobject_t& oid) {
-    candidates_queue.add(oid);
-  }
-
-  void hit_set_clear();     ///< discard any HitSet state
-  void hit_set_setup();     ///< initialize HitSet state
-  void hit_set_create();    ///< create a new HitSet
-  void hit_set_persist();   ///< persist hit info
-  bool hit_set_apply_log(); ///< apply log entries to update in-memory HitSet
-  void hit_set_trim(RepGather *repop, unsigned max); ///< discard old HitSets
-  void hit_set_in_memory_trim();                     ///< discard old in memory HitSets
+  // hot/cold tracking
+  HitSetRef hit_set;        ///< currently accumulating HitSet
+  utime_t hit_set_start_stamp;    ///< time the current HitSet started recording
 
   hobject_t get_hit_set_current_object(utime_t stamp);
   hobject_t get_hit_set_archive_object(utime_t start, utime_t end);
+  void hit_set_clear();     ///< discard any HitSet state
+  void hit_set_setup();     ///< initialize HitSet state
+  void hit_set_create();    ///< create a new HitSet
 
   // agent
   boost::scoped_ptr<TierAgentState> agent_state;
@@ -937,8 +930,6 @@ protected:
   bool agent_work(int max); ///< entry point to do some agent work
   bool agent_maybe_flush(ObjectContextRef& obc);  ///< maybe flush
   bool agent_maybe_evict(ObjectContextRef& obc, bool after_flush = false);  ///< maybe evict
-
-  bool agent_load_hit_sets();  ///< load HitSets, if needed
 
   /// estimate object atime and temperature
   ///
