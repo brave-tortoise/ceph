@@ -7,7 +7,7 @@ cd ceph
 #sed -i "s/RedHatEnterpriseServer/RedHatEnterpriseServer|n\/a/g" install-deps.sh
 ./install-deps.sh
 ./autogen.sh
-./configure --prefix=/usr --sbindir=/sbin --localstatedir=/var --sysconfdir=/etc --without-radosgw
+./configure --prefix=/usr --sbindir=/sbin --localstatedir=/var --sysconfdir=/etc --without-radosgw --without-debug
 make -j8 && make install
 cp ~/ceph/src/sample.ceph.conf /etc/ceph/ceph.conf
 cp ~/ceph/src/init-ceph /etc/init.d/ceph
