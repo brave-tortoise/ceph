@@ -6358,7 +6358,7 @@ void ReplicatedPG::start_copy(CopyCallback *cb, ObjectContextRef obc,
 
 void ReplicatedPG::_copy_some(ObjectContextRef obc, CopyOpRef cop)
 {
-  dout(10) << __func__ << " " << obc << " " << cop << dendl;
+  dout(20) << __func__ << " " << obc << " " << cop << dendl;
 
   unsigned flags = 0;
   if (cop->flags & CEPH_OSD_COPY_FROM_FLAG_FLUSH)
@@ -6373,6 +6373,7 @@ void ReplicatedPG::_copy_some(ObjectContextRef obc, CopyOpRef cop)
   C_GatherBuilder gather(g_ceph_context);
 
   if (cop->cursor.is_initial() && cop->mirror_snapset) {
+    dout(20) << "wugy-debug: is_initial or mirror_snapset" << dendl;
     // list snaps too.
     assert(cop->src.snap == CEPH_NOSNAP);
     ObjectOperation op;
@@ -10436,12 +10437,14 @@ void ReplicatedPG::rw_cache_persist()
 
   if(obc->obs.exists) {
     ctx->op_t->truncate(oid, 0);
+    ctx->delta_stats.num_bytes -= obc->obs.oi.size;
+    ctx->delta_stats.num_bytes_hit_set_archive -= obc->obs.oi.size;
   } else {
     ctx->delta_stats.num_objects++;
     ctx->delta_stats.num_objects_hit_set_archive++;
-    ctx->delta_stats.num_bytes += bl.length();
-    ctx->delta_stats.num_bytes_hit_set_archive += bl.length();
   }
+  ctx->delta_stats.num_bytes += bl.length();
+  ctx->delta_stats.num_bytes_hit_set_archive += bl.length();
 
   // fabricate an object_info_t and SnapSet
   obc->obs.oi.version = ctx->at_version;
