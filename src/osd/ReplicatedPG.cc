@@ -2368,6 +2368,7 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
 				const hobject_t& oid,
 				const object_locator_t& oloc)
 {
+  lock();
   if (scrubber.write_blocked_by_scrub(oid)) {
     candidates_queue.add(oid);
     dout(10) << __func__ << " " << oid
@@ -2397,6 +2398,7 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
   }
 
   assert(obc->is_blocked());
+  unlock();
 }
 
 void ReplicatedPG::execute_ctx(OpContext *ctx)
