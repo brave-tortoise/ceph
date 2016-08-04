@@ -321,7 +321,8 @@ public:
     if(i != contents.end()) {
       lru.splice(lru.begin(), lru, i->second);
     } else {
-      _add_to_front(entry);
+      //_add_to_front(entry);
+      _add_to_middle(entry);
     }
   }
 
@@ -344,6 +345,11 @@ public:
       ++update_count;
       _add_to_middle(entry);
     }
+  }
+
+  bool lookup(const T& entry) {
+    Mutex::Locker l(lock);
+    return contents.count(entry);
   }
 
   bool pop(T* const entry) {

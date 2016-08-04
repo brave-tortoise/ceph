@@ -1752,7 +1752,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   execute_ctx(ctx);
 
-  if(agent_state && obc->obs.exists && !obc->obs.oi.is_whiteout()) {
+  if(agent_state && !be_flush_op && obc->obs.exists && !obc->obs.oi.is_whiteout()) {
     dout(20) << "wugy-debug: "
 	<< "oid: " << obc->obs.oi.soid << dendl;
     rw_cache.adjust_or_add(obc->obs.oi.soid);
@@ -7299,7 +7299,7 @@ int ReplicatedPG::try_flush_mark_clean(FlushOpRef fop)
   }
 
   // successfully flushed, can we evict this object?
-  if (!fop->op && agent_maybe_evict(obc, true)) {
+  if (!fop->op && !rw_cache.lookup(oid) && agent_maybe_evict(obc, true)) {
     osd->logger->inc(l_osd_tier_clean);
     if (fop->on_flush) {
       Context *on_flush = fop->on_flush;
