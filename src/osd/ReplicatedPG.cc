@@ -1707,7 +1707,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
     // verify there is in fact a flush in progress
     // FIXME: we could make this a stronger test.
-    map<hobject_t,FlushOpRef>::iterator p = flush_ops.find(obc->obs.oi.soid);
+    unordered_map<hobject_t,FlushOpRef>::iterator p = flush_ops.find(obc->obs.oi.soid);
     if (p == flush_ops.end()) {
       dout(10) << __func__ << " no flush in progress, aborting" << dendl;
       reply_ctx(ctx, -EINVAL);
@@ -2041,7 +2041,7 @@ void ReplicatedPG::finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r)
   dout(10) << __func__ << " " << oid << " tid " << tid
 	   << " " << cpp_strerror(r) << dendl;
 
-  map<ceph_tid_t, ProxyReadOpRef>::iterator p = proxyread_ops.find(tid);
+  unordered_map<ceph_tid_t, ProxyReadOpRef>::iterator p = proxyread_ops.find(tid);
   if (p == proxyread_ops.end()) {
     dout(10) << __func__ << " no proxyread_op found" << dendl;
     return;
@@ -2059,7 +2059,7 @@ void ReplicatedPG::finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r)
   }
   proxyread_ops.erase(tid);
 
-  map<hobject_t, list<OpRequestRef> >::iterator q = in_progress_proxy_ops.find(oid);
+  unordered_map<hobject_t, list<OpRequestRef> >::iterator q = in_progress_proxy_ops.find(oid);
   if (q == in_progress_proxy_ops.end()) {
     dout(10) << __func__ << " no in_progress_proxy_ops found" << dendl;
     return;
@@ -2166,7 +2166,7 @@ void ReplicatedPG::finish_proxy_write(hobject_t oid, ceph_tid_t tid, int r)
   dout(10) << __func__ << " " << oid << " tid " << tid
 	   << " " << cpp_strerror(r) << dendl;
 
-  map<ceph_tid_t, ProxyWriteOpRef>::iterator p = proxywrite_ops.find(tid);
+  unordered_map<ceph_tid_t, ProxyWriteOpRef>::iterator p = proxywrite_ops.find(tid);
   if (p == proxywrite_ops.end()) {
     dout(10) << __func__ << " no proxywrite_op found" << dendl;
     return;
@@ -2177,7 +2177,7 @@ void ReplicatedPG::finish_proxy_write(hobject_t oid, ceph_tid_t tid, int r)
 
   proxywrite_ops.erase(tid);
 
-  map<hobject_t, list<OpRequestRef> >::iterator q = in_progress_proxy_ops.find(oid);
+  unordered_map<hobject_t, list<OpRequestRef> >::iterator q = in_progress_proxy_ops.find(oid);
   if (q == in_progress_proxy_ops.end()) {
     dout(10) << __func__ << " no in_progress_proxy_ops found" << dendl;
     delete pwop->ctx;
@@ -2253,19 +2253,19 @@ void ReplicatedPG::cancel_proxy_ops(bool requeue)
   dout(10) << __func__ << dendl;
 
   // cancel proxy reads
-  map<ceph_tid_t, ProxyReadOpRef>::iterator p = proxyread_ops.begin();
+  unordered_map<ceph_tid_t, ProxyReadOpRef>::iterator p = proxyread_ops.begin();
   while (p != proxyread_ops.end()) {
     cancel_proxy_read((p++)->second);
   }
 
   // cancel proxy writes
-  map<ceph_tid_t, ProxyWriteOpRef>::iterator q = proxywrite_ops.begin();
+  unordered_map<ceph_tid_t, ProxyWriteOpRef>::iterator q = proxywrite_ops.begin();
   while (q != proxywrite_ops.end()) {
     cancel_proxy_write((q++)->second);
   }
 
   if (requeue) {
-    map<hobject_t, list<OpRequestRef> >::iterator p =
+    unordered_map<hobject_t, list<OpRequestRef> >::iterator p =
       in_progress_proxy_ops.begin();
     while (p != in_progress_proxy_ops.end()) {
       list<OpRequestRef>& ls = p->second;
@@ -2281,7 +2281,7 @@ void ReplicatedPG::cancel_proxy_ops(bool requeue)
 
 void ReplicatedPG::kick_proxy_ops_blocked(hobject_t& soid)
 {
-  map<hobject_t, list<OpRequestRef> >::iterator p = in_progress_proxy_ops.find(soid);
+  unordered_map<hobject_t, list<OpRequestRef> >::iterator p = in_progress_proxy_ops.find(soid);
   if (p == in_progress_proxy_ops.end())
     return;
 
@@ -6424,7 +6424,7 @@ void ReplicatedPG::process_copy_chunk(hobject_t oid, ceph_tid_t tid, int r)
 {
   dout(10) << __func__ << " " << oid << " tid " << tid
 	   << " " << cpp_strerror(r) << dendl;
-  map<hobject_t,CopyOpRef>::iterator p = copy_ops.find(oid);
+  unordered_map<hobject_t, CopyOpRef>::iterator p = copy_ops.find(oid);
   if (p == copy_ops.end()) {
     dout(10) << __func__ << " no copy_op found" << dendl;
     return;
@@ -6555,14 +6555,14 @@ void ReplicatedPG::process_copy_chunk(hobject_t oid, ceph_tid_t tid, int r)
   //kick_proxy_read_blocked(cobc->obs.oi.soid);
 
   if(!r) {
-    for (map<ceph_tid_t, ProxyReadOpRef>::iterator it = proxyread_ops.begin();
+    for (unordered_map<ceph_tid_t, ProxyReadOpRef>::iterator it = proxyread_ops.begin();
 	it != proxyread_ops.end(); ++it) {
       if (it->second->soid == cobc->obs.oi.soid) {
       	cancel_proxy_read(it->second);	
       }
     }
 
-    for (map<ceph_tid_t, ProxyWriteOpRef>::iterator it = proxywrite_ops.begin();
+    for (unordered_map<ceph_tid_t, ProxyWriteOpRef>::iterator it = proxywrite_ops.begin();
 	it != proxywrite_ops.end(); ++it) {
       if (it->second->soid == cobc->obs.oi.soid) {
 	cancel_proxy_write(it->second);
@@ -6958,7 +6958,7 @@ void ReplicatedPG::cancel_copy(CopyOpRef cop, bool requeue)
 void ReplicatedPG::cancel_copy_ops(bool requeue)
 {
   dout(10) << __func__ << dendl;
-  map<hobject_t,CopyOpRef>::iterator p = copy_ops.begin();
+  unordered_map<hobject_t,CopyOpRef>::iterator p = copy_ops.begin();
   while (p != copy_ops.end()) {
     // requeue this op? can I queue up all of them?
     cancel_copy((p++)->second, requeue);
@@ -7066,7 +7066,7 @@ int ReplicatedPG::start_flush(
   if (blocking)
     obc->start_block();
 
-  map<hobject_t,FlushOpRef>::iterator p = flush_ops.find(soid);
+  unordered_map<hobject_t,FlushOpRef>::iterator p = flush_ops.find(soid);
   if (p != flush_ops.end()) {
     FlushOpRef fop = p->second;
     if (fop->op == op) {
@@ -7213,7 +7213,7 @@ void ReplicatedPG::finish_flush(hobject_t oid, ceph_tid_t tid, int r)
 {
   dout(10) << __func__ << " " << oid << " tid " << tid
 	   << " " << cpp_strerror(r) << dendl;
-  map<hobject_t,FlushOpRef>::iterator p = flush_ops.find(oid);
+  unordered_map<hobject_t,FlushOpRef>::iterator p = flush_ops.find(oid);
   if (p == flush_ops.end()) {
     dout(10) << __func__ << " no flush_op found" << dendl;
     return;
@@ -7394,7 +7394,7 @@ void ReplicatedPG::cancel_flush(FlushOpRef fop, bool requeue)
 void ReplicatedPG::cancel_flush_ops(bool requeue)
 {
   dout(10) << __func__ << dendl;
-  map<hobject_t,FlushOpRef>::iterator p = flush_ops.begin();
+  unordered_map<hobject_t,FlushOpRef>::iterator p = flush_ops.begin();
   while (p != flush_ops.end()) {
     cancel_flush((p++)->second, requeue);
   }
@@ -10595,11 +10595,9 @@ bool ReplicatedPG::agent_work(int start_max)
   const pg_pool_t *base_pool = get_osdmap()->get_pg_pool(pool.info.tier_of);
   assert(base_pool);
 
-  int ls_max = 10; // FIXME?
-  int started = 0;
   hobject_t oid;
 
-  while(ls_max--) {
+  while(start_max--) {
     if(!rw_cache.pop(&oid))
       break;
 
@@ -10654,13 +10652,8 @@ bool ReplicatedPG::agent_work(int start_max)
       continue;
     }
 
-    if(!agent_maybe_evict(obc) && agent_maybe_flush(obc)) {
-      ++started;
-    }
-
-    // too many flush ops in flight
-    if (started >= start_max) {
-      break;
+    if(!agent_maybe_evict(obc)) {
+      agent_maybe_flush(obc);
     }
   }
 
@@ -10915,6 +10908,8 @@ void ReplicatedPG::agent_choose_mode(bool restart)
 	   << " num_user_objects: " << num_user_objects
 	   << " num_user_bytes: " << num_user_bytes
 	   << dendl;
+
+  dout(20) << "wugy-debug: rw_cache size = " << rw_cache.get_size() << dendl;
 
   // get full ratios
   uint64_t full_micro = 0;

@@ -880,7 +880,7 @@ protected:
   // replica ops
   // [primary|tail]
   xlist<RepGather*> repop_queue;
-  map<ceph_tid_t, RepGather*> repop_map;
+  unordered_map<ceph_tid_t, RepGather*> repop_map;
 
   friend class C_OSD_RepopApplied;
   friend class C_OSD_RepopCommit;
@@ -1321,7 +1321,8 @@ protected:
   void recover_got(hobject_t oid, eversion_t v);
 
   // -- copyfrom --
-  map<hobject_t, CopyOpRef> copy_ops;
+  //map<hobject_t, CopyOpRef> copy_ops;
+  unordered_map<hobject_t, CopyOpRef> copy_ops;
 
   int fill_in_copy_get(
     OpContext *ctx,
@@ -1366,7 +1367,7 @@ protected:
   friend struct C_Copyfrom;
 
   // -- flush --
-  map<hobject_t, FlushOpRef> flush_ops;
+  unordered_map<hobject_t, FlushOpRef> flush_ops;
 
   /// start_flush takes ownership of on_flush iff ret == -EINPROGRESS
   int start_flush(
@@ -1405,12 +1406,12 @@ protected:
   bool pgls_filter(PGLSFilter *filter, hobject_t& sobj, bufferlist& outdata);
   int get_pgls_filter(bufferlist::iterator& iter, PGLSFilter **pfilter);
 
-  map<hobject_t, list<OpRequestRef> > in_progress_proxy_ops;
+  unordered_map<hobject_t, list<OpRequestRef> > in_progress_proxy_ops;
   void kick_proxy_ops_blocked(hobject_t& soid);
   void cancel_proxy_ops(bool requeue);
 
   // -- proxyread --
-  map<ceph_tid_t, ProxyReadOpRef> proxyread_ops;
+  unordered_map<ceph_tid_t, ProxyReadOpRef> proxyread_ops;
 
   void do_proxy_read(OpRequestRef op);
   void finish_proxy_read(hobject_t oid, ceph_tid_t tid, int r);
@@ -1419,7 +1420,7 @@ protected:
   friend struct C_ProxyRead;
 
   // -- proxywrite --
-  map<ceph_tid_t, ProxyWriteOpRef> proxywrite_ops;
+  unordered_map<ceph_tid_t, ProxyWriteOpRef> proxywrite_ops;
 
   void do_proxy_write(OpRequestRef op, const hobject_t& missing_oid);
   void finish_proxy_write(hobject_t oid, ceph_tid_t tid, int r);
