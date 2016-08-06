@@ -34,7 +34,8 @@ class SharedLRU {
 public:
   int waiting;
 private:
-  map<K, typename list<pair<K, VPtr> >::iterator > contents;
+  typedef typename list<pair<K, VPtr> >::iterator LRUIter;
+  unordered_map<K, LRUIter> contents;
   list<pair<K, VPtr> > lru;
 
   map<K, pair<WeakVPtr, V*> > weak_refs;
@@ -47,8 +48,7 @@ private:
   }
 
   void lru_remove(const K& key) {
-    typename map<K, typename list<pair<K, VPtr> >::iterator>::iterator i =
-      contents.find(key);
+    typename unordered_map<K, LRUIter>::iterator i = contents.find(key);
     if (i == contents.end())
       return;
     lru.erase(i->second);
@@ -57,8 +57,7 @@ private:
   }
 
   void lru_add(const K& key, const VPtr& val, list<VPtr> *to_release) {
-    typename map<K, typename list<pair<K, VPtr> >::iterator>::iterator i =
-      contents.find(key);
+    typename unordered_map<K, LRUIter>::iterator i = contents.find(key);
     if (i != contents.end()) {
       lru.splice(lru.begin(), lru, i->second);
     } else {
@@ -92,7 +91,9 @@ private:
 public:
   SharedLRU(CephContext *cct = NULL, size_t max_size = 20)
     : cct(cct), lock("SharedLRU::lock"), max_size(max_size), 
-      size(0), waiting(0) {}
+      size(0), waiting(0) {
+    contents.rehash(max_size);
+  }
   
   ~SharedLRU() {
     contents.clear();
@@ -143,8 +144,9 @@ public:
     VPtr val; // release any ref we have after we drop the lock
     {
       Mutex::Locker l(lock);
-      if (weak_refs.count(key)) {
-	val = weak_refs[key].first.lock();
+      typename map<K, pair<WeakVPtr, V*> >::iterator i = weak_refs.find(key);
+      if(i != weak_refs.end()) {
+	val = i->second.first.lock();
       }
       lru_remove(key);
     }
@@ -154,11 +156,12 @@ public:
     VPtr val; // release any ref we have after we drop the lock
     {
       Mutex::Locker l(lock);
-      if (weak_refs.count(key)) {
-	val = weak_refs[key].first.lock();
+      typename map<K, pair<WeakVPtr, V*> >::iterator i = weak_refs.find(key);
+      if(i != weak_refs.end()) {
+	val = i->second.first.lock();
+        weak_refs.erase(i);
       }
       lru_remove(key);
-      weak_refs.erase(key);
     }
   }
 
