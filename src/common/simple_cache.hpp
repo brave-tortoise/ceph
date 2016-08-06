@@ -30,12 +30,13 @@ template <class K, class V>
 class SimpleLRU {
   Mutex lock;
   size_t max_size;
-  map<K, typename list<pair<K, V> >::iterator> contents;
+  typedef typename list<pair<K,V> >::iterator LRUIter;
+  unordered_map<K, LRUIter> contents;
   list<pair<K, V> > lru;
-  map<K, V> pinned;
+  unordered_map<K, V> pinned;
 
   void trim_cache() {
-    while (lru.size() > max_size) {
+    while (contents.size() > max_size) {
       contents.erase(lru.back().first);
       lru.pop_back();
     }
@@ -48,7 +49,10 @@ class SimpleLRU {
   }
 
 public:
-  SimpleLRU(size_t max_size) : lock("SimpleLRU::lock"), max_size(max_size) {}
+  SimpleLRU(size_t max_size) : lock("SimpleLRU::lock"), max_size(max_size) {
+    contents.rehash(max_size);
+    pinned.rehash(max_size);
+  }
 
   void pin(K key, V val) {
     Mutex::Locker l(lock);
@@ -57,7 +61,7 @@ public:
 
   void clear_pinned(K e) {
     Mutex::Locker l(lock);
-    for (typename map<K, V>::iterator i = pinned.begin();
+    for (typename unordered_map<K, V>::iterator i = pinned.begin();
 	 i != pinned.end() && i->first <= e;
 	 pinned.erase(i++)) {
       if (!contents.count(i->first))
@@ -69,8 +73,7 @@ public:
 
   void clear(K key) {
     Mutex::Locker l(lock);
-    typename map<K, typename list<pair<K, V> >::iterator>::iterator i =
-      contents.find(key);
+    typename unordered_map<K, LRUIter>::iterator i = contents.find(key);
     if (i == contents.end())
       return;
     lru.erase(i->second);
@@ -85,15 +88,15 @@ public:
 
   bool lookup(K key, V *out) {
     Mutex::Locker l(lock);
-    typename list<pair<K, V> >::iterator loc = contents.count(key) ?
-      contents[key] : lru.end();
-    if (loc != lru.end()) {
-      *out = loc->second;
-      lru.splice(lru.begin(), lru, loc);
+    typename unordered_map<K, LRUIter>::iterator i = contents.find(key);
+    if(i != contents.end()) {
+      *out = i->second->second;
+      lru.splice(lru.begin(), lru, i->second);
       return true;
     }
-    if (pinned.count(key)) {
-      *out = pinned[key];
+    typename unordered_map<K, V>::iterator it = pinned.find(key);
+    if(it != pinned.end()) {
+      *out = it->second;
       return true;
     }
     return false;
@@ -134,7 +137,9 @@ class FIFOCache {
   }
 
 public:
-  FIFOCache(size_t max_size) : lock("FIFOCache::lock"), max_size(max_size) {}
+  FIFOCache(size_t max_size) : lock("FIFOCache::lock"), max_size(max_size) {
+    contents.rehash(max_size);
+  }
 
   bool adjust_or_add(const T& entry) {
     Mutex::Locker l(lock);
@@ -193,7 +198,9 @@ class MRUCache {
   }
 
 public:
-  MRUCache(size_t max_size) : lock("MRUCache::lock"), max_size(max_size) {}
+  MRUCache(size_t max_size) : lock("MRUCache::lock"), max_size(max_size) {
+    contents.rehash(max_size);
+  }
 
   V* adjust_or_add(const K& key, const V& value) {
     Mutex::Locker l(lock);
@@ -288,7 +295,8 @@ class LRUCache {
     contents[entry] = (--loc);
   }
 
-  void rebuild_contents() {
+  void rebuild_contents(int lru_size) {
+    contents.rehash(lru_size);
     for(LRUIter p = lru.begin(); p != lru.end(); ++p) {
       contents[*p] = p;
     }
@@ -298,7 +306,9 @@ public:
   LRUCache(int percentile, int persist_update_count) :
 	lock("LRUCache::lock"),
 	percentile(percentile),
-	update_count(0), persist_update_count(persist_update_count) {}
+	update_count(0), persist_update_count(persist_update_count) {
+    contents.rehash(1024);
+  }
 
   void add(const T& entry) {
     Mutex::Locker l(lock);
@@ -380,17 +390,18 @@ public:
 
   void encode(bufferlist &bl) const {
     ENCODE_START(1, 1, bl);
-    ::encode(percentile, bl);
+    ::encode(contents.size(), bl);
     ::encode(lru, bl);
     ENCODE_FINISH(bl);
   }
 
   void decode(bufferlist::iterator &bl) {
+    int lru_size;
     DECODE_START(1, bl);
-    ::decode(percentile, bl);
+    ::decode(lru_size, bl);
     ::decode(lru, bl);
     DECODE_FINISH(bl);
-    rebuild_contents();
+    rebuild_contents(lru_size);
   }
 };
 WRITE_CLASS_ENCODER(LRUCache<hobject_t>)
