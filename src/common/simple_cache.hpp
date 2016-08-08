@@ -362,6 +362,16 @@ public:
     return contents.count(entry);
   }
 
+  void remove(const T& entry) {
+    Mutex::Locker l(lock);
+    typename unordered_map<T, LRUIter>::iterator i = contents.find(entry);
+    if(i != contents.end()) {
+      ++update_count;
+      lru.erase(i->second);
+      contents.erase(i);
+    }
+  }
+
   bool pop(T* const entry) {
     Mutex::Locker l(lock);
     if(contents.size()) {

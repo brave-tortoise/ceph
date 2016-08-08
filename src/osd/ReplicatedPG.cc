@@ -1808,6 +1808,16 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 
   MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
   const object_locator_t& oloc = m->get_object_locator();
+  /*for(unsigned int i = 0; i < m->ops.size(); ++i) {
+    dout(0) << "wugy-debug: "
+	<< "op = " << ceph_osd_op_name(m->ops[i].op.op)
+	<< "; offset = " << m->ops[i].op.extent.offset
+	<< "; length = " << m->ops[i].op.extent.length
+        << "; truncate size = " << m->ops[i].op.extent.truncate_size
+	<< "; expected object size = " << m->ops[i].op.alloc_hint.expected_object_size
+	<< "; expected write size = " << m->ops[i].op.alloc_hint.expected_write_size
+	<< dendl;
+  }*/
 
   if (must_promote || op->need_promote()) {
     promote_object(obc, missing_oid, oloc, op);
@@ -1830,12 +1840,12 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	}
         return true;
       } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
-	if(op->may_write_full()) {
-	  return false;
-	}
 	if(op->need_skip_promote()) {
 	  do_proxy_write(op, missing_oid);
 	  return true;
+	}
+	if(op->may_write_full()) {
+	  return false;
 	}
 	if(osd->promote_get_num_ops() < g_conf->osd_promote_max_ops_in_flight) {
 	  if(write_ordered) {
@@ -2380,6 +2390,10 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
     assert(oid != hobject_t());
     obc = get_object_context(oid, true);
   }
+
+  /*if(obc->obs.exists) {
+    dout(0) << "wugy-debug: object already exists before promote" << dendl;
+  }*/
 
   if(osd->promote_start_op(oid)) {
     dout(20) << "wugy-debug: "
@@ -3991,6 +4005,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	  ctx->cache_evict = true;
 	}
 	osd->logger->inc(l_osd_tier_evict);
+        rw_cache.remove(soid);
       }
       break;
 
