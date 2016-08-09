@@ -1,0 +1,16 @@
+[global]
+#logging
+#write_iops_log=wiops
+#write_bw_log=wbw
+#write_lat_log=wlat
+ioengine=libaio
+direct=1
+filename=/dev/sdc
+rw=randwrite
+bs=4k
+ramp_time=30
+runtime=300
+#time_based
+
+[rbd_iodepth8]
+iodepth=8
