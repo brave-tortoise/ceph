@@ -217,11 +217,11 @@ OSDService::OSDService(OSD *osd) :
   agent_stop_flag(false),
   agent_timer_lock("OSD::agent_timer_lock"),
   agent_timer(osd->client_messenger->cct, agent_timer_lock),
-  promote_lock("OSD::promote_lock"),
+  /*promote_lock("OSD::promote_lock"),
   promote_queue(cct->_conf->osd_promote_work_queue_max_size),
   promote_ops(0),
   promote_thread(this),
-  promote_stop_flag(false),
+  promote_stop_flag(false),*/
   objecter(new Objecter(osd->client_messenger->cct, osd->objecter_messenger, osd->monc, NULL, 0, 0)),
   objecter_finisher(osd->client_messenger->cct),
   watch_lock("OSD::watch_lock"),
@@ -477,7 +477,7 @@ void OSDService::init()
   agent_timer.init();
 
   agent_thread.create();
-  promote_thread.create();
+  //promote_thread.create();
 }
 
 void OSDService::activate_map()
@@ -583,7 +583,7 @@ void OSDService::agent_stop()
 
 
 // ---- handle promotion ops ----
-
+/*
 void OSDService::promote_entry()
 {
   promote_lock.Lock();
@@ -632,7 +632,7 @@ void OSDService::promote_stop()
 
   promote_thread.join();
 }
-
+*/
 
 // -------------------------------------
 
@@ -2390,7 +2390,7 @@ int OSD::shutdown()
   service.agent_stop();
 
   dout(10) << "stopping promote" << dendl;
-  service.promote_stop();
+  //service.promote_stop();
 
   osd_lock.Lock();
 

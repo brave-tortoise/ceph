@@ -1835,7 +1835,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
           dout(20) << __func__ << " cache pool full, proxying read" << dendl;
           do_proxy_read(op);
         }
-	if(!op->need_skip_promote() && !osd->promote_lookup_object(missing_oid)) {
+	//if(!op->need_skip_promote() && !osd->promote_lookup_object(missing_oid)) {
+	if(!op->need_skip_promote()) {
 	  candidates_queue.adjust_or_add(missing_oid);
 	}
         return true;
@@ -2359,8 +2360,8 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
   }
 
   hobject_t oid = obc->obs.oi.soid;
-  if(osd->promote_start_op(oid)) {
-    osd->promote_dequeue_object(oid);
+  //if(osd->promote_start_op(oid)) {
+    //osd->promote_dequeue_object(oid);
 
     PromoteCallback *cb = new PromoteCallback(obc, this);
     object_locator_t my_oloc = oloc;
@@ -2371,14 +2372,14 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
 	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE |
 	       CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE,
 	       obc->obs.oi.soid.snap == CEPH_NOSNAP);
-  }
+  //}
 
   assert(obc->is_blocked());
 
   if (op)
     wait_for_blocked_object(oid, op);
 }
-
+/*
 void ReplicatedPG::async_promote_object(ObjectContextRef obc,
 					const hobject_t& missing_oid,
 				  	const object_locator_t& oloc)
@@ -2409,10 +2410,6 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
     obc = get_object_context(oid, true);
   }
 
-  /*if(obc->obs.exists) {
-    dout(0) << "wugy-debug: object already exists before promote" << dendl;
-  }*/
-
   if(osd->promote_start_op(oid)) {
     dout(20) << "wugy-debug: "
 	<< "promote_work: there are " << osd->promote_get_num_ops() << " promote ops in flight"
@@ -2432,7 +2429,7 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
   assert(obc->is_blocked());
   unlock();
 }
-
+*/
 void ReplicatedPG::execute_ctx(OpContext *ctx)
 {
   dout(10) << __func__ << " " << ctx << dendl;
@@ -6941,7 +6938,7 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
 
   simple_repop_submit(repop);
 
-  osd->promote_finish_op(soid);
+  //osd->promote_finish_op(soid);
   rw_cache.add(soid);
 
   dout(20) << "wugy-debug: "

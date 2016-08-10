@@ -659,7 +659,7 @@ public:
     return agent_ops;
   }
 
-
+/*
   // -- promotion state --
   Mutex promote_lock;
   Cond promote_cond;
@@ -738,7 +738,7 @@ public:
     Mutex::Locker l(promote_lock);
     return promote_ops;
   }
-
+*/
 
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;
