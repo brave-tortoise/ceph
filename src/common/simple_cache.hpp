@@ -141,6 +141,16 @@ public:
     contents.rehash(max_size);
   }
 
+  bool lookup_or_add(const T& entry) {
+    Mutex::Locker l(lock);
+    if(contents.count(entry)) {
+      return true;
+    } else {
+      _add(entry);
+      return false;
+    }
+  }
+
   bool adjust_or_add(const T& entry) {
     Mutex::Locker l(lock);
     typename unordered_map<T, FIFOIter>::iterator i = contents.find(entry);

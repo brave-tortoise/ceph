@@ -1184,7 +1184,7 @@ protected:
   void promote_object(ObjectContextRef obc,            ///< [optional] obc
 		      const hobject_t& missing_object, ///< oid (if !obc)
 		      const object_locator_t& oloc,    ///< locator for obc|oid
-		      OpRequestRef op);                ///< [optional] client op
+		      OpRequestRef op = OpRequestRef());                ///< [optional] client op
 
   /**
    * This function starts an async_promote,

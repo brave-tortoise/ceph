@@ -1847,18 +1847,20 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	if(op->may_write_full()) {
 	  return false;
 	}
-	if(osd->promote_get_num_ops() < g_conf->osd_promote_max_ops_in_flight) {
+	//if(osd->promote_get_num_ops() < g_conf->osd_promote_max_ops_in_flight) {
 	  if(write_ordered) {
 	    promote_object(obc, missing_oid, oloc, op);
 	  } else {
 	    do_proxy_read(op);
 	    // Avoid duplicate promotion
-	    if(!obc || !obc->is_blocked()) {
-	      async_promote_object(obc, missing_oid, oloc);
+      	    if(obc.get() && obc->is_blocked()) {
+      	      return true;
 	    }
+	    promote_object(obc, missing_oid, oloc);
+	    //async_promote_object(obc, missing_oid, oloc);
           }
 	  return true;
-        }
+        //}
       }
     }
 
@@ -1877,6 +1879,13 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	}
       }
 
+      if(candidates_queue.lookup_or_add(missing_oid)) {
+	promote_object(obc, missing_oid, oloc, op);
+      } else {
+	do_proxy_write(op, missing_oid);
+      }
+
+      /*
       do_proxy_write(op, missing_oid);
 
       if(!osd->promote_adjust_object(missing_oid)) {
@@ -1887,6 +1896,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	  dout(20) << "wugy-debug: write op -> not promote" << dendl;
         }
       }
+      */
+
       return true;
 
     } else {
@@ -1896,6 +1907,11 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	return true;
       }
 
+      if(candidates_queue.lookup_or_add(missing_oid)) {
+	promote_object(obc, missing_oid, oloc);
+      }
+
+      /*
       if(!osd->promote_adjust_object(missing_oid)) {
         if(candidates_queue.promote_or_add(missing_oid)) {
           dout(20) << "wugy-debug: read op -> promote" << dendl;
@@ -1904,6 +1920,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
           dout(20) << "wugy-debug: read op -> not promote" << dendl;
         }
       }
+      */
+
       return true;
     }
 
