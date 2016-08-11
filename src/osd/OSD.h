@@ -732,7 +732,7 @@ public:
     Mutex::Locker l(promote_lock);
     assert(promote_ops > 0);
     --promote_ops;
-    assert(promote_oids.count(oid) == 1);
+    //assert(promote_oids.count(oid) == 1);
     promote_oids.erase(oid);
     promote_cond.Signal();
   }
