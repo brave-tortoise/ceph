@@ -1837,7 +1837,9 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
         }
 	//if(!op->need_skip_promote() && !osd->promote_lookup_object(missing_oid)) {
 	if(!op->need_skip_promote()) {
-	  candidates_queue.adjust_or_add(missing_oid);
+	  if(candidates_queue.adjust_or_add(missing_oid)) {
+	    async_promote_object(obc, missing_oid, oloc);
+	  }
 	}
         return true;
       } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
@@ -1915,9 +1917,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       */
 
       if(candidates_queue.adjust_or_add(missing_oid)) {
-      	if(!osd->promote_adjust_object(missing_oid)) {
-	  async_promote_object(obc, missing_oid, oloc);
-	}
+	async_promote_object(obc, missing_oid, oloc);
       }
 
       /*
@@ -2392,7 +2392,8 @@ void ReplicatedPG::async_promote_object(ObjectContextRef obc,
 					const hobject_t& missing_oid,
 				  	const object_locator_t& oloc)
 {
-  PromoteInfo info = {this, obc, oloc};
+  //PromoteInfo info = {this, obc, oloc};
+  PromoteInfo info = {this, oloc};
   osd->promote_enqueue_object(missing_oid, info);
 
   dout(20) << "wugy-debug: "
@@ -2401,21 +2402,22 @@ void ReplicatedPG::async_promote_object(ObjectContextRef obc,
 	<< dendl;
 }
 
-void ReplicatedPG::promote_work(ObjectContextRef obc,
-				const hobject_t& oid,
+void ReplicatedPG::promote_work(const hobject_t& oid,
 				const object_locator_t& oloc)
 {
-  lock();
   if (scrubber.write_blocked_by_scrub(oid)) {
-    candidates_queue.add(oid);
+    //candidates_queue.add(oid);
     dout(10) << __func__ << " " << oid
 	     << " blocked by scrub" << dendl;
     return;
   }
 
-  if (!obc) { // we need to create an ObjectContext
-    assert(oid != hobject_t());
-    obc = get_object_context(oid, true);
+  lock();
+
+  ObjectContextRef obc = get_object_context(oid, true);
+  if(obc->obs.exists) {
+    unlock();
+    return;
   }
 
   if(osd->promote_start_op(oid)) {
@@ -2434,7 +2436,7 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
 	       obc->obs.oi.soid.snap == CEPH_NOSNAP);
   }
 
-  assert(obc->is_blocked());
+  //assert(obc->is_blocked());
   unlock();
 }
 

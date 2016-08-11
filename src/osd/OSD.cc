@@ -606,7 +606,9 @@ void OSDService::promote_entry()
     promote_lock.Unlock();
     
     PGRef pg = info.pg;
-    pg->promote_work(info.obc, oid, info.oloc);
+    //pg->promote_work(info.obc, oid, info.oloc);
+    //ObjectContextRef obc = pg->get_object_context(oid, true);
+    pg->promote_work(oid, info.oloc);
     promote_lock.Lock();
   }
 

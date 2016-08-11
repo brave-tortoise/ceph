@@ -1196,8 +1196,7 @@ protected:
 		      const hobject_t& missing_object, ///< oid (if !obc)
 		      const object_locator_t& oloc);   ///< locator for obc|oid
   // promote an object
-  void promote_work(ObjectContextRef obc,              ///< [optional] obc
-		    const hobject_t& missing_object,   ///< oid (if !obc)
+  void promote_work(const hobject_t& missing_object,   ///< oid (if !obc)
 		    const object_locator_t& oloc);     ///< locator for obc|oid
 
   // check if a promotion is needed

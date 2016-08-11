@@ -310,7 +310,7 @@ typedef ceph::shared_ptr<DeletingState> DeletingStateRef;
 
 struct PromoteInfo {
   PGRef pg;
-  ObjectContextRef obc;
+  //ObjectContextRef obc;
   object_locator_t oloc;
 };
 
@@ -681,16 +681,18 @@ public:
   /// insert an object into promote_queue
   void promote_enqueue_object(const hobject_t& oid, const PromoteInfo& info) {
     Mutex::Locker l(promote_lock);
-    promote_queue.adjust_or_add(oid, info);
     /*PromoteInfo *ret = promote_queue.adjust_or_add(oid, info);
     if(ret) {
       PGRef pg = ret->pg;
       pg->candidate_enqueue_object(oid);
     }
     */
-    promote_cond.Signal();
+    if(!promote_queue.adjust_or_add(oid, info) && promote_ops < g_conf->osd_promote_max_ops_in_flight) {
+      promote_cond.Signal();
+    }
   }
 
+  /*
   /// adjust priority of an object in promote_queue
   bool promote_adjust_object(const hobject_t& oid) {
     Mutex::Locker l(promote_lock);
@@ -706,6 +708,7 @@ public:
       return true;
     return false;
   }
+  */
 
   /// remove an object from promote_queue
   void promote_dequeue_object(const hobject_t& oid) {
