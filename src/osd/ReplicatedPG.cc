@@ -6948,7 +6948,7 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
 
   simple_repop_submit(repop);
 
-  //osd->promote_finish_op(soid);
+  osd->promote_finish_op(soid);
   rw_cache.add(soid);
 
   dout(20) << "wugy-debug: "
