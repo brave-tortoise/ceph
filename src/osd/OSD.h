@@ -659,7 +659,6 @@ public:
     return agent_ops;
   }
 
-/*
   // -- promotion state --
   Mutex promote_lock;
   Cond promote_cond;
@@ -682,11 +681,13 @@ public:
   /// insert an object into promote_queue
   void promote_enqueue_object(const hobject_t& oid, const PromoteInfo& info) {
     Mutex::Locker l(promote_lock);
-    PromoteInfo*ret = promote_queue.adjust_or_add(oid, info);
+    promote_queue.adjust_or_add(oid, info);
+    /*PromoteInfo *ret = promote_queue.adjust_or_add(oid, info);
     if(ret) {
       PGRef pg = ret->pg;
       pg->candidate_enqueue_object(oid);
     }
+    */
     promote_cond.Signal();
   }
 
@@ -738,7 +739,6 @@ public:
     Mutex::Locker l(promote_lock);
     return promote_ops;
   }
-*/
 
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;

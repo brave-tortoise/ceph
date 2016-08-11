@@ -212,6 +212,7 @@ public:
     contents.rehash(max_size);
   }
 
+  /*
   V* adjust_or_add(const K& key, const V& value) {
     Mutex::Locker l(lock);
     V* val = NULL;
@@ -227,6 +228,21 @@ public:
       }
     }
     return val;
+  }
+  */
+
+  void adjust_or_add(const K& key, const V& value) {
+    Mutex::Locker l(lock);
+    typename unordered_map<K, MRUIter>::iterator i = contents.find(key);
+    if(i != contents.end()) {
+      mru.splice(mru.begin(), mru, i->second);
+    } else {
+      _add(key, value);
+      if(contents.size() > max_size) {
+	contents.erase(mru.back().first);
+	mru.pop_back();
+      }
+    }
   }
 
   bool adjust_or_lookup(const K& key) {

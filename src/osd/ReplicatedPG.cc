@@ -1857,8 +1857,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	    if(obc.get() && obc->is_blocked()) {
       	      return true;
 	    }
-	    promote_object(obc, missing_oid, oloc);
-	    //async_promote_object(obc, missing_oid, oloc);
+	    //promote_object(obc, missing_oid, oloc);
+	    async_promote_object(obc, missing_oid, oloc);
           }
 	  return true;
         //}
@@ -1908,8 +1908,16 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	return true;
       }
 
+      /*
       if(candidates_queue.lookup_or_add(missing_oid)) {
 	promote_object(obc, missing_oid, oloc);
+      }
+      */
+
+      if(candidates_queue.adjust_or_add(missing_oid)) {
+      	if(!osd->promote_adjust_object(missing_oid)) {
+	  async_promote_object(obc, missing_oid, oloc);
+	}
       }
 
       /*
@@ -2360,8 +2368,8 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
   }
 
   hobject_t oid = obc->obs.oi.soid;
-  //if(osd->promote_start_op(oid)) {
-    //osd->promote_dequeue_object(oid);
+  if(osd->promote_start_op(oid)) {
+    osd->promote_dequeue_object(oid);
 
     PromoteCallback *cb = new PromoteCallback(obc, this);
     object_locator_t my_oloc = oloc;
@@ -2372,14 +2380,14 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
 	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE |
 	       CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE,
 	       obc->obs.oi.soid.snap == CEPH_NOSNAP);
-  //}
+  }
 
   assert(obc->is_blocked());
 
   if (op)
     wait_for_blocked_object(oid, op);
 }
-/*
+
 void ReplicatedPG::async_promote_object(ObjectContextRef obc,
 					const hobject_t& missing_oid,
 				  	const object_locator_t& oloc)
@@ -2429,7 +2437,7 @@ void ReplicatedPG::promote_work(ObjectContextRef obc,
   assert(obc->is_blocked());
   unlock();
 }
-*/
+
 void ReplicatedPG::execute_ctx(OpContext *ctx)
 {
   dout(10) << __func__ << " " << ctx << dendl;
