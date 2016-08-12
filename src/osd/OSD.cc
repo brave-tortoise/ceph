@@ -217,6 +217,7 @@ OSDService::OSDService(OSD *osd) :
   agent_stop_flag(false),
   agent_timer_lock("OSD::agent_timer_lock"),
   agent_timer(osd->client_messenger->cct, agent_timer_lock),
+  candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
   promote_lock("OSD::promote_lock"),
   promote_queue(cct->_conf->osd_promote_work_queue_max_size),
   promote_ops(0),

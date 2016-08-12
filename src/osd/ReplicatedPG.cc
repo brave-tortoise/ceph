@@ -1837,9 +1837,10 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
         }
 	//if(!op->need_skip_promote() && !osd->promote_lookup_object(missing_oid)) {
 	if(!op->need_skip_promote()) {
-	  if(candidates_queue.adjust_or_add(missing_oid)) {
+	  /*if(candidates_queue.adjust_or_add(missing_oid)) {
 	    async_promote_object(obc, missing_oid, oloc);
-	  }
+	  }*/
+	  osd->candidates_queue.adjust_or_add(missing_oid);
 	}
         return true;
       } else if(agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE) {
@@ -1860,7 +1861,10 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	      return true;
 	    }
 	    //promote_object(obc, missing_oid, oloc);
-	    async_promote_object(obc, missing_oid, oloc);
+	    //async_promote_object(obc, missing_oid, oloc);
+	    if(osd->candidates_queue.lookup_or_add(missing_oid)) {
+	      promote_object(obc, missing_oid, oloc);
+	    }
           }
 	  return true;
         //}
@@ -1874,7 +1878,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       }
 
       if(op->may_write_full()) {
-	if(candidates_queue.adjust_or_add(missing_oid)) {
+	//if(candidates_queue.adjust_or_add(missing_oid)) {
+	if(osd->candidates_queue.adjust_or_add(missing_oid)) {
 	  return false;
 	} else {
 	  do_proxy_write(op, missing_oid);
@@ -1882,7 +1887,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	}
       }
 
-      if(candidates_queue.lookup_or_add(missing_oid)) {
+      //if(candidates_queue.lookup_or_add(missing_oid)) {
+      if(osd->candidates_queue.lookup_or_add(missing_oid)) {
 	promote_object(obc, missing_oid, oloc, op);
       } else {
 	do_proxy_write(op, missing_oid);
@@ -1910,15 +1916,15 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	return true;
       }
 
-      /*
-      if(candidates_queue.lookup_or_add(missing_oid)) {
+      if(osd->candidates_queue.lookup_or_add(missing_oid)) {
 	promote_object(obc, missing_oid, oloc);
       }
-      */
 
+      /*
       if(candidates_queue.adjust_or_add(missing_oid)) {
 	async_promote_object(obc, missing_oid, oloc);
       }
+      */
 
       /*
       if(!osd->promote_adjust_object(missing_oid)) {
@@ -2368,8 +2374,8 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
   }
 
   hobject_t oid = obc->obs.oi.soid;
-  if(osd->promote_start_op(oid)) {
-    osd->promote_dequeue_object(oid);
+  //if(osd->promote_start_op(oid)) {
+    //osd->promote_dequeue_object(oid);
 
     PromoteCallback *cb = new PromoteCallback(obc, this);
     object_locator_t my_oloc = oloc;
@@ -2380,7 +2386,7 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
 	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE |
 	       CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE,
 	       obc->obs.oi.soid.snap == CEPH_NOSNAP);
-  }
+  //}
 
   assert(obc->is_blocked());
 
@@ -6948,7 +6954,7 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
 
   simple_repop_submit(repop);
 
-  osd->promote_finish_op(soid);
+  //osd->promote_finish_op(soid);
   rw_cache.add(soid);
 
   dout(20) << "wugy-debug: "
