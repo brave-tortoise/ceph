@@ -1888,7 +1888,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       }
 
       //if(candidates_queue.lookup_or_add(missing_oid)) {
-      if(osd->candidates_queue.lookup_or_add(missing_oid)) {
+      if(osd->candidates_queue.lookup_or_add(missing_oid) &&
+		osd->promote_ops < g_conf->osd_promote_max_ops_in_flight) {
 	promote_object(obc, missing_oid, oloc, op);
       } else {
 	do_proxy_write(op, missing_oid);
@@ -1916,7 +1917,8 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	return true;
       }
 
-      if(osd->candidates_queue.lookup_or_add(missing_oid)) {
+      if(osd->candidates_queue.lookup_or_add(missing_oid) &&
+		osd->promote_ops < g_conf->osd_promote_max_ops_in_flight) {
 	promote_object(obc, missing_oid, oloc);
       }
 
@@ -2374,9 +2376,8 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
   }
 
   hobject_t oid = obc->obs.oi.soid;
-  //if(osd->promote_start_op(oid)) {
+  if(osd->promote_start_op(oid)) {
     //osd->promote_dequeue_object(oid);
-
     PromoteCallback *cb = new PromoteCallback(obc, this);
     object_locator_t my_oloc = oloc;
     my_oloc.pool = pool.info.tier_of;
@@ -2386,7 +2387,7 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
 	       CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE |
 	       CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE,
 	       obc->obs.oi.soid.snap == CEPH_NOSNAP);
-  //}
+  }
 
   assert(obc->is_blocked());
 
@@ -6954,7 +6955,7 @@ void ReplicatedPG::finish_promote(int r, CopyResults *results,
 
   simple_repop_submit(repop);
 
-  //osd->promote_finish_op(soid);
+  osd->promote_finish_op(soid);
   rw_cache.add(soid);
 
   dout(20) << "wugy-debug: "
