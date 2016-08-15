@@ -10704,7 +10704,6 @@ bool ReplicatedPG::agent_work(int start_max)
     }
   }
 
-  agent_choose_mode();
   unlock();
   return true;
 }
@@ -10870,6 +10869,8 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc, bool after_flush)
   simple_repop_submit(repop);
   osd->logger->inc(l_osd_tier_evict);
   osd->logger->inc(l_osd_agent_evict);
+
+  agent_choose_mode();
   return true;
 }
 
