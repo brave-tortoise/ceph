@@ -10986,8 +10986,8 @@ void ReplicatedPG::agent_choose_mode(bool restart)
   uint64_t evict_slop = (float)evict_target * g_conf->osd_agent_slop;
   if (restart || agent_state->evict_mode < TierAgentState::EVICT_MODE_SOME)
     evict_target += evict_slop;
-  else
-    evict_target -= MIN(evict_target, evict_slop);
+  //else
+  //  evict_target -= MIN(evict_target, evict_slop);
 
   if (full_micro > 1000000) {
     // evict anything clean
