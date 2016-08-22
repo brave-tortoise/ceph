@@ -1760,6 +1760,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     if(rw_cache.to_persist() ||
 	rw_cache_persist_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
       rw_cache_persist();
+      agent_choose_mode();
     }
   }
 }
