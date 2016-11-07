@@ -225,6 +225,9 @@
 
      virtual ~Listener() {}
    };
+
+   //atomic_t *in_flight_ops;
+   atomic_t *io_tokens;
    Listener *parent;
    Listener *get_parent() const { return parent; }
    PGBackend(Listener *l, ObjectStore *store, coll_t coll, coll_t temp_coll) :
@@ -625,6 +628,8 @@
    static PGBackend *build_pg_backend(
      const pg_pool_t &pool,
      const OSDMapRef curmap,
+     //atomic_t *in_flight_ops,
+     atomic_t *io_tokens,
      Listener *l,
      coll_t coll,
      coll_t temp_coll,

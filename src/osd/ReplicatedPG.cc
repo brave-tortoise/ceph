@@ -1218,7 +1218,7 @@ ReplicatedPG::ReplicatedPG(OSDService *o, OSDMapRef curmap,
   PG(o, curmap, _pool, p),
   pgbackend(
     PGBackend::build_pg_backend(
-      _pool.info, curmap, this, coll_t(p), coll_t::make_temp_coll(p), o->store, cct)),
+      _pool.info, curmap, &(o->osd->io_tokens), this, coll_t(p), coll_t::make_temp_coll(p), o->store, cct)),
   object_contexts(o->cct, g_conf->osd_pg_object_context_cache_count),
   snapset_contexts_lock("ReplicatedPG::snapset_contexts"),
   new_backfill(false),
@@ -2193,6 +2193,22 @@ void ReplicatedPG::execute_ctx(OpContext *ctx)
   ObjectContextRef obc = ctx->obc;
   const hobject_t& soid = obc->obs.oi.soid;
   map<hobject_t,ObjectContextRef>& src_obc = ctx->src_obc;
+
+  //osd->osd->in_flight_ops.inc();
+  /*
+  pgbackend->in_flight_ops->inc();
+  dout(0) << "wugy-debug: "
+	<< "execute op: " << op->get_reqid()
+	<< "in_flight_ops: " << pgbackend->in_flight_ops->read() //osd->osd->in_flight_ops.read()
+	<< dendl;
+  */
+
+  if(pgbackend->io_tokens->read() > 0) {
+    pgbackend->io_tokens->dec();
+  }
+  dout(20) << "wugy-debug: "
+	<< "execute_ctx tokens: " << pgbackend->io_tokens->read()
+	<< dendl;
 
   // this method must be idempotent since we may call it several times
   // before we finally apply the resulting transaction.
@@ -5863,6 +5879,14 @@ void ReplicatedPG::complete_read_ctx(int result, OpContext *ctx)
   MOSDOp *m = static_cast<MOSDOp*>(ctx->op->get_req());
   assert(ctx->async_reads_complete());
 
+  //osd->osd->in_flight_ops.dec();
+  /*pgbackend->in_flight_ops->dec();
+  dout(0) << "wugy-debug: "
+	<< "complete read op: " << m->get_reqid()
+	<< " in_flight_ops: " << pgbackend->in_flight_ops->read() //osd->osd->in_flight_ops.read()
+	<< dendl;
+  */
+
   for (vector<OSDOp>::iterator p = ctx->ops.begin(); p != ctx->ops.end(); ++p) {
     ctx->bytes_read += p->outdata.length();
   }
@@ -7195,6 +7219,11 @@ void ReplicatedPG::repop_all_committed(RepGather *repop)
 	   << dendl;
   repop->all_committed = true;
 
+  /*
+  dout(20) << "wugy-debug: "
+  	<< "complete op: " << repop->ctx->reqid << dendl;
+  */
+
   if (!repop->rep_aborted) {
     if (repop->v != eversion_t()) {
       last_update_ondisk = repop->v;
@@ -7417,6 +7446,9 @@ void ReplicatedPG::issue_repop(RepGather *repop)
       assert(!i->mod_desc.empty());
     }
   }
+
+//  dout(0) << "wugy-debug: "
+//  	<< "execute op: " << repop->ctx->reqid << dendl;
 
   Context *on_all_commit = new C_OSD_RepopCommit(this, repop);
   Context *on_all_applied = new C_OSD_RepopApplied(this, repop);
@@ -9167,9 +9199,9 @@ int ReplicatedPG::recover_primary(int max, ThreadPool::TPHandle &handle)
 
   const pg_missing_t &missing = pg_log.get_missing();
 
-  dout(10) << "recover_primary recovering " << recovering.size()
+  dout(0) << "recover_primary recovering " << recovering.size()
 	   << " in pg" << dendl;
-  dout(10) << "recover_primary " << missing << dendl;
+  dout(0) << "recover_primary " << missing << dendl;
   dout(25) << "recover_primary " << missing.missing << dendl;
 
   // look at log!
@@ -9387,7 +9419,7 @@ int ReplicatedPG::prep_object_replica_pushes(
 
 int ReplicatedPG::recover_replicas(int max, ThreadPool::TPHandle &handle)
 {
-  dout(10) << __func__ << "(" << max << ")" << dendl;
+  dout(0) << __func__ << "(" << max << ")" << dendl;
   int started = 0;
 
   PGBackend::RecoveryHandle *h = pgbackend->open_recovery_op();
@@ -9531,7 +9563,7 @@ int ReplicatedPG::recover_backfill(
   int max,
   ThreadPool::TPHandle &handle, bool *work_started)
 {
-  dout(10) << "recover_backfill (" << max << ")"
+  dout(0) << "recover_backfill (" << max << ")"
            << " bft=" << backfill_targets
 	   << " last_backfill_started " << last_backfill_started << dendl;
   assert(!backfill_targets.empty());
