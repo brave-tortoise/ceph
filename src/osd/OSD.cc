@@ -7862,8 +7862,7 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
   recovery_wq.lock();
   //int max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active,
   //    cct->_conf->osd_recovery_max_single_start);
-  int max = io_tokens.read() - 150;
-  max = MIN(max, cct->_conf->osd_recovery_max_single_start);
+  int max = MIN(io_tokens.read() - 150, cct->_conf->osd_recovery_max_single_start);
   dout(20) << "wugy-debug: "
 	<< "do_recovery tokens: " << io_tokens.read()
 	<< dendl;
