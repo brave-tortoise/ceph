@@ -3957,7 +3957,7 @@ void OSD::token_tick()
     io_tokens.inc();
   }
 
-  token_timer.add_event_after(0.02, new Token_Tick(this));
+  token_timer.add_event_after(0.1, new Token_Tick(this));
 }
 
 void OSD::check_ops_in_flight()
@@ -7848,6 +7848,9 @@ bool OSD::_recover_now()
     return false;
   }
   */
+  if (io_tokens.read() <= 150) {
+    return false;
+  }
   if (ceph_clock_now(cct) < defer_recovery_until) {
     dout(15) << "_recover_now defer until " << defer_recovery_until << dendl;
     return false;
@@ -7863,11 +7866,9 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
   //int max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active,
   //    cct->_conf->osd_recovery_max_single_start);
   int max = MIN(io_tokens.read() - 150, cct->_conf->osd_recovery_max_single_start);
-  /*
-  dout(20) << "wugy-debug: "
+  dout(0) << "wugy-debug: "
 	<< "do_recovery tokens: " << io_tokens.read()
 	<< dendl;
-  */
 
   if (max > 0) {
     dout(10) << "do_recovery can start " << max << " (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
