@@ -3957,7 +3957,7 @@ void OSD::token_tick()
     io_tokens.inc();
   }
 
-  token_timer.add_event_after(0.1, new Token_Tick(this));
+  token_timer.add_event_after(0.02, new Token_Tick(this));
 }
 
 void OSD::check_ops_in_flight()
@@ -7875,6 +7875,9 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
 	     << " rops)" << dendl;
     recovery_ops_active += max;  // take them now, return them if we don't use them.
     io_tokens.sub(max);
+    dout(0) << "wugy-debug: "
+	<< "do_recovery tokens: " << io_tokens.read()
+	<< dendl;
   } else {
     dout(10) << "do_recovery can start 0 (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
 	     << " rops)" << dendl;
@@ -7972,7 +7975,6 @@ void OSD::finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue)
   // adjust count
   recovery_ops_active--;
   assert(recovery_ops_active >= 0);
-  io_tokens.inc();
   /*
   dout(20) << "wugy-debug: "
 	<< "finish_recovery_op tokens: " << io_tokens.read()
