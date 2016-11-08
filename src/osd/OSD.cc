@@ -3953,7 +3953,7 @@ void OSD::token_tick()
   assert(osd_lock.is_locked());
   dout(20) << "token tick" << dendl;
 
-  if(io_tokens.read() < 200) {
+  if(io_tokens.read() < 180) {
     io_tokens.inc();
   }
 
@@ -7866,18 +7866,17 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
   //int max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active,
   //    cct->_conf->osd_recovery_max_single_start);
   int max = MIN(io_tokens.read() - 150, cct->_conf->osd_recovery_max_single_start);
+  /*
   dout(0) << "wugy-debug: "
 	<< "do_recovery tokens: " << io_tokens.read()
 	<< dendl;
+  */
 
   if (max > 0) {
     dout(10) << "do_recovery can start " << max << " (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
 	     << " rops)" << dendl;
     recovery_ops_active += max;  // take them now, return them if we don't use them.
     io_tokens.sub(max);
-    dout(0) << "wugy-debug: "
-	<< "do_recovery tokens: " << io_tokens.read()
-	<< dendl;
   } else {
     dout(10) << "do_recovery can start 0 (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
 	     << " rops)" << dendl;
@@ -7934,7 +7933,7 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
   if (max > 0) {
     assert(recovery_ops_active >= max);
     recovery_ops_active -= max;
-    io_tokens.add(max);
+    //io_tokens.add(max);
   }
   recovery_wq._wake();
   recovery_wq.unlock();
@@ -7975,6 +7974,7 @@ void OSD::finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue)
   // adjust count
   recovery_ops_active--;
   assert(recovery_ops_active >= 0);
+  io_tokens.inc();
   /*
   dout(20) << "wugy-debug: "
 	<< "finish_recovery_op tokens: " << io_tokens.read()
