@@ -7863,9 +7863,11 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
   //int max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active,
   //    cct->_conf->osd_recovery_max_single_start);
   int max = MIN(io_tokens.read() - 150, cct->_conf->osd_recovery_max_single_start);
+  /*
   dout(20) << "wugy-debug: "
 	<< "do_recovery tokens: " << io_tokens.read()
 	<< dendl;
+  */
 
   if (max > 0) {
     dout(10) << "do_recovery can start " << max << " (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
@@ -7943,9 +7945,11 @@ void OSD::start_recovery_op(PG *pg, const hobject_t& soid)
   assert(recovery_ops_active >= 0);
   recovery_ops_active++;
   io_tokens.dec();
+  /*
   dout(20) << "wugy-debug: "
 	<< "start_recovery_op tokens: " << io_tokens.read()
 	<< dendl;
+  */
 
 #ifdef DEBUG_RECOVERY_OIDS
   dout(20) << "  active was " << recovery_oids[pg->info.pgid] << dendl;
@@ -7968,9 +7972,11 @@ void OSD::finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue)
   recovery_ops_active--;
   assert(recovery_ops_active >= 0);
   io_tokens.inc();
+  /*
   dout(20) << "wugy-debug: "
 	<< "finish_recovery_op tokens: " << io_tokens.read()
 	<< dendl;
+  */
 
 #ifdef DEBUG_RECOVERY_OIDS
   dout(20) << "  active oids was " << recovery_oids[pg->info.pgid] << dendl;

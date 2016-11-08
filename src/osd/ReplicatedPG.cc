@@ -2206,9 +2206,11 @@ void ReplicatedPG::execute_ctx(OpContext *ctx)
   if(pgbackend->io_tokens->read() > 0) {
     pgbackend->io_tokens->dec();
   }
+  /*
   dout(20) << "wugy-debug: "
 	<< "execute_ctx tokens: " << pgbackend->io_tokens->read()
 	<< dendl;
+  */
 
   // this method must be idempotent since we may call it several times
   // before we finally apply the resulting transaction.
@@ -9199,9 +9201,9 @@ int ReplicatedPG::recover_primary(int max, ThreadPool::TPHandle &handle)
 
   const pg_missing_t &missing = pg_log.get_missing();
 
-  dout(0) << "recover_primary recovering " << recovering.size()
+  dout(10) << "recover_primary recovering " << recovering.size()
 	   << " in pg" << dendl;
-  dout(0) << "recover_primary " << missing << dendl;
+  dout(10) << "recover_primary " << missing << dendl;
   dout(25) << "recover_primary " << missing.missing << dendl;
 
   // look at log!
@@ -9419,7 +9421,7 @@ int ReplicatedPG::prep_object_replica_pushes(
 
 int ReplicatedPG::recover_replicas(int max, ThreadPool::TPHandle &handle)
 {
-  dout(0) << __func__ << "(" << max << ")" << dendl;
+  dout(10) << __func__ << "(" << max << ")" << dendl;
   int started = 0;
 
   PGBackend::RecoveryHandle *h = pgbackend->open_recovery_op();
@@ -9563,7 +9565,7 @@ int ReplicatedPG::recover_backfill(
   int max,
   ThreadPool::TPHandle &handle, bool *work_started)
 {
-  dout(0) << "recover_backfill (" << max << ")"
+  dout(10) << "recover_backfill (" << max << ")"
            << " bft=" << backfill_targets
 	   << " last_backfill_started " << last_backfill_started << dendl;
   assert(!backfill_targets.empty());

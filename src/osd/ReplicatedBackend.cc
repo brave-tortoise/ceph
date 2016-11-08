@@ -1122,9 +1122,11 @@ void ReplicatedBackend::sub_op_modify(OpRequestRef op) {
   if(io_tokens->read() > 0) {
     io_tokens->dec();
   }
+  /*
   dout(20) << "wugy-debug: "
 	<< "sub_op_modify tokens: " << io_tokens->read()
 	<< dendl;
+  */
 
   Message *m = op->get_req();
   int msg_type = m->get_type();
