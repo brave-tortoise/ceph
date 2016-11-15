@@ -3955,7 +3955,7 @@ void OSD::token_tick()
 
   //if(io_tokens.read() < 180) {
   if(io_tokens.read() < cct->_conf->osd_recovery_max_token) {
-    io_tokens.inc();
+    io_tokens.add(3);//inc();
   }
 
   token_timer.add_event_after(cct->_conf->osd_recovery_tick_interval, new Token_Tick(this));
@@ -7976,7 +7976,7 @@ void OSD::finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue)
   // adjust count
   recovery_ops_active--;
   assert(recovery_ops_active >= 0);
-  io_tokens.inc();
+  //io_tokens.inc();
   /*
   dout(20) << "wugy-debug: "
 	<< "finish_recovery_op tokens: " << io_tokens.read()
