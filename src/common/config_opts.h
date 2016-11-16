@@ -597,11 +597,11 @@ OPTION(osd_preserve_trimmed_log, OPT_BOOL, false)
 OPTION(osd_auto_mark_unfound_lost, OPT_BOOL, false)
 
 OPTION(osd_recovery_min_token, OPT_INT, 1000)
-OPTION(osd_recovery_max_token, OPT_INT, 1024)
-OPTION(osd_recovery_tick_interval, OPT_FLOAT, 0.02)
+OPTION(osd_recovery_max_token, OPT_INT, 1016)
+OPTION(osd_recovery_tick_interval, OPT_FLOAT, 0.01)
 OPTION(osd_recovery_delay_start, OPT_FLOAT, 0)
 OPTION(osd_recovery_max_active, OPT_INT, 15)
-OPTION(osd_recovery_max_single_start, OPT_INT, 3)
+OPTION(osd_recovery_max_single_start, OPT_INT, 5)
 OPTION(osd_recovery_max_chunk, OPT_U64, 8<<20)  // max size of push chunk
 OPTION(osd_copyfrom_max_chunk, OPT_U64, 8<<20)   // max size of a COPYFROM chunk
 OPTION(osd_push_per_object_cost, OPT_U64, 1000)  // push cost per object
