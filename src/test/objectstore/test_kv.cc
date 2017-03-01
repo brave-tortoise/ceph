@@ -54,7 +54,7 @@ public:
     db.reset(NULL);
   }
 
-  virtual void SetUp() {
+  void SetUp() override {
     int r = ::mkdir("kv_test_temp_dir", 0777);
     if (r < 0 && errno != EEXIST) {
       r = -errno;
@@ -64,7 +64,7 @@ public:
     }
     init();
   }
-  virtual void TearDown() {
+  void TearDown() override {
     fini();
     rm_r("kv_test_temp_dir");
   }
@@ -80,6 +80,37 @@ TEST_P(KVTest, OpenCloseReopenClose) {
   fini();
   init();
   ASSERT_EQ(0, db->open(cout));
+  fini();
+}
+
+/*
+ * Basic write and read test case in same database session.
+ */
+TEST_P(KVTest, OpenWriteRead) {
+  ASSERT_EQ(0, db->create_and_open(cout));
+  {
+    KeyValueDB::Transaction t = db->get_transaction();
+    bufferlist value;
+    value.append("value");
+    t->set("prefix", "key", value);
+    value.clear();
+    value.append("value2");
+    t->set("prefix", "key2", value);
+    value.clear();
+    value.append("value3");
+    t->set("prefix", "key3", value);
+    db->submit_transaction_sync(t);
+
+    bufferlist v1, v2;
+    ASSERT_EQ(0, db->get("prefix", "key", &v1));
+    ASSERT_EQ(v1.length(), 5u);
+    (v1.c_str())[v1.length()] = 0x0;
+    ASSERT_EQ(std::string(v1.c_str()), std::string("value"));
+    ASSERT_EQ(0, db->get("prefix", "key2", &v2));
+    ASSERT_EQ(v2.length(), 6u);
+    (v2.c_str())[v2.length()] = 0x0;
+    ASSERT_EQ(std::string(v2.c_str()), std::string("value2"));
+  }
   fini();
 }
 
@@ -128,7 +159,7 @@ TEST_P(KVTest, PutReopen) {
 TEST_P(KVTest, BenchCommit) {
   int n = 1024;
   ASSERT_EQ(0, db->create_and_open(cout));
-  utime_t start = ceph_clock_now(NULL);
+  utime_t start = ceph_clock_now();
   {
     cout << "priming" << std::endl;
     // prime
@@ -152,7 +183,7 @@ TEST_P(KVTest, BenchCommit) {
     t->set("prefix", "key" + stringify(i), data);
     db->submit_transaction_sync(t);
   }
-  utime_t end = ceph_clock_now(NULL);
+  utime_t end = ceph_clock_now();
   utime_t dur = end - start;
   cout << n << " commits in " << dur << ", avg latency " << (dur / (double)n)
        << std::endl;
@@ -160,19 +191,20 @@ TEST_P(KVTest, BenchCommit) {
 }
 
 struct AppendMOP : public KeyValueDB::MergeOperator {
-  virtual void merge_nonexistant(
+  void merge_nonexistent(
     const char *rdata, size_t rlen, std::string *new_value) override {
     *new_value = "?" + std::string(rdata, rlen);
   }
-  virtual void merge(
+  void merge(
     const char *ldata, size_t llen,
     const char *rdata, size_t rlen,
-    std::string *new_value) {
+    std::string *new_value) override {
+
     *new_value = std::string(ldata, llen) + std::string(rdata, rlen);
   }
   // We use each operator name and each prefix to construct the
   // overall RocksDB operator name for consistency check at open time.
-  virtual string name() const {
+  string name() const override {
     return "Append";
   }
 };
@@ -227,7 +259,7 @@ TEST_P(KVTest, Merge) {
 INSTANTIATE_TEST_CASE_P(
   KeyValueDB,
   KVTest,
-  ::testing::Values("leveldb", "rocksdb"));
+  ::testing::Values("leveldb", "rocksdb", "memdb"));
 
 #else
 
@@ -246,11 +278,12 @@ int main(int argc, char **argv) {
   argv_to_vec(argc, (const char **)argv, args);
   env_to_vec(args);
 
-  global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
+  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
   g_ceph_context->_conf->set_val(
     "enable_experimental_unrecoverable_data_corrupting_features",
-    "rocksdb");
+    "rocksdb, memdb");
   g_ceph_context->_conf->apply_changes(NULL);
 
   ::testing::InitGoogleTest(&argc, argv);

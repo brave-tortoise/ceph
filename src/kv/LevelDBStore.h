@@ -190,12 +190,14 @@ public:
       const string &prefix,
       const string &k,
       const bufferlist &bl);
+    using KeyValueDB::TransactionImpl::set;
     void rmkey(
       const string &prefix,
       const string &k);
     void rmkeys_by_prefix(
       const string &prefix
       );
+    using KeyValueDB::TransactionImpl::rmkey;
   };
 
   KeyValueDB::Transaction get_transaction() {
@@ -213,7 +215,9 @@ public:
   int get(const string &prefix, 
     const string &key,   
     bufferlist *value);
-      
+
+  using KeyValueDB::get;
+
   class LevelDBWholeSpaceIteratorImpl :
     public KeyValueDB::WholeSpaceIteratorImpl {
   protected:
@@ -308,20 +312,6 @@ public:
     }
   };
 
-  class LevelDBSnapshotIteratorImpl : public LevelDBWholeSpaceIteratorImpl {
-    leveldb::DB *db;
-    const leveldb::Snapshot *snapshot;
-  public:
-    LevelDBSnapshotIteratorImpl(leveldb::DB *db, const leveldb::Snapshot *s,
-				leveldb::Iterator *iter) :
-      LevelDBWholeSpaceIteratorImpl(iter), db(db), snapshot(s) { }
-
-    ~LevelDBSnapshotIteratorImpl() {
-      assert(snapshot != NULL);
-      db->ReleaseSnapshot(snapshot);
-    }
-  };
-
   /// Utility
   static string combine_strings(const string &prefix, const string &value);
   static int split_key(leveldb::Slice in, string *prefix, string *key);
@@ -403,18 +393,6 @@ protected:
   WholeSpaceIterator _get_iterator() {
     return std::make_shared<LevelDBWholeSpaceIteratorImpl>(
 	db->NewIterator(leveldb::ReadOptions()));
-  }
-
-  WholeSpaceIterator _get_snapshot_iterator() {
-    const leveldb::Snapshot *snapshot;
-    leveldb::ReadOptions options;
-
-    snapshot = db->GetSnapshot();
-    options.snapshot = snapshot;
-
-    return std::make_shared<LevelDBSnapshotIteratorImpl>(
-        db.get(), snapshot,
-	db->NewIterator(options));
   }
 
 };

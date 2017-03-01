@@ -50,8 +50,8 @@ public:
                       librbd::journal::MirrorPeerClientMeta *client_meta,
                       ContextWQ *work_queue, Context *on_finish);
 
-  void send();
-  void cancel();
+  void send() override;
+  void cancel() override;
 
 private:
   /**
@@ -104,6 +104,7 @@ private:
   librados::snap_t m_prev_snap_id = CEPH_NOSNAP;
 
   std::string m_snap_name;
+  cls::rbd::SnapshotNamespace m_snap_namespace;
 
   librbd::parent_spec m_local_parent_spec;
 

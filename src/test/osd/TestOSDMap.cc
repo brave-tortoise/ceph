@@ -1,6 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 #include "gtest/gtest.h"
 #include "osd/OSDMap.h"
+#include "osd/OSDMapMapping.h"
 
 #include "global/global_context.h"
 #include "global/global_init.h"
@@ -11,10 +12,10 @@
 using namespace std;
 
 int main(int argc, char **argv) {
-  std::vector<const char *> preargs;
   std::vector<const char*> args(argv, argv+argc);
-  global_init(&preargs, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY,
-              CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
+  auto cct = global_init(nullptr, args, CEPH_ENTITY_TYPE_CLIENT,
+			 CODE_ENVIRONMENT_UTILITY,
+			 CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
   common_init_finish(g_ceph_context);
   // make sure we have 3 copies, or some tests won't work
   g_ceph_context->_conf->set_val("osd_pool_default_size", "3", false);
@@ -28,6 +29,8 @@ class OSDMapTest : public testing::Test {
   const static int num_osds = 6;
 public:
   OSDMap osdmap;
+  OSDMapMapping mapping;
+
   OSDMapTest() {}
 
   void set_up_map() {
@@ -76,17 +79,29 @@ public:
 		     vector<int> *any,
 		     vector<int> *first,
 		     vector<int> *primary) {
+    mapping.update(osdmap);
     for (int i=0; i<num; ++i) {
-      vector<int> o;
-      int p;
+      vector<int> up, acting;
+      int up_primary, acting_primary;
       pg_t pgid(i, pool);
-      osdmap.pg_to_acting_osds(pgid, &o, &p);
-      for (unsigned j=0; j<o.size(); ++j)
-	(*any)[o[j]]++;
-      if (!o.empty())
-	(*first)[o[0]]++;
-      if (p >= 0)
-	(*primary)[p]++;
+      osdmap.pg_to_up_acting_osds(pgid,
+				  &up, &up_primary, &acting, &acting_primary);
+      for (unsigned j=0; j<acting.size(); ++j)
+	(*any)[acting[j]]++;
+      if (!acting.empty())
+	(*first)[acting[0]]++;
+      if (acting_primary >= 0)
+	(*primary)[acting_primary]++;
+
+      // compare to precalc mapping
+      vector<int> up2, acting2;
+      int up_primary2, acting_primary2;
+      pgid = osdmap.raw_pg_to_pg(pgid);
+      mapping.get(pgid, &up2, &up_primary2, &acting2, &acting_primary2);
+      ASSERT_EQ(up, up2);
+      ASSERT_EQ(up_primary, up_primary2);
+      ASSERT_EQ(acting, acting2);
+      ASSERT_EQ(acting_primary, acting_primary2);
     }
   }
 };

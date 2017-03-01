@@ -9,6 +9,7 @@
 #include <list>
 #include <stdint.h>
 #include <string>
+#include <ostream>
 
 struct plain_stack_entry {
   int size;
@@ -49,14 +50,39 @@ private:
   void write_data(const char *fmt, ...);
   void dump_value_int(const char *name, const char *fmt, ...);
 
-  char *buf;
-  int len;
-  int max_len;
+  char *buf = nullptr;
+  int len = 0;
+  int max_len = 0;
 
   std::list<struct plain_stack_entry> stack;
-  size_t min_stack_level;
+  size_t min_stack_level = 0;
   bool use_kv;
+  bool wrote_something = 0;
 };
+
+
+/* This is a presentation layer. No logic inside, please. */
+class RGWSwiftWebsiteListingFormatter {
+  std::ostream& ss;
+  const std::string prefix;
+protected:
+  std::string format_name(const std::string& item_name) const;
+public:
+  RGWSwiftWebsiteListingFormatter(std::ostream& ss,
+                                  std::string prefix)
+    : ss(ss),
+      prefix(std::move(prefix)) {
+  }
+
+  /* The supplied css_path can be empty. In such situation a default,
+   * embedded style sheet will be generated. */
+  void generate_header(const std::string& dir_path,
+                       const std::string& css_path);
+  void generate_footer();
+  void dump_object(const RGWObjEnt& objent);
+  void dump_subdir(const std::string& name);
+};
+
 
 class RGWFormatterFlusher {
 protected:

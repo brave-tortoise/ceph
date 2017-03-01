@@ -499,6 +499,39 @@ int TestMemIoCtxImpl::write_full(const std::string& oid, bufferlist& bl,
   return 0;
 }
 
+int TestMemIoCtxImpl::writesame(const std::string& oid, bufferlist& bl, size_t len,
+                                uint64_t off, const SnapContext &snapc) {
+  if (get_snap_read() != CEPH_NOSNAP) {
+    return -EROFS;
+  }
+
+  if (len == 0 || (len % bl.length())) {
+    return -EINVAL;
+  }
+
+  TestMemRadosClient::SharedFile file;
+  {
+    RWLock::WLocker l(m_pool->file_lock);
+    file = get_file(oid, true, snapc);
+  }
+
+  RWLock::WLocker l(file->lock);
+  if (len > 0) {
+    interval_set<uint64_t> is;
+    is.insert(off, len);
+    is.intersection_of(file->snap_overlap);
+    file->snap_overlap.subtract(is);
+  }
+
+  ensure_minimum_length(off + len, &file->data);
+  while (len > 0) {
+    file->data.copy_in(off, bl.length(), bl);
+    off += bl.length();
+    len -= bl.length();
+  }
+  return 0;
+}
+
 int TestMemIoCtxImpl::xattr_get(const std::string& oid,
                                 std::map<std::string, bufferlist>* attrset) {
   TestMemRadosClient::SharedFile file;
@@ -550,7 +583,7 @@ void TestMemIoCtxImpl::append_clone(bufferlist& src, bufferlist* dest) {
   if (src.length() > 0) {
     bufferlist::iterator iter = src.begin();
     buffer::ptr ptr;
-    iter.copy(src.length(), ptr);
+    iter.copy_deep(src.length(), ptr);
     dest->append(ptr);
   }
 }
@@ -614,7 +647,7 @@ TestMemRadosClient::SharedFile TestMemIoCtxImpl::get_file(
 
     if (new_version) {
       file->snap_id = snapc.seq;
-      file->mtime = ceph_clock_now(m_client->cct()).sec();
+      file->mtime = ceph_clock_now().sec();
       m_pool->files[oid].push_back(file);
     }
     return file;

@@ -7,19 +7,18 @@
 #include "include/int_types.h"
 #include "include/buffer_fwd.h"
 #include "include/Context.h"
-#include "include/rbd/librbd.hpp"
 #include "common/Mutex.h"
+#include "librbd/io/Types.h"
 #include "librbd/journal/Types.h"
 #include <boost/variant.hpp>
 #include <list>
-#include <set>
 #include <unordered_set>
 #include <unordered_map>
 
 namespace librbd {
 
-class AioCompletion;
 class ImageCtx;
+namespace io { struct AioCompletion; }
 
 namespace journal {
 
@@ -33,7 +32,9 @@ public:
   Replay(ImageCtxT &image_ctx);
   ~Replay();
 
-  void process(bufferlist::iterator *it, Context *on_ready, Context *on_safe);
+  int decode(bufferlist::iterator *it, EventEntry *event_entry);
+  void process(const EventEntry &event_entry,
+               Context *on_ready, Context *on_safe);
 
   void shut_down(bool cancel_ops, Context *on_finish);
   void flush(Context *on_finish);
@@ -52,6 +53,7 @@ private:
     Context *on_finish_ready = nullptr;
     Context *on_finish_safe = nullptr;
     Context *on_op_complete = nullptr;
+    ReturnValues op_finish_error_codes;
     ReturnValues ignore_error_codes;
   };
 
@@ -66,7 +68,7 @@ private:
     C_OpOnComplete(Replay *replay, uint64_t op_tid)
       : replay(replay), op_tid(op_tid) {
     }
-    virtual void finish(int r) override {
+    void finish(int r) override {
       replay->handle_op_complete(op_tid, r);
     }
   };
@@ -78,7 +80,7 @@ private:
     C_AioModifyComplete(Replay *replay, Context *on_ready, Context *on_safe)
       : replay(replay), on_ready(on_ready), on_safe(on_safe) {
     }
-    virtual void finish(int r) {
+    void finish(int r) override {
       replay->handle_aio_modify_complete(on_ready, on_safe, r);
     }
   };
@@ -92,7 +94,7 @@ private:
       : replay(replay), on_flush_safe(on_flush_safe),
         on_safe_ctxs(on_safe_ctxs) {
     }
-    virtual void finish(int r) {
+    void finish(int r) override {
       replay->handle_aio_flush_complete(on_flush_safe, on_safe_ctxs, r);
     }
   };
@@ -122,6 +124,7 @@ private:
   ContextSet m_aio_modify_safe_contexts;
 
   OpEvents m_op_events;
+  uint64_t m_in_flight_op_events = 0;
 
   Context *m_flush_ctx = nullptr;
   Context *m_on_aio_ready = nullptr;
@@ -129,6 +132,8 @@ private:
   void handle_event(const AioDiscardEvent &event, Context *on_ready,
                     Context *on_safe);
   void handle_event(const AioWriteEvent &event, Context *on_ready,
+                    Context *on_safe);
+  void handle_event(const AioWriteSameEvent &event, Context *on_ready,
                     Context *on_safe);
   void handle_event(const AioFlushEvent &event, Context *on_ready,
                     Context *on_safe);
@@ -155,7 +160,13 @@ private:
   void handle_event(const DemoteEvent &event, Context *on_ready,
                     Context *on_safe);
   void handle_event(const SnapLimitEvent &event, Context *on_ready,
-		    Context *on_safe);
+                    Context *on_safe);
+  void handle_event(const UpdateFeaturesEvent &event, Context *on_ready,
+                    Context *on_safe);
+  void handle_event(const MetadataSetEvent &event, Context *on_ready,
+                    Context *on_safe);
+  void handle_event(const MetadataRemoveEvent &event, Context *on_ready,
+                    Context *on_safe);
   void handle_event(const UnknownEvent &event, Context *on_ready,
                     Context *on_safe);
 
@@ -167,11 +178,12 @@ private:
                                       Context *on_safe, OpEvent **op_event);
   void handle_op_complete(uint64_t op_tid, int r);
 
-  AioCompletion *create_aio_modify_completion(Context *on_ready,
-                                              Context *on_safe,
-                                              bool *flush_required);
-  AioCompletion *create_aio_flush_completion(Context *on_safe);
-  void handle_aio_completion(AioCompletion *aio_comp);
+  io::AioCompletion *create_aio_modify_completion(Context *on_ready,
+                                                  Context *on_safe,
+                                                  io::aio_type_t aio_type,
+                                                  bool *flush_required);
+  io::AioCompletion *create_aio_flush_completion(Context *on_safe);
+  void handle_aio_completion(io::AioCompletion *aio_comp);
 
 };
 

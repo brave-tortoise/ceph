@@ -491,7 +491,7 @@ public:
     string header;
     int r = get_header(*object, &header);
     if (r < 0) {
-      assert(0);
+      ceph_abort();
     }
     if (header.size() == 0) {
       if (hmap.count(*object)) {
@@ -522,10 +522,10 @@ class ObjectMapTest : public ::testing::Test {
 public:
   boost::scoped_ptr< ObjectMap > db;
   ObjectMapTester tester;
-  virtual void SetUp() {
+  void SetUp() override {
     char *path = getenv("OBJECT_MAP_PATH");
     if (!path) {
-      db.reset(new DBObjectMap(new KeyValueDBMemory()));
+      db.reset(new DBObjectMap(g_ceph_context, new KeyValueDBMemory()));
       tester.db = db.get();
       return;
     }
@@ -536,11 +536,11 @@ public:
     KeyValueDB *store = KeyValueDB::create(g_ceph_context, "leveldb", strpath);
     assert(!store->create_and_open(cerr));
 
-    db.reset(new DBObjectMap(store));
+    db.reset(new DBObjectMap(g_ceph_context, store));
     tester.db = db.get();
   }
 
-  virtual void TearDown() {
+  void TearDown() override {
     std::cerr << "Checking..." << std::endl;
     assert(db->check(std::cerr));
   }
@@ -551,7 +551,8 @@ int main(int argc, char **argv) {
   vector<const char*> args;
   argv_to_vec(argc, (const char **)argv, args);
 
-  global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
+  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
+			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -41,7 +41,7 @@ class RGWRealmReloader::C_Reload : public Context {
   RGWRealmReloader* reloader;
  public:
   C_Reload(RGWRealmReloader* reloader) : reloader(reloader) {}
-  void finish(int r) { reloader->reload(); }
+  void finish(int r) override { reloader->reload(); }
 };
 
 void RGWRealmReloader::handle_notify(RGWRealmNotify type,
@@ -100,6 +100,7 @@ void RGWRealmReloader::reload()
     // recreate and initialize a new store
     store = RGWStoreManager::get_storage(cct,
                                          cct->_conf->rgw_enable_gc_threads,
+                                         cct->_conf->rgw_enable_lc_threads,
                                          cct->_conf->rgw_enable_quota_threads,
                                          cct->_conf->rgw_run_sync_thread);
 

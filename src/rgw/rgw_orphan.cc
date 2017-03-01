@@ -177,8 +177,8 @@ int RGWOrphanStore::read_entries(const string& oid, const string& marker, map<st
 {
 #define MAX_OMAP_GET 100
   int ret = ioctx.omap_get_vals(oid, marker, MAX_OMAP_GET, entries);
-  if (ret < 0) {
-    cerr << "ERROR: " << __func__ << "(" << oid << ") returned ret=" << ret << std::endl;
+  if (ret < 0 && ret != -ENOENT) {
+    cerr << "ERROR: " << __func__ << "(" << oid << ") returned ret=" << cpp_strerror(-ret) << std::endl;
   }
 
   *truncated = (entries->size() == MAX_OMAP_GET);
@@ -206,7 +206,7 @@ int RGWOrphanSearch::init(const string& job_name, RGWOrphanSearchInfo *info) {
     search_info = *info;
     search_info.job_name = job_name;
     search_info.num_shards = (info->num_shards ? info->num_shards : DEFAULT_NUM_SHARDS);
-    search_info.start_time = ceph_clock_now(store->ctx());
+    search_info.start_time = ceph_clock_now();
     search_stage = RGWOrphanSearchStage(ORPHAN_SEARCH_STAGE_INIT);
 
     r = save_state();
@@ -765,7 +765,7 @@ int RGWOrphanSearch::run()
       ldout(store->ctx(), 0) << __func__ << "(): building index of all objects in pool" << dendl;
       r = build_all_oids_index();
       if (r < 0) {
-        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
         return r;
       }
 
@@ -781,7 +781,7 @@ int RGWOrphanSearch::run()
       ldout(store->ctx(), 0) << __func__ << "(): building index of all bucket indexes" << dendl;
       r = build_buckets_instance_index();
       if (r < 0) {
-        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
         return r;
       }
 
@@ -798,7 +798,7 @@ int RGWOrphanSearch::run()
       ldout(store->ctx(), 0) << __func__ << "(): building index of all linked objects" << dendl;
       r = build_linked_oids_index();
       if (r < 0) {
-        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
         return r;
       }
 
@@ -813,14 +813,14 @@ int RGWOrphanSearch::run()
     case ORPHAN_SEARCH_STAGE_COMPARE:
       r = compare_oid_indexes();
       if (r < 0) {
-        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
         return r;
       }
 
       break;
 
     default:
-      assert(0);
+      ceph_abort();
   };
 
   return 0;

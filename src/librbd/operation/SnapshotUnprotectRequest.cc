@@ -62,7 +62,7 @@ public:
       m_pool(pools[pool_idx]) {
   }
 
-  virtual int send() {
+  int send() override {
     I &image_ctx = this->m_image_ctx;
     assert(image_ctx.owner_lock.is_locked());
 
@@ -111,7 +111,7 @@ public:
   }
 
 protected:
-  virtual void finish(int r) {
+  void finish(int r) override {
     I &image_ctx = this->m_image_ctx;
     CephContext *cct = image_ctx.cct;
 
@@ -169,7 +169,11 @@ bool SnapshotUnprotectRequest<I>::should_complete(int r) {
   ldout(cct, 5) << this << " " << __func__ << ": state=" << m_state << ", "
                 << "r=" << r << dendl;
   if (r < 0) {
-    lderr(cct) << "encountered error: " << cpp_strerror(r) << dendl;
+    if (r == -EINVAL) {
+      ldout(cct, 1) << "snapshot is already unprotected" << dendl;
+    } else {
+      lderr(cct) << "encountered error: " << cpp_strerror(r) << dendl;
+    }
     if (m_ret_val == 0) {
       m_ret_val = r;
     }

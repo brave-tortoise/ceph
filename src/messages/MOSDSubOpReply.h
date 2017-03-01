@@ -16,7 +16,7 @@
 #ifndef CEPH_MOSDSUBOPREPLY_H
 #define CEPH_MOSDSUBOPREPLY_H
 
-#include "msg/Message.h"
+#include "MOSDFastDispatchOp.h"
 
 #include "MOSDSubOp.h"
 #include "os/ObjectStore.h"
@@ -29,7 +29,7 @@
  *
  */
 
-class MOSDSubOpReply : public Message {
+class MOSDSubOpReply : public MOSDFastDispatchOp {
   static const int HEAD_VERSION = 2;
   static const int COMPAT_VERSION = 1;
 public:
@@ -52,6 +52,13 @@ public:
   osd_peer_stat_t peer_stat;
 
   map<string,bufferptr> attrset;
+
+  epoch_t get_map_epoch() const override {
+    return map_epoch;
+  }
+  spg_t get_spg() const override {
+    return pgid;
+  }
 
   virtual void decode_payload() {
     bufferlist::iterator p = payload.begin();
@@ -109,8 +116,8 @@ public:
 
   epoch_t get_map_epoch() { return map_epoch; }
 
-  spg_t get_pg() { return pgid; }
-  hobject_t get_poid() { return poid; }
+  spg_t get_pg() const { return pgid; }
+  const hobject_t& get_poid() const { return poid; }
 
   int get_ack_type() { return ack_type; }
   bool is_ondisk() { return ack_type & CEPH_OSD_FLAG_ONDISK; }
@@ -129,20 +136,21 @@ public:
 
 public:
   MOSDSubOpReply(
-    MOSDSubOp *req, pg_shard_t from, int result_, epoch_t e, int at) :
-    Message(MSG_OSD_SUBOPREPLY, HEAD_VERSION, COMPAT_VERSION),
-    map_epoch(e),
-    reqid(req->reqid),
-    from(from),
-    pgid(req->pgid.pgid, req->from.shard),
-    poid(req->poid),
-    ops(req->ops),
-    ack_type(at),
-    result(result_) {
+    const MOSDSubOp *req, pg_shard_t from, int result_, epoch_t e, int at)
+    : MOSDFastDispatchOp(MSG_OSD_SUBOPREPLY, HEAD_VERSION, COMPAT_VERSION),
+      map_epoch(e),
+      reqid(req->reqid),
+      from(from),
+      pgid(req->pgid.pgid, req->from.shard),
+      poid(req->poid),
+      ops(req->ops),
+      ack_type(at),
+      result(result_) {
     memset(&peer_stat, 0, sizeof(peer_stat));
     set_tid(req->get_tid());
   }
-  MOSDSubOpReply() : Message(MSG_OSD_SUBOPREPLY) {}
+  MOSDSubOpReply()
+    : MOSDFastDispatchOp(MSG_OSD_SUBOPREPLY, HEAD_VERSION, COMPAT_VERSION) {}
 private:
   ~MOSDSubOpReply() {}
 

@@ -33,6 +33,7 @@ non-master zones. Following are the basic terminologies that would be used:
   and storage policies. Any configuration change for a non-master zone will
   increment the period's epoch. Changing the master zone to a different zone
   will trigger the following changes:
+
   - A new period is generated with a new period id and epoch of 1
   - Realm's current period is updated to point to the newly generated period id
   - Realm's epoch is incremented
@@ -291,6 +292,12 @@ keys would be used when configuring the second zone::
     },
     "temp_url_keys": []
   }
+
+
+.. note:: Please note that system users have super user privileges over the
+          entire zone, and will not behave like normal users for rest operations
+          like creating buckets, objects etc. as the output would contain
+          additional json fields for maintaining metadata.
 
 
 Update the period

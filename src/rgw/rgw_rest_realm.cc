@@ -228,7 +228,8 @@ class RGWHandler_Period : public RGWHandler_Auth_S3 {
 
 class RGWRESTMgr_Period : public RGWRESTMgr {
  public:
-  RGWHandler_REST* get_handler(struct req_state*) override {
+  RGWHandler_REST* get_handler(struct req_state*,
+                               const std::string&) override {
     return new RGWHandler_Period;
   }
 };
@@ -241,7 +242,7 @@ public:
   int verify_permission() override { return 0; }
   void execute() override;
   void send_response() override;
-  const string name() { return "get_realm"; }
+  const string name() override { return "get_realm"; }
 };
 
 void RGWOp_Realm_Get::execute()
@@ -276,7 +277,7 @@ void RGWOp_Realm_Get::send_response()
 
 class RGWHandler_Realm : public RGWHandler_Auth_S3 {
 protected:
-  RGWOp *op_get() { return new RGWOp_Realm_Get; }
+  RGWOp *op_get() override { return new RGWOp_Realm_Get; }
 };
 
 RGWRESTMgr_Realm::RGWRESTMgr_Realm()
@@ -285,7 +286,8 @@ RGWRESTMgr_Realm::RGWRESTMgr_Realm()
   register_resource("period", new RGWRESTMgr_Period);
 }
 
-RGWHandler_REST* RGWRESTMgr_Realm::get_handler(struct req_state*)
+RGWHandler_REST* RGWRESTMgr_Realm::get_handler(struct req_state*,
+                                               const std::string&)
 {
   return new RGWHandler_Realm;
 }

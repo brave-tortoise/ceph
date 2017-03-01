@@ -18,12 +18,13 @@
 #define CEPH_CINODE_H
 
 #include "common/config.h"
+#include "include/counter.h"
 #include "include/elist.h"
 #include "include/types.h"
 #include "include/lru.h"
 #include "include/compact_set.h"
 
-#include "mdstypes.h"
+#include "MDSCacheObject.h"
 #include "flock.h"
 
 #include "CDentry.h"
@@ -32,10 +33,13 @@
 #include "LocalLock.h"
 #include "Capability.h"
 #include "SnapRealm.h"
+#include "Mutation.h"
 
 #include <list>
 #include <set>
 #include <map>
+
+#define dout_context g_ceph_context
 
 class Context;
 class CDentry;
@@ -49,8 +53,6 @@ class Session;
 class MClientCaps;
 struct ObjectOperation;
 class EMetaBlob;
-struct MDRequestImpl;
-typedef ceph::shared_ptr<MDRequestImpl> MDRequestRef;
 
 
 ostream& operator<<(ostream& out, const CInode& in);
@@ -126,7 +128,7 @@ public:
 WRITE_CLASS_ENCODER_FEATURES(InodeStore)
 
 // cached inode wrapper
-class CInode : public MDSCacheObject, public InodeStoreBase {
+class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CInode> {
   /*
    * This class uses a boost::pool to handle allocation. This is *not*
    * thread-safe, so don't do allocations from multiple threads!
@@ -217,6 +219,8 @@ public:
   static const int STATE_FROZENAUTHPIN = (1<<17);
   static const int STATE_DIRTYPOOL =   (1<<18);
   static const int STATE_REPAIRSTATS = (1<<19);
+  static const int STATE_MISSINGOBJS = (1<<20);
+  static const int STATE_EVALSTALECAPS = (1<<21);
   // orphan inode needs notification of releasing reference
   static const int STATE_ORPHAN =	STATE_NOTIFYREF;
 
@@ -560,13 +564,13 @@ protected:
   compact_map<int32_t, int32_t>      mds_caps_wanted;     // [auth] mds -> caps wanted
   int                   replica_caps_wanted; // [replica] what i've requested from auth
 
-  compact_map<int, std::set<client_t> > client_snap_caps;     // [auth] [snap] dirty metadata we still need from the head
 public:
+  compact_map<int, std::set<client_t> > client_snap_caps;     // [auth] [snap] dirty metadata we still need from the head
   compact_map<snapid_t, std::set<client_t> > client_need_snapflush;
 
   void add_need_snapflush(CInode *snapin, snapid_t snapid, client_t client);
   void remove_need_snapflush(CInode *snapin, snapid_t snapid, client_t client);
-  void split_need_snapflush(CInode *cowin, CInode *in);
+  bool split_need_snapflush(CInode *cowin, CInode *in);
 
 protected:
 
@@ -665,7 +669,7 @@ public:
     item_dirty_dirfrag_nest(this), 
     item_dirty_dirfrag_dirfragtree(this), 
     auth_pin_freeze_allowance(0),
-    pop(ceph_clock_now(g_ceph_context)),
+    pop(ceph_clock_now()),
     versionlock(this, &versionlock_type),
     authlock(this, &authlock_type),
     linklock(this, &linklock_type),
@@ -678,14 +682,10 @@ public:
     policylock(this, &policylock_type),
     loner_cap(-1), want_loner_cap(-1)
   {
-    g_num_ino++;
-    g_num_inoa++;
     state = 0;  
     if (auth) state_set(STATE_AUTH);
   }
   ~CInode() {
-    g_num_ino--;
-    g_num_inos++;
     close_dirfrags();
     close_snaprealm();
     clear_file_locks();
@@ -738,9 +738,9 @@ public:
 
   // -- misc -- 
   bool is_projected_ancestor_of(CInode *other);
-  void make_path_string(std::string& s, bool force=false, CDentry *use_parent=NULL) const;
-  void make_path_string_projected(std::string& s) const;
-  void make_path(filepath& s) const;
+
+  void make_path_string(std::string& s, bool projected=false, const CDentry *use_parent=NULL) const;
+  void make_path(filepath& s, bool projected=false) const;
   void name_stray_dentry(std::string& dname);
   
   // -- dirtyness --
@@ -970,14 +970,15 @@ public:
 
   const std::map<client_t,Capability*>& get_client_caps() const { return client_caps; }
   Capability *get_client_cap(client_t client) {
-    if (client_caps.count(client))
-      return client_caps[client];
+    auto client_caps_entry = client_caps.find(client);
+    if (client_caps_entry != client_caps.end())
+      return client_caps_entry->second;
     return 0;
   }
   int get_client_cap_pending(client_t client) const {
-    if (client_caps.count(client)) {
-      std::map<client_t, Capability*>::const_iterator found = client_caps.find(client);
-      return found->second->pending();
+    auto client_caps_entry = client_caps.find(client);
+    if (client_caps_entry != client_caps.end()) {
+      return client_caps_entry->second->pending();
     } else {
       return 0;
     }
@@ -987,7 +988,7 @@ public:
   void remove_client_cap(client_t client);
   void move_to_realm(SnapRealm *realm);
 
-  Capability *reconnect_cap(client_t client, ceph_mds_cap_reconnect& icr, Session *session);
+  Capability *reconnect_cap(client_t client, const cap_reconnect_t& icr, Session *session);
   void clear_client_caps_after_export();
   void export_client_caps(std::map<client_t,Capability::Export>& cl);
 
@@ -1159,4 +1160,5 @@ private:
 
 ostream& operator<<(ostream& out, const CInode::scrub_stamp_info_t& si);
 
+#undef dout_context
 #endif

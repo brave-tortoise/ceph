@@ -3,6 +3,7 @@
 
 #include "tools/rbd/ArgumentTypes.h"
 #include "tools/rbd/Shell.h"
+#include "tools/rbd/Utils.h"
 #include "include/rbd/features.h"
 #include "common/config.h"
 #include "common/strtol.h"
@@ -17,13 +18,15 @@ namespace argument_types {
 namespace po = boost::program_options;
 
 const std::map<uint64_t, std::string> ImageFeatures::FEATURE_MAPPING = {
-  {RBD_FEATURE_LAYERING, "layering"},
-  {RBD_FEATURE_STRIPINGV2, "striping"},
-  {RBD_FEATURE_EXCLUSIVE_LOCK, "exclusive-lock"},
-  {RBD_FEATURE_OBJECT_MAP, "object-map"},
-  {RBD_FEATURE_FAST_DIFF, "fast-diff"},
-  {RBD_FEATURE_DEEP_FLATTEN, "deep-flatten"},
-  {RBD_FEATURE_JOURNALING, "journaling"}};
+  {RBD_FEATURE_LAYERING, RBD_FEATURE_NAME_LAYERING},
+  {RBD_FEATURE_STRIPINGV2, RBD_FEATURE_NAME_STRIPINGV2},
+  {RBD_FEATURE_EXCLUSIVE_LOCK, RBD_FEATURE_NAME_EXCLUSIVE_LOCK},
+  {RBD_FEATURE_OBJECT_MAP, RBD_FEATURE_NAME_OBJECT_MAP},
+  {RBD_FEATURE_FAST_DIFF, RBD_FEATURE_NAME_FAST_DIFF},
+  {RBD_FEATURE_DEEP_FLATTEN, RBD_FEATURE_NAME_DEEP_FLATTEN},
+  {RBD_FEATURE_JOURNALING, RBD_FEATURE_NAME_JOURNALING},
+  {RBD_FEATURE_DATA_POOL, RBD_FEATURE_NAME_DATA_POOL},
+};
 
 Format::Formatter Format::create_formatter(bool pretty) const {
   if (value == "json") {
@@ -54,6 +57,15 @@ std::string get_description_prefix(ArgumentModifier modifier) {
   default:
     return "";
   }
+}
+
+void add_special_pool_option(po::options_description *opt,
+			     std::string prefix) {
+  std::string name = prefix + "-" + POOL_NAME;
+  std::string description = prefix + " pool name";
+
+  opt->add_options()
+    (name.c_str(), po::value<std::string>(), description.c_str());
 }
 
 void add_pool_option(po::options_description *opt,
@@ -258,8 +270,9 @@ void add_create_image_options(po::options_description *opt,
     (IMAGE_FEATURES.c_str(), po::value<ImageFeatures>()->composing(),
      ("image features\n" + get_short_features_help(true)).c_str())
     (IMAGE_SHARED.c_str(), po::bool_switch(), "shared image")
-    (IMAGE_STRIPE_UNIT.c_str(), po::value<uint64_t>(), "stripe unit")
-    (IMAGE_STRIPE_COUNT.c_str(), po::value<uint64_t>(), "stripe count");
+    (IMAGE_STRIPE_UNIT.c_str(), po::value<ImageObjectSize>(), "stripe unit in B/K/M")
+    (IMAGE_STRIPE_COUNT.c_str(), po::value<uint64_t>(), "stripe count")
+    (IMAGE_DATA_POOL.c_str(), po::value<std::string>(), "data pool");
 
   add_create_journal_options(opt);
 }
@@ -318,6 +331,11 @@ void add_no_error_option(boost::program_options::options_description *opt) {
     (NO_ERROR.c_str(), po::bool_switch(), "continue after error");
 }
 
+void add_export_format_option(boost::program_options::options_description *opt) {
+  opt->add_options()
+    ("export-format", po::value<ExportFormat>(), "format of image file");
+}
+
 std::string get_short_features_help(bool append_suffix) {
   std::ostringstream oss;
   bool first_feature = true;
@@ -330,7 +348,7 @@ std::string get_short_features_help(bool append_suffix) {
 
     std::string suffix;
     if (append_suffix) {
-      if ((pair.first & g_conf->rbd_default_features) != 0) {
+      if ((pair.first & rbd::utils::get_rbd_default_features(g_ceph_context)) != 0) {
         suffix += "+";
       }
       if ((pair.first & RBD_FEATURES_MUTABLE) != 0) {
@@ -477,6 +495,20 @@ void validate(boost::any& v, const std::vector<std::string>& values,
     return;
   }
   throw po::validation_error(po::validation_error::invalid_option_value);
+}
+
+void validate(boost::any& v, const std::vector<std::string>& values,
+              ExportFormat *target_type, int) {
+  po::validators::check_first_occurrence(v);
+  const std::string &s = po::validators::get_single_string(values);
+
+  std::string parse_error;
+  uint64_t format = strict_sistrtoll(s.c_str(), &parse_error);
+  if (!parse_error.empty() || (format != 1 && format != 2)) {
+    throw po::validation_error(po::validation_error::invalid_option_value);
+  }
+
+  v = boost::any(format);
 }
 
 } // namespace argument_types

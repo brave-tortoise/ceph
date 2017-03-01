@@ -35,18 +35,29 @@ int do_list_snaps(librbd::Image& image, Formatter *f)
     t.define_column("SNAPID", TextTable::RIGHT, TextTable::RIGHT);
     t.define_column("NAME", TextTable::LEFT, TextTable::LEFT);
     t.define_column("SIZE", TextTable::RIGHT, TextTable::RIGHT);
+    t.define_column("TIMESTAMP", TextTable::LEFT, TextTable::LEFT);
   }
 
   for (std::vector<librbd::snap_info_t>::iterator s = snaps.begin();
        s != snaps.end(); ++s) {
+    struct timespec timestamp;
+    image.snap_get_timestamp(s->id, &timestamp);
+    string tt_str = "";
+    if(timestamp.tv_sec != 0) {
+      time_t tt = timestamp.tv_sec;
+      tt_str = ctime(&tt);
+      tt_str = tt_str.substr(0, tt_str.length() - 1);  
+    }
+
     if (f) {
       f->open_object_section("snapshot");
       f->dump_unsigned("id", s->id);
       f->dump_string("name", s->name);
       f->dump_unsigned("size", s->size);
+      f->dump_string("timestamp", tt_str);
       f->close_section();
     } else {
-      t << s->id << s->name << stringify(prettybyte_t(s->size))
+      t << s->id << s->name << stringify(prettybyte_t(s->size)) << tt_str
         << TextTable::endrow;
     }
   }
@@ -70,12 +81,20 @@ int do_add_snap(librbd::Image& image, const char *snapname)
   return 0;
 }
 
-int do_remove_snap(librbd::Image& image, const char *snapname)
+int do_remove_snap(librbd::Image& image, const char *snapname, bool force,
+		   bool no_progress)
 {
-  int r = image.snap_remove(snapname);
-  if (r < 0)
+  uint32_t flags = force? RBD_SNAP_REMOVE_FORCE : 0;
+  int r = 0;
+  utils::ProgressContext pc("Removing snap", no_progress);
+  
+  r = image.snap_remove2(snapname, flags, pc);
+  if (r < 0) {
+    pc.fail();
     return r;
+  }
 
+  pc.finish();
   return 0;
 }
 
@@ -238,6 +257,10 @@ int execute_create(const po::variables_map &vm) {
 void get_remove_arguments(po::options_description *positional,
                           po::options_description *options) {
   at::add_snap_spec_options(positional, options, at::ARGUMENT_MODIFIER_NONE);
+  at::add_no_progress_option(options);
+  
+  options->add_options()
+    ("force", po::bool_switch(), "flatten children and unprotect snapshot if needed.");
 }
 
 int execute_remove(const po::variables_map &vm) {
@@ -245,6 +268,7 @@ int execute_remove(const po::variables_map &vm) {
   std::string pool_name;
   std::string image_name;
   std::string snap_name;
+  bool force = vm["force"].as<bool>();
   int r = utils::get_pool_image_snapshot_names(
     vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
     &snap_name, utils::SNAPSHOT_PRESENCE_REQUIRED, utils::SPEC_VALIDATION_NONE);
@@ -261,7 +285,7 @@ int execute_remove(const po::variables_map &vm) {
     return r;
   }
 
-  r = do_remove_snap(image, snap_name.c_str());
+  r = do_remove_snap(image, snap_name.c_str(), force, vm[at::NO_PROGRESS].as<bool>());
   if (r < 0) {
     if (r == -EBUSY) {
       std::cerr << "rbd: snapshot '" << snap_name << "' "
@@ -457,10 +481,14 @@ int execute_set_limit(const po::variables_map &vm) {
   int r = utils::get_pool_image_snapshot_names(
     vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
     &snap_name, utils::SNAPSHOT_PRESENCE_NONE, utils::SPEC_VALIDATION_NONE);
+  if (r < 0) {
+    return r;
+  }
 
   if (vm.count(at::LIMIT)) {
     limit = vm[at::LIMIT].as<uint64_t>();
   } else {
+    std::cerr << "rbd: must specify --limit <num>" << std::endl;
     return -ERANGE;
   }
 
@@ -496,6 +524,9 @@ int execute_clear_limit(const po::variables_map &vm) {
   int r = utils::get_pool_image_snapshot_names(
     vm, at::ARGUMENT_MODIFIER_NONE, &arg_index, &pool_name, &image_name,
     &snap_name, utils::SNAPSHOT_PRESENCE_NONE, utils::SPEC_VALIDATION_NONE);
+  if (r < 0) {
+    return r;
+  }
 
   librados::Rados rados;
   librados::IoCtx io_ctx;

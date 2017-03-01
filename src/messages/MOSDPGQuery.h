@@ -29,18 +29,21 @@ class MOSDPGQuery : public Message {
   version_t       epoch;
 
  public:
-  version_t get_epoch() { return epoch; }
+  version_t get_epoch() const { return epoch; }
   map<spg_t, pg_query_t>  pg_list;
 
   MOSDPGQuery() : Message(MSG_OSD_PG_QUERY,
 			  HEAD_VERSION,
-			  COMPAT_VERSION) {}
+			  COMPAT_VERSION) {
+    set_priority(CEPH_MSG_PRIO_HIGH);
+  }
   MOSDPGQuery(epoch_t e, map<spg_t,pg_query_t>& ls) :
     Message(MSG_OSD_PG_QUERY,
 	    HEAD_VERSION,
 	    COMPAT_VERSION),
     epoch(e) {
     pg_list.swap(ls);
+    set_priority(CEPH_MSG_PRIO_HIGH);
   }
 private:
   ~MOSDPGQuery() {}

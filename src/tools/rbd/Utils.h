@@ -16,6 +16,23 @@ namespace utils {
 
 static const std::string RBD_DIFF_BANNER ("rbd diff v1\n");
 
+static const std::string RBD_IMAGE_BANNER_V2 ("rbd image v2\n");
+static const std::string RBD_IMAGE_DIFFS_BANNER_V2 ("rbd image diffss v2\n");
+static const std::string RBD_DIFF_BANNER_V2 ("rbd diff v2\n");
+
+#define RBD_DIFF_FROM_SNAP	'f'
+#define RBD_DIFF_TO_SNAP	't'
+#define RBD_DIFF_IMAGE_SIZE	's'
+#define RBD_DIFF_WRITE		'w'
+#define RBD_DIFF_ZERO		'z'
+#define RBD_DIFF_END		'e'
+
+#define RBD_EXPORT_IMAGE_ORDER		'O'
+#define RBD_EXPORT_IMAGE_FEATURES	'T'
+#define RBD_EXPORT_IMAGE_STRIPE_UNIT	'U'
+#define RBD_EXPORT_IMAGE_STRIPE_COUNT	'C'
+#define RBD_EXPORT_IMAGE_END		'E'
+
 enum SnapshotPresence {
   SNAPSHOT_PRESENCE_NONE,
   SNAPSHOT_PRESENCE_PERMITTED,
@@ -37,7 +54,7 @@ struct ProgressContext : public librbd::ProgressContext {
     : operation(o), progress(!no_progress), last_pc(0) {
   }
 
-  int update_progress(uint64_t offset, uint64_t total);
+  int update_progress(uint64_t offset, uint64_t total) override;
   void finish();
   void fail();
 };
@@ -49,6 +66,10 @@ int read_string(int fd, unsigned max, std::string *out);
 int extract_spec(const std::string &spec, std::string *pool_name,
                  std::string *image_name, std::string *snap_name,
                  SpecValidation spec_validation);
+
+int extract_group_spec(const std::string &spec,
+		       std::string *pool_name,
+		       std::string *group_name);
 
 std::string get_positional_argument(
     const boost::program_options::variables_map &vm, size_t index);
@@ -62,6 +83,16 @@ int get_pool_image_snapshot_names(
     std::string *pool_name, std::string *image_name, std::string *snap_name,
     SnapshotPresence snapshot_presence, SpecValidation spec_validation,
     bool image_required = true);
+
+int get_special_pool_group_names(const boost::program_options::variables_map &vm,
+				 size_t *arg_index,
+				 std::string *group_pool_name,
+				 std::string *group_name);
+
+int get_special_pool_image_names(const boost::program_options::variables_map &vm,
+				 size_t *arg_index,
+				 std::string *image_pool_name,
+				 std::string *image_name);
 
 int get_pool_group_names(const boost::program_options::variables_map &vm,
 			 argument_types::ArgumentModifier mod,
@@ -119,6 +150,9 @@ std::string mirror_image_status_state(librbd::mirror_image_status_state_t state)
 std::string mirror_image_status_state(librbd::mirror_image_status_t status);
 
 std::string timestr(time_t t);
+
+// duplicate here to not include librbd_internal lib
+uint64_t get_rbd_default_features(CephContext* cct);
 
 } // namespace utils
 } // namespace rbd

@@ -9,6 +9,7 @@ const char *ceph_entity_type_name(int type)
 	case CEPH_ENTITY_TYPE_MDS: return "mds";
 	case CEPH_ENTITY_TYPE_OSD: return "osd";
 	case CEPH_ENTITY_TYPE_MON: return "mon";
+	case CEPH_ENTITY_TYPE_MGR: return "mgr";
 	case CEPH_ENTITY_TYPE_CLIENT: return "client";
 	case CEPH_ENTITY_TYPE_AUTH: return "auth";
 	default: return "unknown";
@@ -125,6 +126,7 @@ const char *ceph_session_op_name(int op)
 	case CEPH_SESSION_RECALL_STATE: return "recall_state";
 	case CEPH_SESSION_FLUSHMSG: return "flushmsg";
 	case CEPH_SESSION_FLUSHMSG_ACK: return "flushmsg_ack";
+	case CEPH_SESSION_FORCE_RO: return "force_ro";
 	case CEPH_SESSION_REJECT: return "reject";
 	}
 	return "???";
@@ -233,6 +235,16 @@ const char *ceph_pool_op_name(int op)
 	case POOL_OP_DELETE_SNAP: return "delete snap";
 	case POOL_OP_CREATE_UNMANAGED_SNAP: return "create unmanaged snap";
 	case POOL_OP_DELETE_UNMANAGED_SNAP: return "delete unmanaged snap";
+	}
+	return "???";
+}
+
+const char *ceph_osd_backoff_op_name(int op)
+{
+	switch (op) {
+	case CEPH_OSD_BACKOFF_OP_BLOCK: return "block";
+	case CEPH_OSD_BACKOFF_OP_ACK_BLOCK: return "ack-block";
+	case CEPH_OSD_BACKOFF_OP_UNBLOCK: return "unblock";
 	}
 	return "???";
 }

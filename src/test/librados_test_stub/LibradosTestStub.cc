@@ -24,6 +24,7 @@
 #include "include/assert.h"
 #include "include/compat.h"
 
+#define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rados
 
 namespace {
@@ -355,6 +356,28 @@ IoCtx::~IoCtx() {
   close();
 }
 
+IoCtx::IoCtx(const IoCtx& rhs) {
+  io_ctx_impl = rhs.io_ctx_impl;
+  if (io_ctx_impl) {
+    TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
+    ctx->get();
+  }
+}
+
+IoCtx& IoCtx::operator=(const IoCtx& rhs) {
+  if (io_ctx_impl) {
+    TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
+    ctx->put();
+  }
+
+  io_ctx_impl = rhs.io_ctx_impl;
+  if (io_ctx_impl) {
+    TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
+    ctx->get();
+  }
+  return *this;
+}
+
 int IoCtx::aio_flush() {
   TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
   ctx->aio_flush();
@@ -557,9 +580,19 @@ int IoCtx::selfmanaged_snap_create(uint64_t *snapid) {
   return ctx->selfmanaged_snap_create(snapid);
 }
 
+void IoCtx::aio_selfmanaged_snap_create(uint64_t *snapid, AioCompletion* c) {
+  TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
+  return ctx->aio_selfmanaged_snap_create(snapid, c->pc);
+}
+
 int IoCtx::selfmanaged_snap_remove(uint64_t snapid) {
   TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
   return ctx->selfmanaged_snap_remove(snapid);
+}
+
+void IoCtx::aio_selfmanaged_snap_remove(uint64_t snapid, AioCompletion* c) {
+  TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
+  ctx->aio_selfmanaged_snap_remove(snapid, c->pc);
 }
 
 int IoCtx::selfmanaged_snap_rollback(const std::string& oid,
@@ -632,6 +665,14 @@ int IoCtx::write_full(const std::string& oid, bufferlist& bl) {
   TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
   return ctx->execute_operation(
     oid, boost::bind(&TestIoCtxImpl::write_full, _1, _2, bl,
+                     ctx->get_snap_context()));
+}
+
+int IoCtx::writesame(const std::string& oid, bufferlist& bl, size_t len,
+                     uint64_t off) {
+  TestIoCtxImpl *ctx = reinterpret_cast<TestIoCtxImpl*>(io_ctx_impl);
+  return ctx->execute_operation(
+    oid, boost::bind(&TestIoCtxImpl::writesame, _1, _2, bl, len, off,
                      ctx->get_snap_context()));
 }
 
@@ -807,6 +848,12 @@ void ObjectWriteOperation::write_full(const bufferlist& bl) {
   o->ops.push_back(boost::bind(&TestIoCtxImpl::write_full, _1, _2, bl, _4));
 }
 
+void ObjectWriteOperation::writesame(uint64_t off, uint64_t len, const bufferlist& bl) {
+  TestObjectOperationImpl *o = reinterpret_cast<TestObjectOperationImpl*>(impl);
+  o->ops.push_back(boost::bind(&TestIoCtxImpl::writesame, _1, _2, bl, len,
+			       off, _4));
+}
+
 void ObjectWriteOperation::zero(uint64_t off, uint64_t len) {
   TestObjectOperationImpl *o = reinterpret_cast<TestObjectOperationImpl*>(impl);
   o->ops.push_back(boost::bind(&TestIoCtxImpl::zero, _1, _2, off, len));
@@ -906,6 +953,8 @@ int Rados::ioctx_create(const char *name, IoCtx &io) {
   if (ret) {
     return ret;
   }
+
+  io.close();
   io.io_ctx_impl = reinterpret_cast<IoCtxImpl*>(p);
   return 0;
 }
@@ -917,6 +966,8 @@ int Rados::ioctx_create2(int64_t pool_id, IoCtx &io)
   if (ret) {
     return ret;
   }
+
+  io.close();
   io.io_ctx_impl = reinterpret_cast<IoCtxImpl*>(p);
   return 0;
 }
@@ -1184,6 +1235,10 @@ int cls_cxx_list_watchers(cls_method_context_t hctx,
 }
 
 uint64_t cls_get_features(cls_method_context_t hctx) {
+  return CEPH_FEATURES_SUPPORTED_DEFAULT;
+}
+
+uint64_t cls_get_client_features(cls_method_context_t hctx) {
   return CEPH_FEATURES_SUPPORTED_DEFAULT;
 }
 

@@ -4,6 +4,7 @@
 #include "include/stringify.h"
 #include "CrushTester.h"
 #include "CrushTreeDumper.h"
+#include "include/ceph_features.h"
 
 #include <algorithm>
 #include <stdlib.h>
@@ -383,7 +384,7 @@ int CrushTester::test_with_crushtool(const char *crushtool_cmd,
   }
 
   bufferlist bl;
-  ::encode(crush, bl);
+  ::encode(crush, bl, CEPH_FEATURES_SUPPORTED_DEFAULT);
   bl.write_fd(crushtool.get_stdin());
   crushtool.close_stdin();
   bl.clear();
@@ -416,7 +417,7 @@ namespace {
   public:
     CrushWalker(const CrushWrapper *crush, unsigned max_id)
       : Parent(crush), max_id(max_id) {}
-    void dump_item(const CrushTreeDumper::Item &qi, DumbFormatter *) {
+    void dump_item(const CrushTreeDumper::Item &qi, DumbFormatter *) override {
       int type = -1;
       if (qi.is_bucket()) {
 	if (!crush->get_item_name(qi.id)) {

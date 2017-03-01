@@ -35,16 +35,17 @@ TYPE(SloppyCRCMap)
 #include "msg/msg_types.h"
 TYPE(entity_name_t)
 TYPE_FEATUREFUL(entity_addr_t)
+TYPE_FEATUREFUL(entity_addrvec_t)
 TYPE_FEATUREFUL(entity_inst_t)
 
 #include "osd/OSDMap.h"
 TYPE(osd_info_t)
 TYPE(osd_xinfo_t)
-TYPE_FEATUREFUL_STRAYDATA(OSDMap)
+TYPE_FEATUREFUL_NOCOPY(OSDMap)
 TYPE_FEATUREFUL_STRAYDATA(OSDMap::Incremental)
 
 #include "crush/CrushWrapper.h"
-TYPE_NOCOPY(CrushWrapper)
+TYPE_FEATUREFUL_NOCOPY(CrushWrapper)
 
 #include "common/histogram.h"
 TYPE(pow2_hist_t)
@@ -70,7 +71,7 @@ TYPE(pg_interval_t)
 TYPE_FEATUREFUL(pg_query_t)
 TYPE(pg_log_entry_t)
 TYPE(pg_log_t)
-TYPE(pg_missing_t::item)
+TYPE(pg_missing_item)
 TYPE(pg_missing_t)
 TYPE(pg_ls_response_t)
 TYPE(pg_nls_response_t)
@@ -115,16 +116,18 @@ TYPE(ObjectStore::Transaction)
 #include "os/filestore/SequencerPosition.h"
 TYPE(SequencerPosition)
 
-#if !defined(__FreeBSD__)
+#ifdef HAVE_LIBAIO
 #include "os/bluestore/bluestore_types.h"
 TYPE(bluestore_cnode_t)
 TYPE(bluestore_compression_header_t)
-TYPE(bluestore_extent_t)
 TYPE(bluestore_extent_ref_map_t)
-TYPE(bluestore_overlay_t)
 TYPE(bluestore_pextent_t)
-TYPE(bluestore_blob_t)
-TYPE(bluestore_lextent_t)
+// TODO: bluestore_blob_t repurposes the "feature" param of encode() for its
+// struct_v. at a higher level, BlueStore::ExtendMap encodes the extends using
+// a different interface than the normal ones. see
+// BlueStore::ExtentMap::encode_some(). maybe we can test it using another
+// approach.
+// TYPE_FEATUREFUL(bluestore_blob_t)
 TYPE(bluestore_onode_t)
 TYPE(bluestore_wal_op_t)
 TYPE(bluestore_wal_transaction_t)
@@ -135,11 +138,11 @@ TYPE(hobject_t)
 TYPE(ghobject_t)
 
 #include "mon/AuthMonitor.h"
-TYPE(AuthMonitor::Incremental)
+TYPE_FEATUREFUL(AuthMonitor::Incremental)
 
 #include "mon/PGMap.h"
-TYPE(PGMap::Incremental)
-TYPE_NONDETERMINISTIC(PGMap)
+TYPE_FEATUREFUL(PGMap::Incremental)
+TYPE_FEATUREFUL_NONDETERMINISTIC(PGMap)
 
 #include "mon/MonitorDBStore.h"
 TYPE(MonitorDBStore::Transaction)
@@ -386,6 +389,7 @@ TYPE(cls_lock_get_info_op)
 TYPE_FEATUREFUL(cls_lock_get_info_reply)
 TYPE(cls_lock_list_locks_reply)
 TYPE(cls_lock_assert_op)
+TYPE(cls_lock_set_cookie_op)
 
 #include "cls/replica_log/cls_replica_log_types.h"
 TYPE(cls_replica_log_item_marker)
@@ -558,8 +562,6 @@ MESSAGE(MOSDPGCreate)
 MESSAGE(MOSDPGInfo)
 #include "messages/MOSDPGLog.h"
 MESSAGE(MOSDPGLog)
-#include "messages/MOSDPGMissing.h"
-MESSAGE(MOSDPGMissing)
 #include "messages/MOSDPGNotify.h"
 MESSAGE(MOSDPGNotify)
 #include "messages/MOSDPGQuery.h"

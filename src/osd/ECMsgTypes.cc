@@ -16,7 +16,7 @@
 
 void ECSubWrite::encode(bufferlist &bl) const
 {
-  ENCODE_START(3, 1, bl);
+  ENCODE_START(4, 1, bl);
   ::encode(from, bl);
   ::encode(tid, bl);
   ::encode(reqid, bl);
@@ -29,13 +29,14 @@ void ECSubWrite::encode(bufferlist &bl) const
   ::encode(temp_added, bl);
   ::encode(temp_removed, bl);
   ::encode(updated_hit_set_history, bl);
-  ::encode(trim_rollback_to, bl);
+  ::encode(roll_forward_to, bl);
+  ::encode(backfill, bl);
   ENCODE_FINISH(bl);
 }
 
 void ECSubWrite::decode(bufferlist::iterator &bl)
 {
-  DECODE_START(3, bl);
+  DECODE_START(4, bl);
   ::decode(from, bl);
   ::decode(tid, bl);
   ::decode(reqid, bl);
@@ -51,9 +52,15 @@ void ECSubWrite::decode(bufferlist::iterator &bl)
     ::decode(updated_hit_set_history, bl);
   }
   if (struct_v >= 3) {
-    ::decode(trim_rollback_to, bl);
+    ::decode(roll_forward_to, bl);
   } else {
-    trim_rollback_to = trim_to;
+    roll_forward_to = trim_to;
+  }
+  if (struct_v >= 4) {
+    ::decode(backfill, bl);
+  } else {
+    // The old protocol used an empty transaction to indicate backfill
+    backfill = t.empty();
   }
   DECODE_FINISH(bl);
 }
@@ -65,9 +72,11 @@ std::ostream &operator<<(
       << ", reqid=" << rhs.reqid
       << ", at_version=" << rhs.at_version
       << ", trim_to=" << rhs.trim_to
-      << ", trim_rollback_to=" << rhs.trim_rollback_to;
+      << ", roll_forward_to=" << rhs.roll_forward_to;
   if (rhs.updated_hit_set_history)
     lhs << ", has_updated_hit_set_history";
+  if (rhs.backfill)
+    lhs << ", backfill";
   return lhs <<  ")";
 }
 
@@ -77,9 +86,10 @@ void ECSubWrite::dump(Formatter *f) const
   f->dump_stream("reqid") << reqid;
   f->dump_stream("at_version") << at_version;
   f->dump_stream("trim_to") << trim_to;
-  f->dump_stream("trim_rollback_to") << trim_rollback_to;
+  f->dump_stream("roll_forward_to") << roll_forward_to;
   f->dump_bool("has_updated_hit_set_history",
       static_cast<bool>(updated_hit_set_history));
+  f->dump_bool("backfill", backfill);
 }
 
 void ECSubWrite::generate_test_instances(list<ECSubWrite*> &o)
@@ -98,7 +108,7 @@ void ECSubWrite::generate_test_instances(list<ECSubWrite*> &o)
   o.back()->reqid = osd_reqid_t(entity_name_t::CLIENT(123), 1, 45678);
   o.back()->at_version = eversion_t(10, 300);
   o.back()->trim_to = eversion_t(5, 42);
-  o.back()->trim_rollback_to = eversion_t(8, 250);
+  o.back()->roll_forward_to = eversion_t(8, 250);
 }
 
 void ECSubWriteReply::encode(bufferlist &bl) const
@@ -159,8 +169,8 @@ void ECSubRead::encode(bufferlist &bl, uint64_t features) const
     ENCODE_START(1, 1, bl);
     ::encode(from, bl);
     ::encode(tid, bl);
-    map<hobject_t, list<pair<uint64_t, uint64_t> >, hobject_t::BitwiseComparator> tmp;
-    for (map<hobject_t, list<boost::tuple<uint64_t, uint64_t, uint32_t> >, hobject_t::BitwiseComparator>::const_iterator m = to_read.begin();
+    map<hobject_t, list<pair<uint64_t, uint64_t> >> tmp;
+    for (map<hobject_t, list<boost::tuple<uint64_t, uint64_t, uint32_t> >>::const_iterator m = to_read.begin();
 	  m != to_read.end(); ++m) {
       list<pair<uint64_t, uint64_t> > tlist;
       for (list<boost::tuple<uint64_t, uint64_t, uint32_t> >::const_iterator l = m->second.begin();
@@ -189,9 +199,9 @@ void ECSubRead::decode(bufferlist::iterator &bl)
   ::decode(from, bl);
   ::decode(tid, bl);
   if (struct_v == 1) {
-    map<hobject_t, list<pair<uint64_t, uint64_t> >, hobject_t::BitwiseComparator>tmp;
+    map<hobject_t, list<pair<uint64_t, uint64_t> >>tmp;
     ::decode(tmp, bl);
-    for (map<hobject_t, list<pair<uint64_t, uint64_t> >, hobject_t::BitwiseComparator>::const_iterator m = tmp.begin();
+    for (map<hobject_t, list<pair<uint64_t, uint64_t> >>::const_iterator m = tmp.begin();
 	  m != tmp.end(); ++m) {
       list<boost::tuple<uint64_t, uint64_t, uint32_t> > tlist;
       for (list<pair<uint64_t, uint64_t> > ::const_iterator l = m->second.begin();
@@ -221,7 +231,7 @@ void ECSubRead::dump(Formatter *f) const
   f->dump_stream("from") << from;
   f->dump_unsigned("tid", tid);
   f->open_array_section("objects");
-  for (map<hobject_t, list<boost::tuple<uint64_t, uint64_t, uint32_t> >, hobject_t::BitwiseComparator>::const_iterator i =
+  for (map<hobject_t, list<boost::tuple<uint64_t, uint64_t, uint32_t> >>::const_iterator i =
 	 to_read.begin();
        i != to_read.end();
        ++i) {
@@ -244,7 +254,7 @@ void ECSubRead::dump(Formatter *f) const
   f->close_section();
 
   f->open_array_section("object_attrs_requested");
-  for (set<hobject_t,hobject_t::BitwiseComparator>::const_iterator i = attrs_to_read.begin();
+  for (set<hobject_t>::const_iterator i = attrs_to_read.begin();
        i != attrs_to_read.end();
        ++i) {
     f->open_object_section("object");
@@ -310,7 +320,7 @@ void ECSubReadReply::dump(Formatter *f) const
   f->dump_stream("from") << from;
   f->dump_unsigned("tid", tid);
   f->open_array_section("buffers_read");
-  for (map<hobject_t, list<pair<uint64_t, bufferlist> >, hobject_t::BitwiseComparator>::const_iterator i =
+  for (map<hobject_t, list<pair<uint64_t, bufferlist> >>::const_iterator i =
 	 buffers_read.begin();
        i != buffers_read.end();
        ++i) {
@@ -332,7 +342,7 @@ void ECSubReadReply::dump(Formatter *f) const
   f->close_section();
 
   f->open_array_section("attrs_returned");
-  for (map<hobject_t, map<string, bufferlist>, hobject_t::BitwiseComparator>::const_iterator i =
+  for (map<hobject_t, map<string, bufferlist>>::const_iterator i =
 	 attrs_read.begin();
        i != attrs_read.end();
        ++i) {
@@ -353,7 +363,7 @@ void ECSubReadReply::dump(Formatter *f) const
   f->close_section();
 
   f->open_array_section("errors");
-  for (map<hobject_t, int, hobject_t::BitwiseComparator>::const_iterator i = errors.begin();
+  for (map<hobject_t, int>::const_iterator i = errors.begin();
        i != errors.end();
        ++i) {
     f->open_object_section("error_pair");

@@ -105,6 +105,11 @@ public:
    * @returns number of requests being hold after this
    */
   int64_t put(int64_t c = 1);
+   /**
+   * reset the zero to the stock
+   */
+  void reset();
+
   bool should_wait(int64_t c) const {
     return _should_wait(c);
   }
@@ -138,9 +143,13 @@ public:
  *
  * delay = 0, r \in [0, l)
  * delay = (r - l) * (e / (h - l)), r \in [l, h)
- * delay = h + (r - h)((m - e)/(1 - h))
+ * delay = e + (r - h)((m - e)/(1 - h))
  */
 class BackoffThrottle {
+  CephContext *cct;
+  const std::string name;
+  PerfCounters *logger;
+
   std::mutex lock;
   using locker = std::unique_lock<std::mutex>;
 
@@ -148,6 +157,8 @@ class BackoffThrottle {
 
   /// allocated once to avoid constantly allocating new ones
   vector<std::condition_variable> conds;
+
+  const bool use_perf;
 
   /// pointers into conds
   list<std::condition_variable*> waiters;
@@ -208,9 +219,10 @@ public:
   uint64_t get_current();
   uint64_t get_max();
 
-  BackoffThrottle(
-    unsigned expected_concurrency ///< [in] determines size of conds
-    ) : conds(expected_concurrency) {}
+  BackoffThrottle(CephContext *cct, const std::string& n,
+    unsigned expected_concurrency, ///< [in] determines size of conds
+    bool _use_perf = true);
+  ~BackoffThrottle();
 };
 
 
@@ -242,17 +254,6 @@ private:
   bool m_ignore_enoent;
 };
 
-class C_SimpleThrottle : public Context {
-public:
-  C_SimpleThrottle(SimpleThrottle *throttle) : m_throttle(throttle) {
-    m_throttle->start_op();
-  }
-  virtual void finish(int r) {
-    m_throttle->end_op(r);
-  }
-private:
-  SimpleThrottle *m_throttle;
-};
 
 class OrderedThrottle;
 

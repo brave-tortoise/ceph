@@ -96,7 +96,7 @@ public:
 
   hobject_t(const hobject_t &rhs) = default;
   hobject_t(hobject_t &&rhs) = default;
-  hobject_t(hobject_t_max &&singleon) : hobject_t() {
+  hobject_t(hobject_t_max &&singleton) : hobject_t() {
     max = true;
   }
   hobject_t &operator=(const hobject_t &rhs) = default;
@@ -138,6 +138,14 @@ public:
     return ret;
   }
 
+  hobject_t get_object_boundary() const {
+    if (is_max())
+      return *this;
+    hobject_t ret = *this;
+    ret.snap = 0;
+    return ret;
+  }
+
   /// @return head version of this hobject_t
   hobject_t get_head() const {
     hobject_t ret(*this);
@@ -162,14 +170,14 @@ public:
     return snap == CEPH_NOSNAP;
   }
 
-  /// @return true if object is neither head nor snapdir
+  /// @return true if object is neither head nor snapdir nor max
   bool is_snap() const {
-    return (snap != CEPH_NOSNAP) && (snap != CEPH_SNAPDIR);
+    return !is_max() && !is_head() && !is_snapdir();
   }
 
   /// @return true iff the object should have a snapset in it's attrs
   bool has_snapset() const {
-    return !is_snap();
+    return is_head() || is_snapdir();
   }
 
   /* Do not use when a particular hash function is needed */
@@ -244,17 +252,18 @@ public:
     return max ? 0x100000000ull : hash_reverse_bits;
   }
 
+  // please remember to update set_bitwise_key_u32() also
+  // once you change build_hash_cache()
   void build_hash_cache() {
     nibblewise_key_cache = _reverse_nibbles(hash);
     hash_reverse_bits = _reverse_bits(hash);
   }
-  void set_nibblewise_key_u32(uint32_t value) {
-    hash = _reverse_nibbles(value);
-    build_hash_cache();
-  }
   void set_bitwise_key_u32(uint32_t value) {
     hash = _reverse_bits(value);
-    build_hash_cache();
+    // below is identical to build_hash_cache() and shall be
+    // updated correspondingly if you change build_hash_cache() 
+    nibblewise_key_cache = _reverse_nibbles(hash);
+    hash_reverse_bits = value;
   }
 
   const string& get_effective_key() const {
@@ -280,53 +289,30 @@ public:
   void decode(json_spirit::Value& v);
   void dump(Formatter *f) const;
   static void generate_test_instances(list<hobject_t*>& o);
-  friend int cmp_nibblewise(const hobject_t& l, const hobject_t& r);
-  friend int cmp_bitwise(const hobject_t& l, const hobject_t& r);
+  friend int cmp(const hobject_t& l, const hobject_t& r);
+  friend bool operator>(const hobject_t& l, const hobject_t& r) {
+    return cmp(l, r) > 0;
+  }
+  friend bool operator>=(const hobject_t& l, const hobject_t& r) {
+    return cmp(l, r) >= 0;
+  }
+  friend bool operator<(const hobject_t& l, const hobject_t& r) {
+    return cmp(l, r) < 0;
+  }
+  friend bool operator<=(const hobject_t& l, const hobject_t& r) {
+    return cmp(l, r) <= 0;
+  }
   friend bool operator==(const hobject_t&, const hobject_t&);
   friend bool operator!=(const hobject_t&, const hobject_t&);
   friend struct ghobject_t;
-
-  struct NibblewiseComparator {
-    bool operator()(const hobject_t& l, const hobject_t& r) const {
-      return cmp_nibblewise(l, r) < 0;
-    }
-  };
-
-  struct BitwiseComparator {
-    bool operator()(const hobject_t& l, const hobject_t& r) const {
-      return cmp_bitwise(l, r) < 0;
-    }
-  };
-
-  struct Comparator {
-    bool bitwise;
-    explicit Comparator(bool b) : bitwise(b) {}
-    bool operator()(const hobject_t& l, const hobject_t& r) const {
-      if (bitwise)
-	return cmp_bitwise(l, r) < 0;
-      else
-	return cmp_nibblewise(l, r) < 0;
-    }
-  };
-  struct ComparatorWithDefault {
-    bool bitwise;
-    explicit ComparatorWithDefault(bool b=true) : bitwise(b) {}
-    bool operator()(const hobject_t& l, const hobject_t& r) const {
-      if (bitwise)
-	return cmp_bitwise(l, r) < 0;
-      else
-	return cmp_nibblewise(l, r) < 0;
-    }
-  };
 };
 WRITE_CLASS_ENCODER(hobject_t)
 
 namespace std {
   template<> struct hash<hobject_t> {
     size_t operator()(const hobject_t &r) const {
-      static hash<object_t> H;
       static rjhash<uint64_t> I;
-      return H(r.oid) ^ I(r.snap);
+      return r.get_hash() ^ I(r.snap);
     }
   };
 } // namespace std
@@ -361,61 +347,19 @@ inline bool operator!=(const T&, const hobject_t &rhs) {
   return !rhs.is_max();
 }
 
-extern int cmp_nibblewise(const hobject_t& l, const hobject_t& r);
-extern int cmp_bitwise(const hobject_t& l, const hobject_t& r);
-static inline int cmp(const hobject_t& l, const hobject_t& r, bool sort_bitwise) {
-  if (sort_bitwise)
-    return cmp_bitwise(l, r);
-  else
-    return cmp_nibblewise(l, r);
-}
+extern int cmp(const hobject_t& l, const hobject_t& r);
 template <typename T>
-static inline int cmp(const hobject_t &l, const T&, bool sort_bitwise) {
+static inline int cmp(const hobject_t &l, const T&) {
   static_assert(always_false<T>::value::value, "Do not compare to get_max()");
   return l.is_max() ? 0 : -1;
 }
 template <typename T>
-static inline int cmp(const T&, const hobject_t&r, bool sort_bitwise) {
-  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
-  return r.is_max() ? 0 : 1;
-}
-template <typename T>
-static inline int cmp_nibblewise(const hobject_t &l, const T&, bool sort_bitwise) {
-  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
-  return l.is_max() ? 0 : -1;
-}
-template <typename T>
-static inline int cmp_nibblewise(const T&, const hobject_t&r, bool sort_bitwise) {
-  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
-  return r.is_max() ? 0 : 1;
-}
-template <typename T>
-static inline int cmp_bitwise(const hobject_t &l, const T&, bool sort_bitwise) {
-  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
-  return l.is_max() ? 0 : -1;
-}
-template <typename T>
-static inline int cmp_bitwise(const T&, const hobject_t&r, bool sort_bitwise) {
+static inline int cmp(const T&, const hobject_t&r) {
   static_assert(always_false<T>::value::value, "Do not compare to get_max()");
   return r.is_max() ? 0 : 1;
 }
 
 
-
-// these are convenient
-static inline hobject_t MAX_HOBJ(const hobject_t& l, const hobject_t& r, bool bitwise) {
-  if (cmp(l, r, bitwise) >= 0)
-    return l;
-  else
-    return r;
-}
-
-static inline hobject_t MIN_HOBJ(const hobject_t& l, const hobject_t& r, bool bitwise) {
-  if (cmp(l, r, bitwise) <= 0)
-    return l;
-  else
-    return r;
-}
 
 typedef version_t gen_t;
 
@@ -518,42 +462,30 @@ public:
   size_t encoded_size() const;
   void dump(Formatter *f) const;
   static void generate_test_instances(list<ghobject_t*>& o);
-  friend int cmp_nibblewise(const ghobject_t& l, const ghobject_t& r);
-  friend int cmp_bitwise(const ghobject_t& l, const ghobject_t& r);
+  friend int cmp(const ghobject_t& l, const ghobject_t& r);
+  friend bool operator>(const ghobject_t& l, const ghobject_t& r) {
+    return cmp(l, r) > 0;
+  }
+  friend bool operator>=(const ghobject_t& l, const ghobject_t& r) {
+    return cmp(l, r) >= 0;
+  }
+  friend bool operator<(const ghobject_t& l, const ghobject_t& r) {
+    return cmp(l, r) < 0;
+  }
+  friend bool operator<=(const ghobject_t& l, const ghobject_t& r) {
+    return cmp(l, r) <= 0;
+  }
   friend bool operator==(const ghobject_t&, const ghobject_t&);
   friend bool operator!=(const ghobject_t&, const ghobject_t&);
 
-  struct NibblewiseComparator {
-    bool operator()(const ghobject_t& l, const ghobject_t& r) const {
-      return cmp_nibblewise(l, r) < 0;
-    }
-  };
-
-  struct BitwiseComparator {
-    bool operator()(const ghobject_t& l, const ghobject_t& r) const {
-      return cmp_bitwise(l, r) < 0;
-    }
-  };
-
-  struct Comparator {
-    bool bitwise;
-    explicit Comparator(bool b) : bitwise(b) {}
-    bool operator()(const ghobject_t& l, const ghobject_t& r) const {
-         if (bitwise)
-	return cmp_bitwise(l, r) < 0;
-      else
-	return cmp_nibblewise(l, r) < 0;
-    }
-  };
 };
 WRITE_CLASS_ENCODER(ghobject_t)
 
 namespace std {
   template<> struct hash<ghobject_t> {
     size_t operator()(const ghobject_t &r) const {
-      static hash<object_t> H;
       static rjhash<uint64_t> I;
-      return H(r.hobj.oid) ^ I(r.hobj.snap);
+      return r.hobj.get_hash() ^ I(r.hobj.snap);
     }
   };
 } // namespace std
@@ -562,31 +494,7 @@ ostream& operator<<(ostream& out, const ghobject_t& o);
 
 WRITE_EQ_OPERATORS_4(ghobject_t, max, shard_id, hobj, generation)
 
-extern int cmp_nibblewise(const ghobject_t& l, const ghobject_t& r);
-extern int cmp_bitwise(const ghobject_t& l, const ghobject_t& r);
-static inline int cmp(const ghobject_t& l, const ghobject_t& r,
-		      bool sort_bitwise) {
-  if (sort_bitwise)
-    return cmp_bitwise(l, r);
-  else
-    return cmp_nibblewise(l, r);
-}
+extern int cmp(const ghobject_t& l, const ghobject_t& r);
 
-// these are convenient
-static inline ghobject_t MAX_GHOBJ(const ghobject_t& l, const ghobject_t& r,
-				   bool bitwise) {
-  if (cmp(l, r, bitwise) >= 0)
-    return l;
-  else
-    return r;
-}
-
-static inline ghobject_t MIN_GHOBJ(const ghobject_t& l, const ghobject_t& r,
-				   bool bitwise) {
-  if (cmp(l, r, bitwise) <= 0)
-    return l;
-  else
-    return r;
-}
 
 #endif

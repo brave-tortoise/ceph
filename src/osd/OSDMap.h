@@ -36,9 +36,11 @@
 #include "include/memory.h"
 using namespace std;
 
-//forward declaration
+// forward declaration
 class CephContext;
 class CrushWrapper;
+
+
 /*
  * we track up to two intervals during which the osd was alive and
  * healthy.  the most recent is [up_from,up_thru), where up_thru is
@@ -255,7 +257,6 @@ private:
   ceph::shared_ptr<CrushWrapper> crush;       // hierarchical map
 
   friend class OSDMonitor;
-  friend class PGMonitor;
 
  public:
   OSDMap() : epoch(0), 
@@ -276,12 +277,10 @@ private:
   }
 
   // no copying
-  /* oh, how i long for c++11...
 private:
   OSDMap(const OSDMap& other) = default;
-  const OSDMap& operator=(const OSDMap& other) = default;
+  OSDMap& operator=(const OSDMap& other) = default;
 public:
-  */
 
   void deepish_copy_from(const OSDMap& o) {
     *this = o;
@@ -455,14 +454,12 @@ public:
   
   int identify_osd(const entity_addr_t& addr) const;
   int identify_osd(const uuid_d& u) const;
+  int identify_osd_on_all_channels(const entity_addr_t& addr) const;
 
   bool have_addr(const entity_addr_t& addr) const {
     return identify_osd(addr) >= 0;
   }
   int find_osd_on_ip(const entity_addr_t& ip) const;
-  bool have_inst(int osd) const {
-    return exists(osd) && is_up(osd); 
-  }
   const entity_addr_t &get_addr(int osd) const {
     assert(exists(osd));
     return osd_addrs->client_addr[osd] ? *osd_addrs->client_addr[osd] : osd_addrs->blank;
@@ -481,9 +478,13 @@ public:
     assert(exists(osd));
     return osd_addrs->hb_front_addr[osd] ? *osd_addrs->hb_front_addr[osd] : osd_addrs->blank;
   }
+  entity_inst_t get_most_recent_inst(int osd) const {
+    assert(exists(osd));
+    return entity_inst_t(entity_name_t::OSD(osd), get_addr(osd));
+  }
   entity_inst_t get_inst(int osd) const {
     assert(is_up(osd));
-    return entity_inst_t(entity_name_t::OSD(osd), get_addr(osd));
+    return get_most_recent_inst(osd);
   }
   entity_inst_t get_cluster_inst(int osd) const {
     assert(is_up(osd));
@@ -526,6 +527,8 @@ public:
   }
   
   int get_next_up_osd_after(int n) const {
+    if (get_max_osd() == 0)
+      return -1;
     for (int i = n + 1; i != n; ++i) {
       if (i >= get_max_osd())
 	i = 0;
@@ -538,6 +541,8 @@ public:
   }
 
   int get_previous_up_osd_before(int n) const {
+    if (get_max_osd() == 0)
+      return -1;
     for (int i = n - 1; i != n; --i) {
       if (i < 0)
 	i = get_max_osd() - 1;
@@ -584,13 +589,22 @@ public:
 
 
   /****   mapping facilities   ****/
-  int object_locator_to_pg(const object_t& oid, const object_locator_t& loc, pg_t &pg) const;
-  pg_t object_locator_to_pg(const object_t& oid, const object_locator_t& loc) const {
+  int map_to_pg(
+    int64_t pool,
+    const string& name,
+    const string& key,
+    const string& nspace,
+    pg_t *pg) const;
+  int object_locator_to_pg(const object_t& oid, const object_locator_t& loc,
+			   pg_t &pg) const;
+  pg_t object_locator_to_pg(const object_t& oid,
+			    const object_locator_t& loc) const {
     pg_t pg;
     int ret = object_locator_to_pg(oid, loc, pg);
     assert(ret == 0);
     return pg;
   }
+
 
   static object_locator_t file_to_object_locator(const file_layout_t& layout) {
     return object_locator_t(layout.pool_id, layout.pool_ns);
@@ -607,7 +621,13 @@ public:
   int get_pg_num(int pg_pool) const
   {
     const pg_pool_t *pool = get_pg_pool(pg_pool);
+    assert(NULL != pool);
     return pool->get_pg_num();
+  }
+
+  bool pg_exists(pg_t pgid) const {
+    const pg_pool_t *p = get_pg_pool(pgid.pool());
+    return p && pgid.ps() < p->get_pg_num();
   }
 
 private:
@@ -638,7 +658,8 @@ private:
    *  map to up and acting. Fills in whatever fields are non-NULL.
    */
   void _pg_to_up_acting_osds(const pg_t& pg, vector<int> *up, int *up_primary,
-                             vector<int> *acting, int *acting_primary) const;
+                             vector<int> *acting, int *acting_primary,
+			     bool raw_pg_to_pg = true) const;
 
 public:
   /***
@@ -760,14 +781,17 @@ public:
     return -1;  // we fail!
   }
 
-  bool is_acting_osd_shard(pg_t pg, int osd, shard_id_t shard) const {
+  /*
+   * check whether an spg_t maps to a particular osd
+   */
+  bool is_acting_osd_shard(spg_t pg, int osd) const {
     vector<int> acting;
-    int nrep = pg_to_acting_osds(pg, acting);
-    if (shard == shard_id_t::NO_SHARD)
-      return calc_pg_role(osd, acting, nrep) >= 0;
-    if (shard >= (int)acting.size())
+    _pg_to_up_acting_osds(pg.pgid, NULL, NULL, &acting, NULL, false);
+    if (pg.shard == shard_id_t::NO_SHARD)
+      return calc_pg_role(osd, acting, acting.size()) >= 0;
+    if (pg.shard >= (int)acting.size())
       return false;
-    return acting[shard] == osd;
+    return acting[pg.shard] == osd;
   }
 
 

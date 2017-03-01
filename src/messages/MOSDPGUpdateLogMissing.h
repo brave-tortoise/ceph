@@ -16,9 +16,9 @@
 #ifndef CEPH_MOSDPGUPDATELOGMISSING_H
 #define CEPH_MOSDPGUPDATELOGMISSING_H
 
-#include "msg/Message.h"
+#include "MOSDFastDispatchOp.h"
 
-class MOSDPGUpdateLogMissing : public Message {
+class MOSDPGUpdateLogMissing : public MOSDFastDispatchOp {
 
   static const int HEAD_VERSION = 1;
   static const int COMPAT_VERSION = 1;
@@ -29,22 +29,30 @@ public:
   spg_t pgid;
   shard_id_t from;
   ceph_tid_t rep_tid;
-  list<pg_log_entry_t> entries;
+  mempool::osd::list<pg_log_entry_t> entries;
 
   epoch_t get_epoch() const { return map_epoch; }
   spg_t get_pgid() const { return pgid; }
   epoch_t get_query_epoch() const { return map_epoch; }
   ceph_tid_t get_tid() const { return rep_tid; }
+  epoch_t get_map_epoch() const override {
+    return map_epoch;
+  }
+  spg_t get_spg() const override {
+    return pgid;
+  }
 
-  MOSDPGUpdateLogMissing() :
-    Message(MSG_OSD_PG_UPDATE_LOG_MISSING, HEAD_VERSION, COMPAT_VERSION) { }
+  MOSDPGUpdateLogMissing()
+    : MOSDFastDispatchOp(MSG_OSD_PG_UPDATE_LOG_MISSING, HEAD_VERSION,
+			 COMPAT_VERSION) { }
   MOSDPGUpdateLogMissing(
-    const list<pg_log_entry_t> &entries,
+    const mempool::osd::list<pg_log_entry_t> &entries,
     spg_t pgid,
     shard_id_t from,
     epoch_t epoch,
     ceph_tid_t rep_tid)
-    : Message(MSG_OSD_PG_UPDATE_LOG_MISSING, HEAD_VERSION, COMPAT_VERSION),
+    : MOSDFastDispatchOp(MSG_OSD_PG_UPDATE_LOG_MISSING, HEAD_VERSION,
+			 COMPAT_VERSION),
       map_epoch(epoch),
       pgid(pgid),
       from(from),

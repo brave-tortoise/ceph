@@ -1,8 +1,10 @@
-// -*- mode:C; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 #include "include/rados/librados.hpp"
 #include "include/rbd/librbd.hpp"
 #include "include/stringify.h"
+#include "test/rbd_mirror/test_fixture.h"
+#include "cls/rbd/cls_rbd_types.h"
 #include "cls/rbd/cls_rbd_client.h"
 #include "include/rbd_types.h"
 #include "librbd/internal.h"
@@ -24,6 +26,8 @@
 #include <set>
 #include <vector>
 
+using rbd::mirror::ImageId;
+using rbd::mirror::ImageIds;
 using rbd::mirror::PoolWatcher;
 using rbd::mirror::peer_t;
 using rbd::mirror::RadosRef;
@@ -34,7 +38,7 @@ using std::string;
 void register_test_pool_watcher() {
 }
 
-class TestPoolWatcher : public ::testing::Test {
+class TestPoolWatcher : public ::rbd::mirror::TestFixture {
 public:
 
 TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
@@ -44,7 +48,7 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
     EXPECT_EQ("", connect_cluster_pp(*m_cluster));
   }
 
-  ~TestPoolWatcher() {
+  ~TestPoolWatcher() override {
     m_cluster->wait_for_latest_osdmap();
     for (auto& pool : m_pools) {
       EXPECT_EQ(0, m_cluster->pool_delete(pool.c_str()));
@@ -84,7 +88,7 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
 
   void create_image(const string &pool_name, bool mirrored=true,
 		    string *image_name=nullptr) {
-    uint64_t features = g_ceph_context->_conf->rbd_default_features;
+    uint64_t features = librbd::util::get_rbd_default_features(g_ceph_context);
     string name = "image" + stringify(++m_image_number);
     if (mirrored) {
       features |= RBD_FEATURE_EXCLUSIVE_LOCK | RBD_FEATURE_JOURNALING;
@@ -106,8 +110,8 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
                                                sizeof(mirror_image_info)));
       image.close();
 
-      m_mirrored_images.insert(PoolWatcher::ImageId(
-        get_image_id(&ioctx, name), name, mirror_image_info.global_id));
+      m_mirrored_images.insert(ImageId(
+        mirror_image_info.global_id, get_image_id(&ioctx, name), name));
     }
     if (image_name != nullptr)
       *image_name = name;
@@ -126,13 +130,14 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
     {
       librbd::ImageCtx *ictx = new librbd::ImageCtx(parent_image_name.c_str(),
 						    "", "", pioctx, false);
-      ictx->state->open();
-      EXPECT_EQ(0, ictx->operations->snap_create(snap_name.c_str()));
+      ictx->state->open(false);
+      EXPECT_EQ(0, ictx->operations->snap_create(snap_name.c_str(),
+						 cls::rbd::UserSnapshotNamespace()));
       EXPECT_EQ(0, ictx->operations->snap_protect(snap_name.c_str()));
       ictx->state->close();
     }
 
-    uint64_t features = g_ceph_context->_conf->rbd_default_features;
+    uint64_t features = librbd::util::get_rbd_default_features(g_ceph_context);
     string name = "clone" + stringify(++m_image_number);
     if (mirrored) {
       features |= RBD_FEATURE_EXCLUSIVE_LOCK | RBD_FEATURE_JOURNALING;
@@ -151,8 +156,8 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
                                                sizeof(mirror_image_info)));
       image.close();
 
-      m_mirrored_images.insert(PoolWatcher::ImageId(
-        get_image_id(&cioctx, name), name, mirror_image_info.global_id));
+      m_mirrored_images.insert(ImageId(
+        mirror_image_info.global_id, get_image_id(&cioctx, name), name));
     }
     if (image_name != nullptr)
       *image_name = name;
@@ -170,7 +175,7 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
   unique_ptr<PoolWatcher> m_pool_watcher;
 
   set<string> m_pools;
-  PoolWatcher::ImageIds m_mirrored_images;
+  ImageIds m_mirrored_images;
 
   uint64_t m_image_number;
   uint64_t m_snap_number;
