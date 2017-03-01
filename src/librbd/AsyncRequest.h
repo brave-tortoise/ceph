@@ -20,9 +20,18 @@ public:
   virtual ~AsyncRequest();
 
   void complete(int r) {
+<<<<<<< HEAD
     if (should_complete(r)) {
       r = filter_return_code(r);
       finish_and_destroy(r);
+=======
+    if (m_canceled && safely_cancel(r)) {
+      m_on_finish->complete(-ERESTART);
+      delete this;
+    } else if (should_complete(r)) {
+      m_on_finish->complete(filter_return_code(r));
+      delete this;
+>>>>>>> upstream/hammer
     }
   }
 
@@ -41,6 +50,7 @@ protected:
   librados::AioCompletion *create_callback_completion();
   Context *create_callback_context();
   Context *create_async_callback_context();
+<<<<<<< HEAD
 
   void async_complete(int r);
 
@@ -48,6 +58,22 @@ protected:
   virtual int filter_return_code(int r) const {
     return r;
   }
+=======
+
+  void async_complete(int r);
+
+  virtual bool safely_cancel(int r) {
+    return true;
+  }
+  virtual bool should_complete(int r) = 0;
+  virtual int filter_return_code(int r) {
+    return r;
+  }
+private:
+  bool m_canceled;
+  xlist<AsyncRequest *>::item m_xlist_item;
+};
+>>>>>>> upstream/hammer
 
   // NOTE: temporary until converted to new state machine format
   virtual void finish_and_destroy(int r) {

@@ -23,9 +23,13 @@
 #include "common/histogram.h"
 #include "msg/Message.h"
 #include "include/memory.h"
+<<<<<<< HEAD
 #include "common/RWLock.h"
 
 #define OPTRACKER_PREALLOC_EVENTS 20
+=======
+#include "include/atomic.h"
+>>>>>>> upstream/hammer
 
 class TrackedOp;
 typedef boost::intrusive_ptr<TrackedOp> TrackedOpRef;
@@ -64,8 +68,13 @@ class OpTracker {
   OpHistory history;
   float complaint_time;
   int log_threshold;
+<<<<<<< HEAD
   bool tracking_enabled;
   RWLock       lock;
+=======
+  void _mark_event(TrackedOp *op, const string &evt, utime_t now);
+  bool tracking_enabled;
+>>>>>>> upstream/hammer
 
 public:
   CephContext *cct;
@@ -78,6 +87,7 @@ public:
   void set_history_size_and_duration(uint32_t new_size, uint32_t new_duration) {
     history.set_size_and_duration(new_size, new_duration);
   }
+<<<<<<< HEAD
   void set_tracking(bool enable) {
     RWLock::WLocker l(lock);
     tracking_enabled = enable;
@@ -85,6 +95,11 @@ public:
   bool dump_ops_in_flight(Formatter *f, bool print_only_blocked=false);
   bool dump_historic_ops(Formatter *f);
   bool register_inflight_op(TrackedOp *i);
+=======
+  bool dump_ops_in_flight(Formatter *f, bool print_only_blocked=false);
+  bool dump_historic_ops(Formatter *f);
+  bool register_inflight_op(xlist<TrackedOp*>::item *i);
+>>>>>>> upstream/hammer
   void unregister_inflight_op(TrackedOp *i);
 
   void get_age_ms_histogram(pow2_hist_t *h);
@@ -108,7 +123,12 @@ public:
   template <typename T, typename U>
   typename T::Ref create_request(U params)
   {
+<<<<<<< HEAD
     typename T::Ref retval(new T(params, this));
+=======
+    typename T::Ref retval(new T(params, this),
+			   RemoveOnDelete(this));
+>>>>>>> upstream/hammer
     retval->tracking_start();
     return retval;
   }
@@ -144,6 +164,7 @@ protected:
 
   utime_t initiated_at;
 
+<<<<<<< HEAD
   struct Event {
     utime_t stamp;
     string str;
@@ -189,12 +210,25 @@ protected:
   mutable string desc_str;   ///< protected by lock
   mutable const char *desc = nullptr;  ///< readable without lock
 
+=======
+  uint32_t warn_interval_multiplier; // limits output of a given op warning
+  // Transitions from false -> true without locks being held
+  atomic_t is_tracked; //whether in tracker and out of constructor
+>>>>>>> upstream/hammer
   TrackedOp(OpTracker *_tracker, const utime_t& initiated) :
     tracker(_tracker),
+<<<<<<< HEAD
     initiated_at(initiated)
   {
     events.reserve(OPTRACKER_PREALLOC_EVENTS);
   }
+=======
+    initiated_at(initiated),
+    lock("TrackedOp::lock"),
+    seq(0),
+    warn_interval_multiplier(1)
+  { }
+>>>>>>> upstream/hammer
 
   /// output any type-specific data you want to get when dump() is called
   virtual void _dump(Formatter *f) const {}
@@ -259,10 +293,16 @@ public:
 
   double get_duration() const {
     Mutex::Locker l(lock);
+<<<<<<< HEAD
     if (!events.empty() && events.rbegin()->compare("done") == 0)
       return events.rbegin()->stamp - get_initiated();
     else
       return ceph_clock_now() - get_initiated();
+=======
+    return events.empty() ?
+      0.0 :
+      (events.rbegin()->first - get_initiated());
+>>>>>>> upstream/hammer
   }
 
   void mark_event_string(const string &event,
@@ -272,10 +312,15 @@ public:
 
   virtual const char *state_string() const {
     Mutex::Locker l(lock);
+<<<<<<< HEAD
     return events.rbegin()->c_str();
+=======
+    return events.rbegin()->second.c_str();
+>>>>>>> upstream/hammer
   }
 
   void dump(utime_t now, Formatter *f) const;
+<<<<<<< HEAD
 
   void tracking_start() {
     if (tracker->register_inflight_op(this)) {
@@ -292,6 +337,14 @@ public:
   friend void intrusive_ptr_release(TrackedOp *o) {
     o->put();
   }
+=======
+  void tracking_start() {
+    if (tracker->register_inflight_op(&xitem)) {
+      events.push_back(make_pair(initiated_at, "initiated"));
+      is_tracked.set(1);
+    }
+  }
+>>>>>>> upstream/hammer
 };
 
 

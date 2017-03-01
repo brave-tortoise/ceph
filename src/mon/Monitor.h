@@ -42,9 +42,12 @@
 #include "include/memory.h"
 #include <errno.h>
 #include <cmath>
+<<<<<<< HEAD
 
 #include "mon/MonOpRequest.h"
 #include "common/WorkQueue.h"
+=======
+>>>>>>> upstream/hammer
 
 
 #define CEPH_MON_PROTOCOL     13 /* cluster internal */
@@ -517,10 +520,29 @@ private:
   health_status_t timecheck_status(ostringstream &ss,
                                    const double skew_bound,
                                    const double latency);
+<<<<<<< HEAD
   void handle_timecheck_leader(MonOpRequestRef op);
   void handle_timecheck_peon(MonOpRequestRef op);
   void handle_timecheck(MonOpRequestRef op);
 
+=======
+  void handle_timecheck_leader(MTimeCheck *m);
+  void handle_timecheck_peon(MTimeCheck *m);
+  void handle_timecheck(MTimeCheck *m);
+
+  /**
+   * Returns 'true' if this is considered to be a skew; 'false' otherwise.
+   */
+  bool timecheck_has_skew(const double skew_bound, double *abs) const {
+    double abs_skew = std::fabs(skew_bound);
+    if (abs)
+      *abs = abs_skew;
+    return (abs_skew > g_conf->mon_clock_drift_allowed);
+  }
+  /**
+   * @}
+   */
+>>>>>>> upstream/hammer
   /**
    * Returns 'true' if this is considered to be a skew; 'false' otherwise.
    */

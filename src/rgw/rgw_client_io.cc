@@ -43,6 +43,28 @@ int RGWRestfulIO::recv_body(char *buf, size_t max, bool calculate_hash)
   } catch (rgw::io::Exception& e) {
     return -e.code().value();
   }
+<<<<<<< HEAD
+=======
+
+  /* not reachable */
+}
+
+int RGWClientIO::write(const char *buf, int len)
+{
+  int ret = write_data(buf, len);
+  if (ret < 0)
+    return ret;
+
+  if (account)
+    bytes_sent += ret;
+
+  if (ret < len) {
+    /* sent less than tried to send, error out */
+    return -EIO;
+  }
+
+  return 0;
+>>>>>>> upstream/hammer
 }
 
 string RGWRestfulIO::grab_aws4_sha256_hash()

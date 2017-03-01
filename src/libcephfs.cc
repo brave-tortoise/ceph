@@ -36,9 +36,14 @@
 struct ceph_mount_info
 {
 public:
+<<<<<<< HEAD
   explicit ceph_mount_info(CephContext *cct_)
     : default_perms(),
       mounted(false),
+=======
+  ceph_mount_info(CephContext *cct_)
+    : mounted(false),
+>>>>>>> upstream/hammer
       inited(false),
       client(NULL),
       monclient(NULL),

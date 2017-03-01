@@ -205,12 +205,15 @@ void usage(ostream& out)
 "        prefix output with date/time\n"
 "   --no-verify\n"
 "        do not verify contents of read objects\n"
+<<<<<<< HEAD
 "   --write-object\n"
 "        write contents to the objects\n"
 "   --write-omap\n"
 "        write contents to the omap\n"
 "   --write-xattr\n"
 "        write contents to the extended attributes\n"
+=======
+>>>>>>> upstream/hammer
 "\n"
 "LOAD GEN OPTIONS:\n"
 "   --num-objects                    total number of objects\n"
@@ -1615,10 +1618,14 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
   bool block_size_specified = false;
   int bench_write_dest = 0;
   bool cleanup = true;
+<<<<<<< HEAD
   bool hints = true; // for rados bench
   bool no_verify = false;
   bool use_striper = false;
   bool with_clones = false;
+=======
+  bool no_verify = false;
+>>>>>>> upstream/hammer
   const char *snapname = NULL;
   snap_t snapid = CEPH_NOSNAP;
   std::map<std::string, std::string>::const_iterator i;
@@ -1823,6 +1830,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
   if (i != opts.end()) {
     no_verify = true;
   }
+<<<<<<< HEAD
   i = opts.find("output");
   if (i != opts.end()) {
     output = i->second.c_str();
@@ -1861,6 +1869,8 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
         omap_key_pretty = "(binary key)";
     }
   }
+=======
+>>>>>>> upstream/hammer
 
   // open rados
   ret = rados.init_with_context(g_ceph_context);
@@ -2500,7 +2510,11 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
       ret = 0;
     }
 
+<<<<<<< HEAD
     if (values.size() && values.begin()->first == omap_key) {
+=======
+    if (values.size() && values.begin()->first == key) {
+>>>>>>> upstream/hammer
       if (!outfile.empty()) {
 	cerr << "Writing to " << outfile << std::endl;
 	dump_data(outfile, values.begin()->second);
@@ -2983,6 +2997,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
     }
     RadosBencher bencher(g_ceph_context, rados, io_ctx);
     bencher.set_show_time(show_time);
+<<<<<<< HEAD
     bencher.set_write_destination(static_cast<OpWriteDest>(bench_write_dest));
 
     ostream *outstream = NULL;
@@ -3002,6 +3017,10 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
     ret = bencher.aio_bench(operation, seconds,
 			    concurrent_ios, op_size, object_size,
 			    max_objects, cleanup, hints, run_name, no_verify);
+=======
+    ret = bencher.aio_bench(operation, seconds, num_objs,
+			    concurrent_ios, op_size, cleanup, run_name, no_verify);
+>>>>>>> upstream/hammer
     if (ret != 0)
       cerr << "error during benchmark: " << ret << std::endl;
     if (formatter && output)
@@ -3572,8 +3591,11 @@ int main(int argc, const char **argv)
       opts["show-time"] = "true";
     } else if (ceph_argparse_flag(args, i, "--no-cleanup", (char*)NULL)) {
       opts["no-cleanup"] = "true";
+<<<<<<< HEAD
     } else if (ceph_argparse_flag(args, i, "--no-hints", (char*)NULL)) {
       opts["no-hints"] = "true";
+=======
+>>>>>>> upstream/hammer
     } else if (ceph_argparse_flag(args, i, "--no-verify", (char*)NULL)) {
       opts["no-verify"] = "true";
     } else if (ceph_argparse_witharg(args, i, &val, "--run-name", (char*)NULL)) {

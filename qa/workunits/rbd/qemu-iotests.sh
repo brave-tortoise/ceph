@@ -5,6 +5,7 @@
 # require the admin ceph user, as there's no way to pass the ceph user
 # to qemu-iotests currently.
 
+<<<<<<< HEAD
 testlist='001 002 003 004 005 008 009 010 011 021 025 032 033 055'
 
 git clone https://github.com/qemu/qemu.git
@@ -17,6 +18,17 @@ else
     git checkout 2528043f1f299e0e88cb026f1ca7c40bbb4e1f80
 
 fi
+=======
+# This will only work with particular qemu versions, like 1.0. Later
+# versions of qemu include qemu-iotests directly in the qemu
+# repository.
+testlist='001 002 003 004 005 008 009 010 011 021 025 032 033 055'
+
+git clone https://github.com/qemu/qemu.git
+# use v2.2.0-rc3 (last released version that handles all the tests
+cd qemu
+git checkout 2528043f1f299e0e88cb026f1ca7c40bbb4e1f80
+>>>>>>> upstream/hammer
 
 cd tests/qemu-iotests
 mkdir bin

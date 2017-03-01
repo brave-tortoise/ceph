@@ -3,4 +3,8 @@
 /*
  * The header containing our TRACEPOINT_EVENTs.
  */
+<<<<<<< HEAD
 #include "tracing/objectstore.h"
+=======
+#include "objectstore.h"
+>>>>>>> upstream/hammer

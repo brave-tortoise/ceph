@@ -113,6 +113,7 @@ TEST(pgmap, calc_stats)
     ASSERT_EQ(123u, pg_map.get_min_last_epoch_clean());
   }
 }
+<<<<<<< HEAD
 
 namespace {
   class CheckTextTable : public TextTable {
@@ -144,6 +145,8 @@ namespace {
     return ss.str();
   }
 }
+=======
+>>>>>>> upstream/hammer
 
 // dump_object_stat_sum() is called by "ceph df" command
 // with table, without formatter, verbose = true, not empty, avail > 0

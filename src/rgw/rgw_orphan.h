@@ -43,7 +43,11 @@ struct RGWOrphanSearchStage {
   string marker;
 
   RGWOrphanSearchStage() : stage(ORPHAN_SEARCH_STAGE_UNKNOWN), shard(0) {}
+<<<<<<< HEAD
   explicit RGWOrphanSearchStage(RGWOrphanSearchStageId _stage) : stage(_stage), shard(0) {}
+=======
+  RGWOrphanSearchStage(RGWOrphanSearchStageId _stage) : stage(_stage), shard(0) {}
+>>>>>>> upstream/hammer
   RGWOrphanSearchStage(RGWOrphanSearchStageId _stage, int _shard, const string& _marker) : stage(_stage), shard(_shard), marker(_marker) {}
 
   void encode(bufferlist& bl) const {
@@ -127,7 +131,13 @@ class RGWOrphanStore {
   string oid;
 
 public:
+<<<<<<< HEAD
   explicit RGWOrphanStore(RGWRados *_store) : store(_store), oid(RGW_ORPHAN_INDEX_OID) {}
+=======
+  RGWOrphanStore(RGWRados *_store) : store(_store) {
+    oid = RGW_ORPHAN_INDEX_OID;
+  }
+>>>>>>> upstream/hammer
 
   librados::IoCtx& get_ioctx() { return ioctx; }
 
@@ -136,7 +146,10 @@ public:
   int read_job(const string& job_name, RGWOrphanSearchState& state);
   int write_job(const string& job_name, const RGWOrphanSearchState& state);
   int remove_job(const string& job_name);
+<<<<<<< HEAD
   int list_jobs(map<string,RGWOrphanSearchState> &job_list);
+=======
+>>>>>>> upstream/hammer
 
 
   int store_entries(const string& oid, const map<string, bufferlist>& entries);

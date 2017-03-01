@@ -1,6 +1,7 @@
 #!/bin/bash -e
 
 # If these files exist, assume we are a source install.
+<<<<<<< HEAD
 if [[ -f ../share/known_hosts_drop.ceph.com && -f ../share/id_rsa_drop.ceph.com ]]
     then # running from source install
        known_hosts=../share/known_hosts_drop.ceph.com
@@ -8,6 +9,15 @@ if [[ -f ../share/known_hosts_drop.ceph.com && -f ../share/id_rsa_drop.ceph.com 
     else # running from a pkg install
        known_hosts=@datadir@/known_hosts_drop.ceph.com
        ssh_key=@datadir@/id_rsa_drop.ceph.com
+=======
+if [[ -f ../share/known_hosts_drop.ceph.com && -f ../share/id_dsa_drop.ceph.com ]]
+    then # running from source install
+       known_hosts=../share/known_hosts_drop.ceph.com
+       ssh_key=../share/id_dsa_drop.ceph.com
+    else # running from a pkg install
+       known_hosts=@datadir@/known_hosts_drop.ceph.com
+       ssh_key=@datadir@/id_dsa_drop.ceph.com
+>>>>>>> upstream/hammer
 fi
 
 function usage() {

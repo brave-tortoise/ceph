@@ -1,13 +1,22 @@
 tasks:
+<<<<<<< HEAD
 - sequential:
   - upgrade_workload
 - ceph: 
 - print: "**** done ceph"
+=======
+>>>>>>> upstream/hammer
 - workunit:
     branch: hammer
     clients:
       client.0:
+<<<<<<< HEAD
       - rbd/import_export.sh
     env:
       RBD_CREATE_ARGS: --image-feature layering,exclusive-lock,object-map
+=======
+        - rbd/import_export.sh
+    env:
+      RBD_CREATE_ARGS: --new-format
+>>>>>>> upstream/hammer
 - print: "**** done rbd/import_export.sh"

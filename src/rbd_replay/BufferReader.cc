@@ -4,6 +4,10 @@
 #include "rbd_replay/BufferReader.h"
 #include "include/assert.h"
 #include "include/intarith.h"
+<<<<<<< HEAD
+=======
+#include "include/page.h"
+>>>>>>> upstream/hammer
 
 namespace rbd_replay {
 

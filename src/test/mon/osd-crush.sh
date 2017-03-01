@@ -15,8 +15,12 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Library Public License for more details.
 #
+<<<<<<< HEAD
 source $(dirname $0)/../detect-build-env-vars.sh
 source $CEPH_ROOT/qa/workunits/ceph-helpers.sh
+=======
+source test/ceph-helpers.sh
+>>>>>>> upstream/hammer
 
 function run() {
     local dir=$1
@@ -27,11 +31,23 @@ function run() {
     CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
     CEPH_ARGS+="--mon-host=$CEPH_MON "
 
+<<<<<<< HEAD
     local funcs=${@:-$(set | sed -n -e 's/^\(TEST_[0-9a-z_]*\) .*/\1/p')}
     for func in $funcs ; do
         setup $dir || return 1
         $func $dir || return 1
         teardown $dir || return 1
+=======
+    FUNCTIONS=${FUNCTIONS:-$(set | sed -n -e 's/^\(TEST_[0-9a-z_]*\) .*/\1/p')}
+    for TEST_function in $FUNCTIONS ; do
+	setup $dir || return 1
+	run_mon $dir a --public-addr $CEPH_MON
+	if ! $TEST_function $dir ; then
+	  cat $dir/mon.a.log
+	  return 1
+	fi
+	teardown $dir || return 1
+>>>>>>> upstream/hammer
     done
 }
 
@@ -85,8 +101,11 @@ function TEST_crush_rule_rm() {
 
 function TEST_crush_rule_create_erasure() {
     local dir=$1
+<<<<<<< HEAD
 
     run_mon $dir a || return 1
+=======
+>>>>>>> upstream/hammer
     # should have at least one OSD
     run_osd $dir 0 || return 1
 
@@ -112,6 +131,7 @@ function TEST_crush_rule_create_erasure() {
     #
     # create a new ruleset and the default profile, implicitly
     #
+<<<<<<< HEAD
     ceph osd erasure-code-profile rm default || return 1
     ! ceph osd erasure-code-profile ls | grep default || return 1
     ceph osd crush rule create-erasure $ruleset || return 1
@@ -120,15 +140,32 @@ function TEST_crush_rule_create_erasure() {
     ceph osd erasure-code-profile ls | grep default || return 1
     ceph osd crush rule rm $ruleset || return 1
     ! ceph osd crush rule ls | grep $ruleset || return 1
+=======
+    ./ceph osd erasure-code-profile rm default || return 1
+    ! ./ceph osd erasure-code-profile ls | grep default || return 1
+    ./ceph osd crush rule create-erasure $ruleset || return 1
+    CEPH_ARGS='' ./ceph --admin-daemon $dir/ceph-mon.a.asok log flush || return 1
+    grep 'profile default set' $dir/mon.a.log || return 1
+    ./ceph osd erasure-code-profile ls | grep default || return 1
+    ./ceph osd crush rule rm $ruleset || return 1
+    ! ./ceph osd crush rule ls | grep $ruleset || return 1
+>>>>>>> upstream/hammer
     #
     # verify that if the crushmap contains a bugous ruleset,
     # it will prevent the creation of a pool.
     #
     local crushtool_path_old=`ceph-conf --show-config-value crushtool`
+<<<<<<< HEAD
     ceph tell mon.\* injectargs --crushtool "false"
 
     expect_failure $dir "Error EINVAL" \
         ceph osd pool create mypool 1 1 erasure || return 1
+=======
+    ceph tell mon.* injectargs --crushtool "false"
+
+    expect_failure $dir "Error EINVAL" \
+        ./ceph osd pool create mypool 1 1 erasure || return 1
+>>>>>>> upstream/hammer
 }
 
 function check_ruleset_id_match_rule_id() {
@@ -299,7 +336,28 @@ function TEST_crush_repair_faulty_crushmap() {
     CEPH_ARGS=$CEPH_ARGS_orig
 }
 
+<<<<<<< HEAD
 main osd-crush "$@"
+=======
+function TEST_crush_reject_empty() {
+    local dir=$1
+    # should have at least one OSD
+    run_osd $dir 0 || return 1
+
+    local empty_map=$dir/empty_map
+    :> $empty_map.txt
+    ./crushtool -c $empty_map.txt -o $empty_map.map || return 1
+    expect_failure $dir "Error EINVAL" \
+        ./ceph osd setcrushmap -i $empty_map.map || return 1
+}
+
+function TEST_crush_tree() {
+    ./ceph osd crush tree --format=xml | \
+        $XMLSTARLET val -e -r test/mon/osd-crush-tree.rng - || return 1
+}
+
+main osd-crush 
+>>>>>>> upstream/hammer
 
 # Local Variables:
 # compile-command: "cd ../.. ; make -j4 && test/mon/osd-crush.sh"

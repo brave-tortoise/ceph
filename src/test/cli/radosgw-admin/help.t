@@ -121,6 +121,7 @@
     replicalog delete          delete replica metadata log entry
     orphans find               init and run search for leaked rados objects (use job-id, pool)
     orphans finish             clean up search for leaked rados objects
+<<<<<<< HEAD
     orphans list-jobs          list the current job-ids for orphans search
     role create                create a AWS role for use with STS
     role delete                delete a role
@@ -131,6 +132,8 @@
     role-policy list           list policies attached to a role
     role-policy get            get the specified inline policy document embedded with the given role
     role-policy delete         delete policy attached to a role
+=======
+>>>>>>> upstream/hammer
   options:
      --tenant=<tenant>         tenant name
      --uid=<id>                user id
@@ -147,7 +150,10 @@
                                of read, write, readwrite, full
      --display-name=<name>
      --max_buckets             max number of buckets for a user
+<<<<<<< HEAD
      --admin                   set the admin flag on the user
+=======
+>>>>>>> upstream/hammer
      --system                  set the system flag on the user
      --bucket=<bucket>
      --pool=<pool>
@@ -249,6 +255,7 @@
      --job-id                  set the job id (for orphans find)
      --max-concurrent-ios      maximum concurrent ios for orphans find (default: 32)
   
+<<<<<<< HEAD
   Orphans list-jobs options:
      --extra-info              provide extra info in job list
   
@@ -260,6 +267,8 @@
      --policy-doc              permission policy document
      --path-prefix             path prefix for filtering roles
   
+=======
+>>>>>>> upstream/hammer
     --conf/-c FILE    read configuration from the given configuration file
     --id/-i ID        set ID portion of my name
     --name/-n TYPE.ID set name

@@ -153,7 +153,11 @@ public:
 	  usage_exit(args[0], "--window requires an argument");
 	}
 	m_window = (uint64_t)(1e9 * atof(args[++i].c_str()));
+<<<<<<< HEAD
       } else if (arg.compare(0, 9, "--window=") == 0) {
+=======
+      } else if (arg.find("--window=") == 0) {
+>>>>>>> upstream/hammer
 	m_window = (uint64_t)(1e9 * atof(arg.c_str() + sizeof("--window=")));
       } else if (arg == "--anonymize") {
 	m_anonymize = true;
@@ -372,6 +376,7 @@ private:
       boost::shared_ptr<CloseImageIO> io(boost::dynamic_pointer_cast<CloseImageIO>(thread->latest_io()));
       assert(io);
       m_open_images.erase(io->imagectx());
+<<<<<<< HEAD
     } else if (strcmp(event_name, "librbd:aio_open_image_enter") == 0) {
       string name(fields.string("name"));
       string snap_name(fields.string("snap_name"));
@@ -395,6 +400,8 @@ private:
       thread->issued_io(io, &m_latest_ios);
       ios->push_back(thread->latest_io());
       m_pending_ios[completion] = io;
+=======
+>>>>>>> upstream/hammer
     } else if (strcmp(event_name, "librbd:read_enter") == 0 ||
                strcmp(event_name, "librbd:read2_enter") == 0) {
       string name(fields.string("name"));
@@ -427,6 +434,7 @@ private:
       ios->push_back(io);
     } else if (strcmp(event_name, "librbd:write_exit") == 0) {
       completed(thread->latest_io());
+<<<<<<< HEAD
     } else if (strcmp(event_name, "librbd:discard_enter") == 0) {
       string name(fields.string("name"));
       string snap_name(fields.string("snap_name"));
@@ -442,6 +450,8 @@ private:
       ios->push_back(io);
     } else if (strcmp(event_name, "librbd:discard_exit") == 0) {
       completed(thread->latest_io());
+=======
+>>>>>>> upstream/hammer
     } else if (strcmp(event_name, "librbd:aio_read_enter") == 0 ||
                strcmp(event_name, "librbd:aio_read2_enter") == 0) {
       string name(fields.string("name"));
@@ -452,6 +462,7 @@ private:
       uint64_t offset = fields.uint64("offset");
       uint64_t length = fields.uint64("length");
       require_image(ts, thread, imagectx, name, snap_name, readonly, ios);
+<<<<<<< HEAD
       action_id_t ionum = next_id();
       IO::ptr io(new AioReadIO(ionum, ts, threadID, m_recent_completions,
                                imagectx, offset, length));
@@ -475,6 +486,16 @@ private:
       ios->push_back(io);
       m_pending_ios[completion] = io;
     } else if (strcmp(event_name, "librbd:aio_discard_enter") == 0) {
+=======
+      action_id_t ionum = next_id();
+      IO::ptr io(new AioReadIO(ionum, ts, threadID, m_recent_completions,
+                               imagectx, offset, length));
+      ios->push_back(io);
+      thread->issued_io(io, &m_latest_ios);
+      m_pending_ios[completion] = io;
+    } else if (strcmp(event_name, "librbd:aio_write_enter") == 0 ||
+               strcmp(event_name, "librbd:aio_write2_enter") == 0) {
+>>>>>>> upstream/hammer
       string name(fields.string("name"));
       string snap_name(fields.string("snap_name"));
       bool readonly = fields.int64("read_only");
@@ -484,7 +505,11 @@ private:
       imagectx_id_t imagectx = fields.uint64("imagectx");
       require_image(ts, thread, imagectx, name, snap_name, readonly, ios);
       action_id_t ionum = next_id();
+<<<<<<< HEAD
       IO::ptr io(new AioDiscardIO(ionum, ts, threadID, m_recent_completions,
+=======
+      IO::ptr io(new AioWriteIO(ionum, ts, threadID, m_recent_completions,
+>>>>>>> upstream/hammer
                                 imagectx, offset, length));
       thread->issued_io(io, &m_latest_ios);
       ios->push_back(io);

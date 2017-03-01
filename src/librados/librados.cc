@@ -20,7 +20,10 @@
 #include "common/ceph_json.h"
 #include "common/common_init.h"
 #include "common/TracepointProvider.h"
+<<<<<<< HEAD
 #include "common/hobject.h"
+=======
+>>>>>>> upstream/hammer
 #include "include/rados/librados.h"
 #include "include/rados/librados.hpp"
 #include "include/types.h"
@@ -2622,7 +2625,11 @@ extern "C" int rados_create(rados_t *pcluster, const char * const id)
   if (id) {
     iparams.name.set(CEPH_ENTITY_TYPE_CLIENT, id);
   }
+<<<<<<< HEAD
   CephContext *cct = rados_create_cct("", &iparams);
+=======
+  CephContext *cct = rados_create_cct("ceph", &iparams);
+>>>>>>> upstream/hammer
 
   tracepoint(librados, rados_create_enter, id);
   *pcluster = reinterpret_cast<rados_t>(new librados::RadosClient(cct));

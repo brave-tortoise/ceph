@@ -2879,6 +2879,22 @@ void Monitor::handle_command(MonOpRequestRef op)
     return;
   }
 
+<<<<<<< HEAD
+=======
+  // check return value. If no prefix parameter provided,
+  // return value will be false, then return error info.
+  if(!cmd_getval(g_ceph_context, cmdmap, "prefix", prefix)) {
+    reply_command(m, -EINVAL, "command prefix not found", 0);
+    return;
+  }
+
+  // check prefix is empty
+  if (prefix.empty()) {
+    reply_command(m, -EINVAL, "command prefix must not be empty", 0);
+    return;
+  }
+
+>>>>>>> upstream/hammer
   if (prefix == "get_command_descriptions") {
     bufferlist rdata;
     Formatter *f = Formatter::create("json");
@@ -2904,7 +2920,11 @@ void Monitor::handle_command(MonOpRequestRef op)
   // invalid prefix will cause empty vector fullcmd.
   // such as, prefix=";,,;"
   if (fullcmd.empty()) {
+<<<<<<< HEAD
     reply_command(op, -EINVAL, "command requires a prefix to be valid", 0);
+=======
+    reply_command(m, -EINVAL, "command requires a prefix to be valid", 0);
+>>>>>>> upstream/hammer
     return;
   }
 
@@ -3770,12 +3790,23 @@ void Monitor::_ms_dispatch(Message *m)
     }
     s->put();
   } else {
+<<<<<<< HEAD
     dout(20) << __func__ << " existing session " << s << " for " << s->inst
 	     << dendl;
+=======
+    dout(20) << "ms_dispatch existing session " << s << " for " << s->inst << dendl;
   }
 
   assert(s);
+  if (s->auth_handler) {
+    s->entity_name = s->auth_handler->get_entity_name();
+>>>>>>> upstream/hammer
+  }
+  dout(20) << " caps " << s->caps.get_str() << dendl;
 
+  assert(s);
+
+<<<<<<< HEAD
   s->session_timeout = ceph_clock_now();
   s->session_timeout += g_conf->mon_session_timeout;
 
@@ -3792,6 +3823,10 @@ void Monitor::_ms_dispatch(Message *m)
   } else {
     dispatch_op(op);
   }
+=======
+  dispatch(s, m, src_is_mon);
+  s->put();
+>>>>>>> upstream/hammer
   return;
 }
 
@@ -4644,6 +4679,7 @@ bool Monitor::ms_handle_reset(Connection *con)
   return true;
 }
 
+<<<<<<< HEAD
 bool Monitor::ms_handle_refused(Connection *con)
 {
   // just log for now...
@@ -4651,6 +4687,8 @@ bool Monitor::ms_handle_refused(Connection *con)
   return false;
 }
 
+=======
+>>>>>>> upstream/hammer
 // -----
 
 void Monitor::send_latest_monmap(Connection *con)

@@ -70,6 +70,14 @@ namespace librbd {
     }
   };
 
+<<<<<<< HEAD
+=======
+  const std::string id_obj_name(const std::string &name);
+  const std::string header_name(const std::string &image_id);
+  const std::string old_header_name(const std::string &image_name);
+  std::string unique_lock_name(const std::string &name, void *address);
+
+>>>>>>> upstream/hammer
   int detect_format(librados::IoCtx &io_ctx, const std::string &name,
 		    bool *old_format, uint64_t *size);
 
@@ -133,6 +141,7 @@ namespace librbd {
   int get_flags(ImageCtx *ictx, uint64_t *flags);
   int set_image_notification(ImageCtx *ictx, int fd, int type);
   int is_exclusive_lock_owner(ImageCtx *ictx, bool *is_owner);
+<<<<<<< HEAD
   int lock_acquire(ImageCtx *ictx, rbd_lock_mode_t lock_mode);
   int lock_release(ImageCtx *ictx);
   int lock_get_owners(ImageCtx *ictx, rbd_lock_mode_t *lock_mode,
@@ -143,6 +152,14 @@ namespace librbd {
   int remove(librados::IoCtx& io_ctx, const std::string &image_name,
              const std::string &image_id, ProgressContext& prog_ctx,
              bool force=false);
+=======
+
+  int remove(librados::IoCtx& io_ctx, const char *imgname,
+	     ProgressContext& prog_ctx);
+  int resize(ImageCtx *ictx, uint64_t size, ProgressContext& prog_ctx);
+  int snap_create(ImageCtx *ictx, const char *snap_name);
+  int snap_create_helper(ImageCtx *ictx, Context* ctx, const char *snap_name);
+>>>>>>> upstream/hammer
   int snap_list(ImageCtx *ictx, std::vector<snap_info_t>& snaps);
   int snap_exists(ImageCtx *ictx, const char *snap_name, bool *exists);
   int snap_get_limit(ImageCtx *ictx, uint64_t *limit);
@@ -154,6 +171,14 @@ namespace librbd {
 			 cls::rbd::SnapshotNamespace *snap_namespace);
   int snap_is_protected(ImageCtx *ictx, const char *snap_name,
 			bool *is_protected);
+<<<<<<< HEAD
+=======
+  int add_snap(ImageCtx *ictx, const char *snap_name);
+  int rm_snap(ImageCtx *ictx, const char *snap_name);
+  int refresh_parent(ImageCtx *ictx);
+  int ictx_check(ImageCtx *ictx, bool owner_locked=false);
+  int ictx_refresh(ImageCtx *ictx);
+>>>>>>> upstream/hammer
   int copy(ImageCtx *ictx, IoCtx& dest_md_ctx, const char *destname,
 	   ImageOptions& opts, ProgressContext &prog_ctx);
   int copy(ImageCtx *src, ImageCtx *dest, ProgressContext &prog_ctx);
@@ -193,9 +218,32 @@ namespace librbd {
                    uint64_t len, bool include_parent, bool whole_object,
 		   int (*cb)(uint64_t, size_t, int, void *),
 		   void *arg);
+<<<<<<< HEAD
   void readahead(ImageCtx *ictx,
                  const vector<pair<uint64_t,uint64_t> >& image_extents);
 
+=======
+  ssize_t read(ImageCtx *ictx, uint64_t off, size_t len, char *buf, int op_flags);
+  ssize_t read(ImageCtx *ictx, const vector<pair<uint64_t,uint64_t> >& image_extents,
+	       char *buf, bufferlist *pbl, int op_flags);
+  ssize_t write(ImageCtx *ictx, uint64_t off, size_t len, const char *buf, int op_flags);
+  int discard(ImageCtx *ictx, uint64_t off, uint64_t len);
+
+  int async_flatten(ImageCtx *ictx, Context *ctx, ProgressContext &prog_ctx);
+  int async_resize(ImageCtx *ictx, Context *ctx, uint64_t size,
+		   ProgressContext &prog_ctx);
+  void async_resize_helper(ImageCtx *ictx, Context *ctx, uint64_t new_size,
+                           ProgressContext& prog_ctx);
+
+  void aio_write(ImageCtx *ictx, uint64_t off, size_t len, const char *buf,
+		 AioCompletion *c, int op_flags);
+  void aio_discard(ImageCtx *ictx, uint64_t off, uint64_t len, AioCompletion *c);
+  void aio_read(ImageCtx *ictx, uint64_t off, size_t len,
+	        char *buf, bufferlist *pbl, AioCompletion *c, int op_flags);
+  void aio_read(ImageCtx *ictx, const vector<pair<uint64_t,uint64_t> >& image_extents,
+	        char *buf, bufferlist *pbl, AioCompletion *c, int op_flags);
+  void aio_flush(ImageCtx *ictx, AioCompletion *c);
+>>>>>>> upstream/hammer
   int flush(ImageCtx *ictx);
   int invalidate_cache(ImageCtx *ictx);
   int poll_io_events(ImageCtx *ictx, io::AioCompletion **comps, int numcomp);

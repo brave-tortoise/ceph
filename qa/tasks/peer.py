@@ -3,7 +3,6 @@ Peer test (Single test, not much configurable here)
 """
 import logging
 import json
-import time
 
 import ceph_manager
 from teuthology import misc as teuthology
@@ -29,7 +28,7 @@ def task(ctx, config):
         )
 
     while len(manager.get_osd_status()['up']) < 3:
-        time.sleep(10)
+        manager.sleep(10)
     manager.raw_cluster_cmd('tell', 'osd.0', 'flush_pg_stats')
     manager.raw_cluster_cmd('tell', 'osd.1', 'flush_pg_stats')
     manager.raw_cluster_cmd('tell', 'osd.2', 'flush_pg_stats')
@@ -78,8 +77,8 @@ def task(ctx, config):
             num_down_pgs += 1
             # verify that it is blocked on osd.1
             rs = j['recovery_state']
-            assert len(rs) >= 2
-            assert rs[0]['name'] == 'Started/Primary/Peering/Down'
+            assert len(rs) > 0
+            assert rs[0]['name'] == 'Started/Primary/Peering/GetInfo'
             assert rs[1]['name'] == 'Started/Primary/Peering'
             assert rs[1]['blocked']
             assert rs[1]['down_osds_we_would_probe'] == [1]

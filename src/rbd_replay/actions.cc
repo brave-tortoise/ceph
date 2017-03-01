@@ -58,6 +58,7 @@ struct ConstructVisitor : public boost::static_visitor<Action::ptr> {
     return Action::ptr(new AioWriteAction(action));
   }
 
+<<<<<<< HEAD
   inline Action::ptr operator()(const action::DiscardAction &action) const {
     return Action::ptr(new DiscardAction(action));
   }
@@ -88,11 +89,41 @@ struct ConstructVisitor : public boost::static_visitor<Action::ptr> {
 };
 
 } // anonymous namespace
+=======
+  inline Action::ptr operator()(const action::OpenImageAction &action) const {
+    return Action::ptr(new OpenImageAction(action));
+  }
+
+  inline Action::ptr operator()(const action::CloseImageAction &action) const {
+    return Action::ptr(new CloseImageAction(action));
+  }
+
+  inline Action::ptr operator()(const action::UnknownAction &action) const {
+    return Action::ptr();
+  }
+};
+
+} // anonymous namespace
 
 std::ostream& rbd_replay::operator<<(std::ostream& o, const Action& a) {
   return a.dump(o);
 }
 
+Action::ptr Action::construct(const action::ActionEntry &action_entry) {
+  return boost::apply_visitor(ConstructVisitor(), action_entry.action);
+}
+
+void StartThreadAction::perform(ActionCtx &ctx) {
+  cerr << "StartThreadAction should never actually be performed" << std::endl;
+  exit(1);
+}
+>>>>>>> upstream/hammer
+
+std::ostream& rbd_replay::operator<<(std::ostream& o, const Action& a) {
+  return a.dump(o);
+}
+
+<<<<<<< HEAD
 Action::ptr Action::construct(const action::ActionEntry &action_entry) {
   return boost::apply_visitor(ConstructVisitor(), action_entry.action);
 }
@@ -107,6 +138,8 @@ void StopThreadAction::perform(ActionCtx &ctx) {
   ctx.stop();
 }
 
+=======
+>>>>>>> upstream/hammer
 void AioReadAction::perform(ActionCtx &worker) {
   dout(ACTION_LEVEL) << "Performing " << *this << dendl;
   librbd::Image *image = worker.get_image(m_action.imagectx_id);
@@ -127,6 +160,10 @@ void ReadAction::perform(ActionCtx &worker) {
   worker.remove_pending(io);
 }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/hammer
 void AioWriteAction::perform(ActionCtx &worker) {
   static const std::string fake_data(create_fake_data());
   dout(ACTION_LEVEL) << "Performing " << *this << dendl;
@@ -160,6 +197,7 @@ void WriteAction::perform(ActionCtx &worker) {
   worker.remove_pending(io);
 }
 
+<<<<<<< HEAD
 void AioDiscardAction::perform(ActionCtx &worker) {
   dout(ACTION_LEVEL) << "Performing " << *this << dendl;
   librbd::Image *image = worker.get_image(m_action.imagectx_id);
@@ -185,6 +223,8 @@ void DiscardAction::perform(ActionCtx &worker) {
   worker.remove_pending(io);
 }
 
+=======
+>>>>>>> upstream/hammer
 void OpenImageAction::perform(ActionCtx &worker) {
   dout(ACTION_LEVEL) << "Performing " << *this << dendl;
   PendingIO::ptr io(new PendingIO(pending_io_id(), worker));
@@ -211,6 +251,7 @@ void OpenImageAction::perform(ActionCtx &worker) {
 }
 
 void CloseImageAction::perform(ActionCtx &worker) {
+<<<<<<< HEAD
   dout(ACTION_LEVEL) << "Performing " << *this << dendl;
   worker.erase_image(m_action.imagectx_id);
   worker.set_action_complete(pending_io_id());
@@ -248,3 +289,10 @@ void AioCloseImageAction::perform(ActionCtx &worker) {
   worker.erase_image(m_action.imagectx_id);
   worker.set_action_complete(pending_io_id());
 }
+=======
+  dout(ACTION_LEVEL) << "Performing " << *this << dendl;
+  worker.erase_image(m_action.imagectx_id);
+  worker.set_action_complete(pending_io_id());
+}
+
+>>>>>>> upstream/hammer

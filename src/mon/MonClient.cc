@@ -96,9 +96,12 @@ int MonClient::get_monmap_privately()
   Messenger* smessenger = NULL;
   if (!messenger) {
     messenger = smessenger = Messenger::create_client_messenger(cct, "temp_mon_client");
+<<<<<<< HEAD
     if (NULL == messenger) {
         return -1;
     }
+=======
+>>>>>>> upstream/hammer
     messenger->add_dispatcher_head(this);
     smessenger->start();
     temp_msgr = true;
@@ -415,9 +418,16 @@ void MonClient::shutdown()
     waiting_for_session.pop_front();
   }
 
+<<<<<<< HEAD
   active_con.reset();
   pending_cons.clear();
   auth.reset();
+=======
+  if (cur_con)
+    cur_con->mark_down();
+  cur_con.reset(NULL);
+  cur_mon.clear();
+>>>>>>> upstream/hammer
 
   monc_lock.Unlock();
 
@@ -511,12 +521,24 @@ void MonClient::handle_auth(MAuthReply *m)
 
   _finish_hunting();
 
+<<<<<<< HEAD
   if (!auth_err) {
     last_rotating_renew_sent = utime_t();
     while (!waiting_for_session.empty()) {
       _send_mon_message(waiting_for_session.front());
       waiting_for_session.pop_front();
     }
+=======
+  authenticate_err = ret;
+  if (ret == 0) {
+    if (state != MC_STATE_HAVE_SESSION) {
+      state = MC_STATE_HAVE_SESSION;
+      last_rotating_renew_sent = utime_t();
+      while (!waiting_for_session.empty()) {
+	_send_mon_message(waiting_for_session.front());
+	waiting_for_session.pop_front();
+      }
+>>>>>>> upstream/hammer
 
     _resend_mon_commands();
 
@@ -853,7 +875,11 @@ int MonClient::_check_auth_rotating()
     return 0;
   }
 
+<<<<<<< HEAD
   utime_t now = ceph_clock_now();
+=======
+  utime_t now = ceph_clock_now(cct);
+>>>>>>> upstream/hammer
   utime_t cutoff = now;
   cutoff -= MIN(30.0, cct->_conf->auth_service_ticket_ttl / 4.0);
   utime_t issued_at_lower_bound = now;
@@ -891,7 +917,11 @@ int MonClient::_check_auth_rotating()
 int MonClient::wait_auth_rotating(double timeout)
 {
   Mutex::Locker l(monc_lock);
+<<<<<<< HEAD
   utime_t now = ceph_clock_now();
+=======
+  utime_t now = ceph_clock_now(cct);
+>>>>>>> upstream/hammer
   utime_t until = now;
   until += timeout;
 
@@ -909,7 +939,11 @@ int MonClient::wait_auth_rotating(double timeout)
     }
     ldout(cct, 10) << __func__ << " waiting (until " << until << ")" << dendl;
     auth_cond.WaitUntil(monc_lock, until);
+<<<<<<< HEAD
     now = ceph_clock_now();
+=======
+    now = ceph_clock_now(cct);
+>>>>>>> upstream/hammer
   }
   ldout(cct, 10) << __func__ << " done" << dendl;
   return 0;

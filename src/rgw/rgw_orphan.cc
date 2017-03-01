@@ -109,6 +109,7 @@ int RGWOrphanStore::remove_job(const string& job_name)
   return 0;
 }
 
+<<<<<<< HEAD
 int RGWOrphanStore::list_jobs(map <string,RGWOrphanSearchState>& job_list)
 {
   map <string,bufferlist> vals;
@@ -143,6 +144,8 @@ int RGWOrphanStore::list_jobs(map <string,RGWOrphanSearchState>& job_list)
   return 0;
 }
 
+=======
+>>>>>>> upstream/hammer
 int RGWOrphanStore::init()
 {
   const char *log_pool = store->get_zone_params().log_pool.name.c_str();
@@ -177,8 +180,13 @@ int RGWOrphanStore::read_entries(const string& oid, const string& marker, map<st
 {
 #define MAX_OMAP_GET 100
   int ret = ioctx.omap_get_vals(oid, marker, MAX_OMAP_GET, entries);
+<<<<<<< HEAD
   if (ret < 0 && ret != -ENOENT) {
     cerr << "ERROR: " << __func__ << "(" << oid << ") returned ret=" << cpp_strerror(-ret) << std::endl;
+=======
+  if (ret < 0) {
+    cerr << "ERROR: " << __func__ << "(" << oid << ") returned ret=" << ret << std::endl;
+>>>>>>> upstream/hammer
   }
 
   *truncated = (entries->size() == MAX_OMAP_GET);
@@ -206,7 +214,11 @@ int RGWOrphanSearch::init(const string& job_name, RGWOrphanSearchInfo *info) {
     search_info = *info;
     search_info.job_name = job_name;
     search_info.num_shards = (info->num_shards ? info->num_shards : DEFAULT_NUM_SHARDS);
+<<<<<<< HEAD
     search_info.start_time = ceph_clock_now();
+=======
+    search_info.start_time = ceph_clock_now(store->ctx());
+>>>>>>> upstream/hammer
     search_stage = RGWOrphanSearchStage(ORPHAN_SEARCH_STAGE_INIT);
 
     r = save_state();
@@ -488,7 +500,11 @@ int RGWOrphanSearch::build_linked_oids_for_bucket(const string& bucket_instance_
     return ret;
   }
 
+<<<<<<< HEAD
   RGWRados::Bucket target(store, bucket_info);
+=======
+  RGWRados::Bucket target(store, bucket_info.bucket);
+>>>>>>> upstream/hammer
   RGWRados::Bucket::List list_op(&target);
 
   string marker;
@@ -612,11 +628,15 @@ int RGWOrphanSearch::build_linked_oids_index()
     return ret;
   }
 
+<<<<<<< HEAD
   ret = save_state();
   if (ret < 0) {
     cerr << __func__ << ": ERROR: failed to write state ret=" << ret << std::endl;
     return ret;
   }
+=======
+  save_state();
+>>>>>>> upstream/hammer
 
   return 0;
 }
@@ -765,7 +785,11 @@ int RGWOrphanSearch::run()
       ldout(store->ctx(), 0) << __func__ << "(): building index of all objects in pool" << dendl;
       r = build_all_oids_index();
       if (r < 0) {
+<<<<<<< HEAD
         lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+=======
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+>>>>>>> upstream/hammer
         return r;
       }
 
@@ -781,7 +805,11 @@ int RGWOrphanSearch::run()
       ldout(store->ctx(), 0) << __func__ << "(): building index of all bucket indexes" << dendl;
       r = build_buckets_instance_index();
       if (r < 0) {
+<<<<<<< HEAD
         lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+=======
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+>>>>>>> upstream/hammer
         return r;
       }
 
@@ -798,7 +826,11 @@ int RGWOrphanSearch::run()
       ldout(store->ctx(), 0) << __func__ << "(): building index of all linked objects" << dendl;
       r = build_linked_oids_index();
       if (r < 0) {
+<<<<<<< HEAD
         lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+=======
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+>>>>>>> upstream/hammer
         return r;
       }
 
@@ -813,14 +845,22 @@ int RGWOrphanSearch::run()
     case ORPHAN_SEARCH_STAGE_COMPARE:
       r = compare_oid_indexes();
       if (r < 0) {
+<<<<<<< HEAD
         lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returned ret=" << r << dendl;
+=======
+        lderr(store->ctx()) << __func__ << ": ERROR: build_all_objs_index returnr ret=" << r << dendl;
+>>>>>>> upstream/hammer
         return r;
       }
 
       break;
 
     default:
+<<<<<<< HEAD
       ceph_abort();
+=======
+      assert(0);
+>>>>>>> upstream/hammer
   };
 
   return 0;

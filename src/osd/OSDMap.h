@@ -793,6 +793,15 @@ public:
       return false;
     return acting[pg.shard] == osd;
   }
+  bool is_acting_osd_shard(pg_t pg, int osd, shard_id_t shard) const {
+    vector<int> acting;
+    int nrep = pg_to_acting_osds(pg, acting);
+    if (shard == shard_id_t::NO_SHARD)
+      return calc_pg_role(osd, acting, nrep) >= 0;
+    if (shard >= (int)acting.size())
+      return false;
+    return acting[shard] == osd;
+  }
 
 
   /* what replica # is a given osd? 0 primary, -1 for none. */
@@ -872,6 +881,12 @@ public:
   void print_summary(Formatter *f, ostream& out) const;
   void print_oneline_summary(ostream& out) const;
   void print_tree(Formatter *f, ostream *out) const;
+
+  int summarize_mapping_stats(
+    OSDMap *newmap,
+    const set<int64_t> *pools,
+    std::string *out,
+    Formatter *f) const;
 
   int summarize_mapping_stats(
     OSDMap *newmap,

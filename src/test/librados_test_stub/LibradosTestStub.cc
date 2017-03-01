@@ -28,6 +28,7 @@
 #define dout_subsys ceph_subsys_rados
 
 namespace {
+<<<<<<< HEAD
 
 librados::TestClassHandler *get_class_handler() {
   static boost::shared_ptr<librados::TestClassHandler> s_class_handler;
@@ -36,6 +37,40 @@ librados::TestClassHandler *get_class_handler() {
     s_class_handler->open_all_classes();
   }
   return s_class_handler.get();
+=======
+
+static void DeallocateRadosClient(librados::TestRadosClient* client)
+{
+  client->put();
+}
+
+} // anonymous namespace
+
+
+static librados::TestClassHandler *get_class_handler() {
+  static boost::shared_ptr<librados::TestClassHandler> s_class_handler;
+  if (!s_class_handler) {
+    s_class_handler.reset(new librados::TestClassHandler());
+    s_class_handler->open_all_classes();
+  }
+  return s_class_handler.get();
+}
+
+static librados::TestRadosClient *get_rados_client() {
+  // TODO: use factory to allow tests to swap out impl
+  static boost::shared_ptr<librados::TestRadosClient> s_rados_client;
+  if (!s_rados_client) {
+    CephInitParameters iparams(CEPH_ENTITY_TYPE_CLIENT);
+    CephContext *cct = common_preinit(iparams, CODE_ENVIRONMENT_LIBRARY, 0);
+    cct->_conf->parse_env();
+    cct->_conf->apply_changes(NULL);
+    s_rados_client.reset(new librados::TestMemRadosClient(cct),
+                         &DeallocateRadosClient);
+    cct->put();
+  }
+  s_rados_client->get();
+  return s_rados_client.get();
+>>>>>>> upstream/hammer
 }
 
 void do_out_buffer(bufferlist& outbl, char **outbuf, size_t *outbuflen) {
@@ -901,11 +936,14 @@ config_t Rados::cct() {
   return reinterpret_cast<config_t>(impl->cct());
 }
 
+<<<<<<< HEAD
 int Rados::cluster_fsid(std::string* fsid) {
   *fsid = "00000000-1111-2222-3333-444444444444";
   return 0;
 }
 
+=======
+>>>>>>> upstream/hammer
 int Rados::conf_set(const char *option, const char *value) {
   return rados_conf_set(reinterpret_cast<rados_t>(client), option, value);
 }

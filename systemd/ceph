@@ -56,8 +56,13 @@ case $action in start | stop | status | enable | disable | mask | unmask | resta
     rc_check
 ;;
 *)
+<<<<<<< HEAD
     echo "Invalid parameter : $action"
     echo "Valid parameters  : start | stop | status | enable | disable | mask | unmask | restart | is-active | is-failed | show | kill | reset-failed"
+=======
+    echo "Invalid paramter : $action"
+    echo "Valid paramters  : start | stop | status | enable | disable | mask | unmask | restart | is-active | is-failed | show | kill | reset-failed"
+>>>>>>> upstream/hammer
 ;;
 esac
 

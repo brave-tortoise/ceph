@@ -29,7 +29,7 @@ def task(ctx, config):
           k: 2
           m: 1
           ruleset-failure-domain: osd
-        cleanup: false (defaults to true)
+
     example:
 
     tasks:
@@ -45,9 +45,7 @@ def task(ctx, config):
     radosbench = {}
 
     testdir = teuthology.get_testdir(ctx)
-    manager = ctx.managers['ceph']
 
-    create_pool = config.get('create_pool', True)
     for role in config.get('clients', ['client.0']):
         assert isinstance(role, basestring)
         PREFIX = 'client.'
@@ -58,20 +56,18 @@ def task(ctx, config):
         if config.get('ec_pool', False):
             profile = config.get('erasure_code_profile', {})
             profile_name = profile.get('name', 'teuthologyprofile')
-            manager.create_erasure_code_profile(profile_name, profile)
+            ctx.manager.create_erasure_code_profile(profile_name, profile)
         else:
             profile_name = None
 
-        cleanup = []
-        if not config.get('cleanup', True):
-            cleanup = ['--no-cleanup']
-
-        pool = config.get('pool', 'data')
-        if create_pool:
-            if pool != 'data':
-                manager.create_pool(pool, erasure_code_profile_name=profile_name)
+        pool = 'data'
+        if config.get('create_pool', True):
+            if config.get('pool'):
+                pool = config.get('pool')
+                if pool != 'data':
+                    ctx.manager.create_pool(pool, erasure_code_profile_name=profile_name)
             else:
-                pool = manager.create_pool_with_unique_name(erasure_code_profile_name=profile_name)
+                pool = ctx.manager.create_pool_with_unique_name(erasure_code_profile_name=profile_name)
 
         proc = remote.run(
             args=[
@@ -85,7 +81,7 @@ def task(ctx, config):
                           '-b', str(config.get('size', 4<<20)),
                           '-p' , pool,
                           'bench', str(config.get('time', 360)), 'write',
-                          ] + cleanup).format(tdir=testdir),
+                          ]).format(tdir=testdir),
                 ],
             logger=log.getChild('radosbench.{id}'.format(id=id_)),
             stdin=run.PIPE,
@@ -100,5 +96,5 @@ def task(ctx, config):
         log.info('joining radosbench (timing out after %ss)', timeout)
         run.wait(radosbench.itervalues(), timeout=timeout)
 
-        if pool is not 'data' and create_pool:
-            manager.remove_pool(pool)
+        if pool is not 'data':
+            ctx.manager.remove_pool(pool)

@@ -28,9 +28,15 @@ struct Fh {
   // file lock
   ceph_lock_state_t *fcntl_locks;
   ceph_lock_state_t *flock_locks;
+<<<<<<< HEAD
   
   Fh() : _ref(1), pos(0), mds(0), mode(0), flags(0), pos_locked(false),
     actor_perms(), readahead(), fcntl_locks(NULL), flock_locks(NULL) {}
+=======
+
+  Fh() : _ref(1), pos(0), mds(0), mode(0), flags(0), pos_locked(false),
+      readahead(), fcntl_locks(NULL), flock_locks(NULL) {}
+>>>>>>> upstream/hammer
   void get() { ++_ref; }
   int put() { return --_ref; }
 };

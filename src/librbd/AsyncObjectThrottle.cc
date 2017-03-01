@@ -1,21 +1,44 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 #include "librbd/AsyncObjectThrottle.h"
+<<<<<<< HEAD
 #include "common/RWLock.h"
 #include "common/WorkQueue.h"
 #include "librbd/AsyncRequest.h"
 #include "librbd/ImageCtx.h"
 #include "librbd/Utils.h"
+=======
+#include "include/rbd/librbd.hpp"
+#include "common/RWLock.h"
+#include "librbd/AsyncRequest.h"
+#include "librbd/ImageCtx.h"
+#include "librbd/internal.h"
+>>>>>>> upstream/hammer
 
 namespace librbd
 {
 
+<<<<<<< HEAD
 template <typename T>
 AsyncObjectThrottle<T>::AsyncObjectThrottle(
     const AsyncRequest<T>* async_request, T &image_ctx,
     const ContextFactory& context_factory, Context *ctx,
     ProgressContext *prog_ctx, uint64_t object_no, uint64_t end_object_no)
   : m_lock(util::unique_lock_name("librbd::AsyncThrottle::m_lock", this)),
+=======
+void C_AsyncObjectThrottle::finish(int r) {
+  RWLock::RLocker l(m_image_ctx.owner_lock);
+  m_finisher.finish_op(r);
+}
+
+AsyncObjectThrottle::AsyncObjectThrottle(const AsyncRequest* async_request,
+                                         ImageCtx &image_ctx,
+                                         const ContextFactory& context_factory,
+				 	 Context *ctx, ProgressContext &prog_ctx,
+					 uint64_t object_no,
+					 uint64_t end_object_no)
+  : m_lock(unique_lock_name("librbd::AsyncThrottle::m_lock", this)),
+>>>>>>> upstream/hammer
     m_async_request(async_request), m_image_ctx(image_ctx),
     m_context_factory(context_factory), m_ctx(ctx), m_prog_ctx(prog_ctx),
     m_object_no(object_no), m_end_object_no(end_object_no), m_current_ops(0),
@@ -23,8 +46,12 @@ AsyncObjectThrottle<T>::AsyncObjectThrottle(
 {
 }
 
+<<<<<<< HEAD
 template <typename T>
 void AsyncObjectThrottle<T>::start_ops(uint64_t max_concurrent) {
+=======
+void AsyncObjectThrottle::start_ops(uint64_t max_concurrent) {
+>>>>>>> upstream/hammer
   assert(m_image_ctx.owner_lock.is_locked());
   bool complete;
   {
@@ -44,8 +71,13 @@ void AsyncObjectThrottle<T>::start_ops(uint64_t max_concurrent) {
   }
 }
 
+<<<<<<< HEAD
 template <typename T>
 void AsyncObjectThrottle<T>::finish_op(int r) {
+=======
+void AsyncObjectThrottle::finish_op(int r) {
+  assert(m_image_ctx.owner_lock.is_locked());
+>>>>>>> upstream/hammer
   bool complete;
   {
     RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
@@ -68,8 +100,12 @@ template <typename T>
 void AsyncObjectThrottle<T>::start_next_op() {
   bool done = false;
   while (!done) {
+<<<<<<< HEAD
     if (m_async_request != NULL && m_async_request->is_canceled() &&
         m_ret == 0) {
+=======
+    if (m_async_request->is_canceled() && m_ret == 0) {
+>>>>>>> upstream/hammer
       // allow in-flight ops to complete, but don't start new ops
       m_ret = -ERESTART;
       return;

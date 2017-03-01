@@ -16,7 +16,10 @@
 #include <string>
 #include <time.h>
 #include <unistd.h>
+<<<<<<< HEAD
 #include <iostream>
+=======
+>>>>>>> upstream/hammer
 #include "gtest/gtest.h"
 
 using namespace librados;
@@ -144,6 +147,7 @@ std::string create_one_pool(
   return "";
 }
 
+<<<<<<< HEAD
 int destroy_ec_profile(rados_t *cluster,
 		       const std::string& pool_name,
 		       std::ostream &oss)
@@ -160,6 +164,16 @@ int destroy_ec_profile(rados_t *cluster,
   if (ret)
     oss << "rados_mon_command: erasure-code-profile rm testprofile-"
 	<< pool_name << " failed with error " << ret;
+=======
+int destroy_ec_profile(rados_t *cluster, std::ostream &oss)
+{
+  char *cmd[2];
+  cmd[0] = (char *)"{\"prefix\": \"osd erasure-code-profile rm\", \"name\": \"testprofile\"}";
+  cmd[1] = NULL;
+  int ret = rados_mon_command(*cluster, (const char **)cmd, 1, "", 0, NULL, 0, NULL, 0);
+  if (ret)
+    oss << "rados_mon_command: erasure-code-profile rm testprofile failed with error " << ret;
+>>>>>>> upstream/hammer
   return ret;
 }
 
@@ -183,12 +197,17 @@ int destroy_ec_profile_and_ruleset(rados_t *cluster,
                                    std::ostream &oss)
 {
   int ret;
+<<<<<<< HEAD
   ret = destroy_ec_profile(cluster, ruleset, oss);
+=======
+  ret = destroy_ec_profile(cluster, oss);
+>>>>>>> upstream/hammer
   if (ret)
     return ret;
   return destroy_ruleset(cluster, ruleset, oss);
 }
 
+<<<<<<< HEAD
 std::string set_pg_num(
     rados_t *cluster, const std::string &pool_name, uint32_t pg_num)
 {
@@ -219,6 +238,8 @@ err:
   return oss.str();
 }
 
+=======
+>>>>>>> upstream/hammer
 std::string create_one_ec_pool(const std::string &pool_name, rados_t *cluster)
 {
   std::string err = connect_cluster(cluster);
@@ -235,12 +256,20 @@ std::string create_one_ec_pool(const std::string &pool_name, rados_t *cluster)
   char *cmd[2];
   cmd[1] = NULL;
 
+<<<<<<< HEAD
   std::string profile_create = "{\"prefix\": \"osd erasure-code-profile set\", \"name\": \"testprofile-" + pool_name + "\", \"profile\": [ \"k=2\", \"m=1\", \"ruleset-failure-domain=osd\"]}";
+=======
+  std::string profile_create = "{\"prefix\": \"osd erasure-code-profile set\", \"name\": \"testprofile\", \"profile\": [ \"k=2\", \"m=1\", \"ruleset-failure-domain=osd\"]}";
+>>>>>>> upstream/hammer
   cmd[0] = (char *)profile_create.c_str();
   ret = rados_mon_command(*cluster, (const char **)cmd, 1, "", 0, NULL, 0, NULL, 0);
   if (ret) {
     rados_shutdown(*cluster);
+<<<<<<< HEAD
     oss << "rados_mon_command erasure-code-profile set name:testprofile-" << pool_name << " failed with error " << ret;
+=======
+    oss << "rados_mon_command erasure-code-profile set name:testprofile failed with error " << ret;
+>>>>>>> upstream/hammer
     return oss.str();
   }
 
@@ -249,7 +278,11 @@ std::string create_one_ec_pool(const std::string &pool_name, rados_t *cluster)
   cmd[0] = (char *)cmdstr.c_str();
   ret = rados_mon_command(*cluster, (const char **)cmd, 1, "", 0, NULL, 0, NULL, 0);
   if (ret) {
+<<<<<<< HEAD
     destroy_ec_profile(cluster, pool_name, oss);
+=======
+    destroy_ec_profile(cluster, oss);
+>>>>>>> upstream/hammer
     rados_shutdown(*cluster);
     oss << "rados_mon_command osd pool create failed with error " << ret;
     return oss.str();
@@ -291,6 +324,7 @@ int destroy_ruleset_pp(Rados &cluster,
   return ret;
 }
 
+<<<<<<< HEAD
 int destroy_ec_profile_pp(Rados &cluster, const std::string& pool_name,
 			  std::ostream &oss)
 {
@@ -299,6 +333,15 @@ int destroy_ec_profile_pp(Rados &cluster, const std::string& pool_name,
                                 inbl, NULL, NULL);
   if (ret)
     oss << "mon_command: osd erasure-code-profile rm testprofile-" << pool_name << " failed with error " << ret << std::endl;
+=======
+int destroy_ec_profile_pp(Rados &cluster, std::ostream &oss)
+{
+  bufferlist inbl;
+  int ret = cluster.mon_command("{\"prefix\": \"osd erasure-code-profile rm\", \"name\": \"testprofile\"}",
+                                inbl, NULL, NULL);
+  if (ret)
+    oss << "mon_command: osd erasure-code-profile rm testprofile failed with error " << ret << std::endl;
+>>>>>>> upstream/hammer
   return ret;
 }
 
@@ -307,7 +350,11 @@ int destroy_ec_profile_and_ruleset_pp(Rados &cluster,
                                       std::ostream &oss)
 {
   int ret;
+<<<<<<< HEAD
   ret = destroy_ec_profile_pp(cluster, ruleset, oss);
+=======
+  ret = destroy_ec_profile_pp(cluster, oss);
+>>>>>>> upstream/hammer
   if (ret)
     return ret;
   return destroy_ruleset_pp(cluster, ruleset, oss);
@@ -328,11 +375,19 @@ std::string create_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
 
   bufferlist inbl;
   ret = cluster.mon_command(
+<<<<<<< HEAD
     "{\"prefix\": \"osd erasure-code-profile set\", \"name\": \"testprofile-" + pool_name + "\", \"profile\": [ \"k=2\", \"m=1\", \"ruleset-failure-domain=osd\"]}",
     inbl, NULL, NULL);
   if (ret) {
     cluster.shutdown();
     oss << "mon_command erasure-code-profile set name:testprofile-" << pool_name << " failed with error " << ret;
+=======
+    "{\"prefix\": \"osd erasure-code-profile set\", \"name\": \"testprofile\", \"profile\": [ \"k=2\", \"m=1\", \"ruleset-failure-domain=osd\"]}",
+    inbl, NULL, NULL);
+  if (ret) {
+    cluster.shutdown();
+    oss << "mon_command erasure-code-profile set name:testprofile failed with error " << ret;
+>>>>>>> upstream/hammer
     return oss.str();
   }
     
@@ -341,7 +396,11 @@ std::string create_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
     inbl, NULL, NULL);
   if (ret) {
     bufferlist inbl;
+<<<<<<< HEAD
     destroy_ec_profile_pp(cluster, pool_name, oss);
+=======
+    destroy_ec_profile_pp(cluster, oss);
+>>>>>>> upstream/hammer
     cluster.shutdown();
     oss << "mon_command osd pool create pool:" << pool_name << " pool_type:erasure failed with error " << ret;
     return oss.str();
@@ -476,6 +535,7 @@ int destroy_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
   if (ret) {
     cluster.shutdown();
     return ret;
+<<<<<<< HEAD
   }
 
   std::ostringstream oss;
@@ -485,6 +545,17 @@ int destroy_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
     return ret;
   }
 
+=======
+  }
+
+  std::ostringstream oss;
+  ret = destroy_ec_profile_and_ruleset_pp(cluster, pool_name, oss);
+  if (ret) {
+    cluster.shutdown();
+    return ret;
+  }
+
+>>>>>>> upstream/hammer
   cluster.wait_for_latest_osdmap();
   cluster.shutdown();
   return ret;
@@ -493,12 +564,23 @@ int destroy_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
 void assert_eq_sparse(bufferlist& expected,
                       const std::map<uint64_t, uint64_t>& extents,
                       bufferlist& actual) {
+<<<<<<< HEAD
   auto i = expected.begin();
   auto p = actual.begin();
   uint64_t pos = 0;
   for (auto extent : extents) {
     const uint64_t start = extent.first;
     const uint64_t end = start + extent.second;
+=======
+  bufferlist::iterator i = expected.begin();
+  bufferlist::iterator p = actual.begin();
+  uint64_t pos = 0;
+  for (std::map<uint64_t, uint64_t>::const_iterator extent = extents.begin();
+       extent != extents.end();
+       ++extent) {
+    const uint64_t start = extent->first;
+    const uint64_t end = start + extent->second;
+>>>>>>> upstream/hammer
     for (; pos < end; ++i, ++pos) {
       ASSERT_FALSE(i.end());
       if (pos < start) {

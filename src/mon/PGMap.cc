@@ -1742,7 +1742,11 @@ void PGMap::generate_test_instances(list<PGMap*>& o)
   }
 }
 
+<<<<<<< HEAD
 void PGMap::get_filtered_pg_stats(uint32_t state, int64_t poolid, int64_t osdid,
+=======
+void PGMap::get_filtered_pg_stats(const string& state, int64_t poolid, int64_t osdid,
+>>>>>>> upstream/hammer
                                   bool primary, set<pg_t>& pgs)
 {
   for (ceph::unordered_map<pg_t, pg_stat_t>::const_iterator i = pg_stat.begin();

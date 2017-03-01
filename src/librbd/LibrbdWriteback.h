@@ -20,6 +20,8 @@ namespace librbd {
   public:
     LibrbdWriteback(ImageCtx *ictx, Mutex& lock);
 
+    void queue(Context *ctx, int r);
+
     // Note that oloc, trunc_size, and trunc_seq are ignored
     void read(const object_t& oid, uint64_t object_no,
               const object_locator_t& oloc, uint64_t off, uint64_t len,
@@ -43,6 +45,9 @@ namespace librbd {
     void overwrite_extent(const object_t& oid, uint64_t off,
                           uint64_t len, ceph_tid_t original_journal_tid,
                           ceph_tid_t new_journal_tid) override;
+
+    virtual void get_client_lock();
+    virtual void put_client_lock();
 
     struct write_result_d {
       bool done;

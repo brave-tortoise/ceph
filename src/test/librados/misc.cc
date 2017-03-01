@@ -541,6 +541,21 @@ TEST_F(LibRadosMiscPP, BadFlagsPP) {
   }
 }
 
+void set_completion_complete(rados_completion_t cb, void *arg)
+{
+  bool *my_aio_complete = (bool*)arg;
+  *my_aio_complete = true;
+}
+
+TEST_F(LibRadosMiscPP, BadFlagsPP) {
+  unsigned badflags = CEPH_OSD_FLAG_PARALLELEXEC;
+  {
+    bufferlist bl;
+    bl.append("data");
+    ASSERT_EQ(0, ioctx.write("badfoo", bl, bl.length(), 0));
+  }
+}
+
 TEST_F(LibRadosMiscPP, Operate1PP) {
   ObjectWriteOperation o;
   {

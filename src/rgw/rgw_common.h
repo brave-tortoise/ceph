@@ -111,11 +111,16 @@ using ceph::crypto::MD5;
 
 #define RGW_ATTR_COMPRESSION    RGW_ATTR_PREFIX "compression"
 
+<<<<<<< HEAD
 /* RGW File Attributes */
 #define RGW_ATTR_UNIX_KEY1      RGW_ATTR_PREFIX "unix-key1"
 #define RGW_ATTR_UNIX1          RGW_ATTR_PREFIX "unix1"
 
 #define RGW_BUCKETS_OBJ_SUFFIX ".buckets"
+=======
+#define RGW_MAX_PENDING_CHUNKS  16
+#define RGW_MIN_MULTIPART_SIZE (5ULL*1024*1024)
+>>>>>>> upstream/hammer
 
 #define RGW_FORMAT_PLAIN        0
 #define RGW_FORMAT_XML          1
@@ -1291,6 +1296,7 @@ class RGWRequest;
 
 /** Store all the state necessary to complete and respond to an HTTP request*/
 struct req_state {
+<<<<<<< HEAD
   CephContext *cct;
   rgw::io::BasicClient *cio;
   RGWRequest *req; /// XXX: re-remove??
@@ -1388,6 +1394,78 @@ struct req_state {
 
   req_state(CephContext* _cct, RGWEnv* e, RGWUserInfo* u);
   ~req_state();
+=======
+   CephContext *cct;
+   RGWClientIO *cio;
+   http_op op;
+   bool content_started;
+   int format;
+   ceph::Formatter *formatter;
+   string decoded_uri;
+   string relative_uri;
+   const char *length;
+   int64_t content_length;
+   map<string, string> generic_attrs;
+   struct rgw_err err;
+   bool expect_cont;
+   bool header_ended;
+   uint64_t obj_size;
+   bool enable_ops_log;
+   bool enable_usage_log;
+   uint8_t defer_to_bucket_acls;
+   uint32_t perm_mask;
+   utime_t header_time;
+
+   rgw_bucket bucket;
+   string bucket_name_str;
+   rgw_obj_key object;
+   string src_bucket_name;
+   rgw_obj_key src_object;
+   ACLOwner bucket_owner;
+   ACLOwner owner;
+
+   string region_endpoint;
+   string bucket_instance_id;
+
+   RGWBucketInfo bucket_info;
+   map<string, bufferlist> bucket_attrs;
+   bool bucket_exists;
+
+   bool has_bad_meta;
+
+   RGWUserInfo user; 
+   RGWAccessControlPolicy *bucket_acl;
+   RGWAccessControlPolicy *object_acl;
+
+   bool system_request;
+
+   string canned_acl;
+   bool has_acl_header;
+   const char *copy_source;
+   const char *http_auth;
+   bool local_source; /* source is local */
+
+   int prot_flags;
+
+   const char *os_auth_token;
+   string swift_user;
+   string swift_groups;
+
+   utime_t time;
+
+   void *obj_ctx;
+
+   string dialect;
+
+   string req_id;
+
+   string trans_id;
+
+   req_info info;
+
+   req_state(CephContext *_cct, class RGWEnv *e);
+   ~req_state();
+>>>>>>> upstream/hammer
 };
 
 /** Store basic data on an object */

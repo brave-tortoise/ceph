@@ -56,7 +56,14 @@ public:
       oid << m_op;
       if (m_op % 2) {
 	// make it a long name
+<<<<<<< HEAD
 	oid << " " << string(300, 'o');
+=======
+	oid << " ";
+	for (unsigned i = 0; i < 300; ++i) {
+	  oid << i;
+	}
+>>>>>>> upstream/hammer
       }
       cout << m_op << ": write initial oid " << oid.str() << std::endl;
       context.oid_not_flushing.insert(oid.str());
@@ -119,6 +126,7 @@ private:
 	   << oid << " current snap is "
 	   << context.current_snap << std::endl;
       return new WriteOp(m_op, &context, oid, false, true, m_stats);
+<<<<<<< HEAD
 
     case TEST_OP_WRITESAME:
       oid = *(rand_choose(context.oid_not_in_use));
@@ -126,6 +134,8 @@ private:
 	   << oid << " current snap is "
 	   << context.current_snap << std::endl;
       return new WriteSameOp(m_op, &context, oid, m_stats);
+=======
+>>>>>>> upstream/hammer
 
     case TEST_OP_DELETE:
       oid = *(rand_choose(context.oid_not_in_use));
@@ -273,7 +283,10 @@ int main(int argc, char **argv)
     { TEST_OP_READ, "read", true },
     { TEST_OP_WRITE, "write", false },
     { TEST_OP_WRITE_EXCL, "write_excl", false },
+<<<<<<< HEAD
     { TEST_OP_WRITESAME, "writesame", false },
+=======
+>>>>>>> upstream/hammer
     { TEST_OP_DELETE, "delete", true },
     { TEST_OP_SNAP_CREATE, "snap_create", true },
     { TEST_OP_SNAP_REMOVE, "snap_remove", true },

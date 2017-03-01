@@ -47,8 +47,11 @@ class RGWRESTConn;
 
 #define RGW_BUCKET_INSTANCE_MD_PREFIX ".bucket.meta."
 
+<<<<<<< HEAD
 #define RGW_NO_SHARD -1
 
+=======
+>>>>>>> upstream/hammer
 #define MAX_BUCKET_INDEX_SHARDS_PRIME 7877
 
 static inline void prepend_bucket_marker(rgw_bucket& bucket, const string& orig_oid, string& oid)
@@ -1986,6 +1989,7 @@ class RGWRados
 protected:
   CephContext *cct;
 
+<<<<<<< HEAD
   std::vector<librados::Rados> rados;
   uint32_t next_rados_handle;
   RWLock handle_lock;
@@ -1997,6 +2001,14 @@ protected:
   using tombstone_cache_t = lru_map<rgw_obj, tombstone_entry>;
   tombstone_cache_t *obj_tombstone_cache;
 
+=======
+  librados::Rados **rados;
+  atomic_t next_rados_handle;
+  uint32_t num_rados_handles;
+  RWLock handle_lock;
+  std::map<pthread_t, int> rados_map;
+
+>>>>>>> upstream/hammer
   librados::IoCtx gc_pool_ctx;        // .rgw.gc
   librados::IoCtx lc_pool_ctx;        // .rgw.lc
   librados::IoCtx objexp_pool_ctx;
@@ -2025,18 +2037,27 @@ protected:
   RGWPeriod current_period;
 public:
   RGWRados() : max_req_id(0), lock("rados_timer_lock"), watchers_lock("watchers_lock"), timer(NULL),
+<<<<<<< HEAD
                gc(NULL), lc(NULL), obj_expirer(NULL), use_gc_thread(false), use_lc_thread(false), quota_threads(false),
                run_sync_thread(false), async_rados(nullptr), meta_notifier(NULL),
                data_notifier(NULL), meta_sync_processor_thread(NULL),
                meta_sync_thread_lock("meta_sync_thread_lock"), data_sync_thread_lock("data_sync_thread_lock"),
+=======
+               gc(NULL), use_gc_thread(false), quota_threads(false),
+>>>>>>> upstream/hammer
                num_watchers(0), watchers(NULL),
                watch_initialized(false),
                bucket_id_lock("rados_bucket_id"),
                bucket_index_max_shards(0),
                max_bucket_id(0), cct(NULL),
+<<<<<<< HEAD
                next_rados_handle(0),
                handle_lock("rados_handle_lock"),
                binfo_cache(NULL), obj_tombstone_cache(nullptr),
+=======
+               rados(NULL), next_rados_handle(0),
+               num_rados_handles(0), handle_lock("rados_handle_lock"),
+>>>>>>> upstream/hammer
                pools_initialized(false),
                quota_handler(NULL),
                finisher(NULL),
@@ -2049,9 +2070,12 @@ public:
     return max_req_id.inc();
   }
 
+<<<<<<< HEAD
   librados::IoCtx* get_lc_pool_ctx() {
     return &lc_pool_ctx;
   }
+=======
+>>>>>>> upstream/hammer
   void set_context(CephContext *_cct) {
     cct = _cct;
   }
@@ -2160,14 +2184,29 @@ public:
 
   RGWAsyncRadosProcessor* get_async_rados() const { return async_rados; };
 
+  RGWZoneParams& get_zone_params() { return zone; }
+
   RGWMetadataManager *meta_mgr;
 
   RGWDataChangesLog *data_log;
 
+<<<<<<< HEAD
   virtual ~RGWRados() = default;
 
   tombstone_cache_t *get_tombstone_cache() {
     return obj_tombstone_cache;
+=======
+  virtual ~RGWRados() {
+    for (uint32_t i=0; i < num_rados_handles; i++) {
+      if (rados[i]) {
+        rados[i]->shutdown();
+        delete rados[i];
+      }
+    }
+    if (rados) {
+      delete[] rados;
+    }
+>>>>>>> upstream/hammer
   }
 
   RGWSyncModulesManager *get_sync_modules_manager() {
@@ -2250,6 +2289,7 @@ public:
    * returns 0 on success, -ERR# otherwise.
    */
   virtual int init_bucket_index(rgw_bucket& bucket, int num_shards);
+<<<<<<< HEAD
   int select_bucket_placement(RGWUserInfo& user_info, const string& zonegroup_id, const string& rule,
                               const string& tenant_name, const string& bucket_name, rgw_bucket& bucket, string *pselected_rule_name,
                               RGWZonePlacementInfo *rule_info);
@@ -2260,6 +2300,14 @@ public:
                                  RGWZonePlacementInfo *rule_info);
   int set_bucket_location_by_rule(const string& location_rule, const string& tenant_name, const string& bucket_name, rgw_bucket& bucket,
                                   RGWZonePlacementInfo *rule_info);
+=======
+  int select_bucket_placement(RGWUserInfo& user_info, const string& region_name, const std::string& rule,
+                              const std::string& bucket_name, rgw_bucket& bucket, string *pselected_rule);
+  int select_legacy_bucket_placement(const string& bucket_name, rgw_bucket& bucket);
+  int select_new_bucket_location(RGWUserInfo& user_info, const string& region_name, const string& rule,
+                                 const std::string& bucket_name, rgw_bucket& bucket, string *pselected_rule);
+  int set_bucket_location_by_rule(const string& location_rule, const std::string& bucket_name, rgw_bucket& bucket);
+>>>>>>> upstream/hammer
   void create_bucket_id(string *bucket_id);
   virtual int create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
                             const string& zonegroup_id,
@@ -2456,11 +2504,18 @@ public:
         const char *if_match;
         const char *if_nomatch;
         uint64_t olh_epoch;
+<<<<<<< HEAD
         ceph::real_time delete_at;
         bool canceled;
 
         MetaParams() : mtime(NULL), rmattrs(NULL), data(NULL), manifest(NULL), ptag(NULL),
                  remove_objs(NULL), category(RGW_OBJ_CATEGORY_MAIN), flags(0),
+=======
+        bool canceled;
+
+        MetaParams() : mtime(NULL), rmattrs(NULL), data(NULL), manifest(NULL), ptag(NULL),
+                 remove_objs(NULL), set_mtime(0), category(RGW_OBJ_CATEGORY_MAIN), flags(0),
+>>>>>>> upstream/hammer
                  if_match(NULL), if_nomatch(NULL), olh_epoch(0), canceled(false) {}
       } meta;
 
@@ -2514,10 +2569,17 @@ public:
         RGWObjManifest manifest;
         bool has_manifest;
         uint64_t size;
+<<<<<<< HEAD
 	struct timespec mtime;
         map<string, bufferlist> attrs;
 
         Result() : has_manifest(false), size(0) {}
+=======
+        time_t mtime;
+        map<string, bufferlist> attrs;
+
+        Result() : has_manifest(false), size(0), mtime(0) {}
+>>>>>>> upstream/hammer
       } result;
 
       struct State {
@@ -2529,7 +2591,11 @@ public:
       } state;
 
 
+<<<<<<< HEAD
       explicit Stat(RGWRados::Object *_source) : source(_source) {}
+=======
+      Stat(RGWRados::Object *_source) : source(_source) {}
+>>>>>>> upstream/hammer
 
       int stat_async();
       int wait();
@@ -2660,6 +2726,7 @@ public:
   virtual int aio_wait(void *handle);
   virtual bool aio_completed(void *handle);
 
+<<<<<<< HEAD
   int on_last_entry_in_listing(RGWBucketInfo& bucket_info,
                                const std::string& obj_prefix,
                                const std::string& obj_delim,
@@ -2686,6 +2753,8 @@ public:
                               rgw_obj& dest_obj,
                               ceph::real_time *mtime);
 
+=======
+>>>>>>> upstream/hammer
   enum AttrsMod {
     ATTRSMOD_NONE    = 0,
     ATTRSMOD_REPLACE = 1,
@@ -2724,11 +2793,18 @@ public:
                        rgw_obj& src_obj,
                        RGWBucketInfo& dest_bucket_info,
                        RGWBucketInfo& src_bucket_info,
+<<<<<<< HEAD
                        ceph::real_time *src_mtime,
                        ceph::real_time *mtime,
                        const ceph::real_time *mod_ptr,
                        const ceph::real_time *unmod_ptr,
                        bool high_precision_time,
+=======
+                       time_t *src_mtime,
+                       time_t *mtime,
+                       const time_t *mod_ptr,
+                       const time_t *unmod_ptr,
+>>>>>>> upstream/hammer
                        const char *if_match,
                        const char *if_nomatch,
                        AttrsMod attrs_mod,
@@ -2768,11 +2844,18 @@ public:
                rgw_obj& src_obj,
                RGWBucketInfo& dest_bucket_info,
                RGWBucketInfo& src_bucket_info,
+<<<<<<< HEAD
                ceph::real_time *src_mtime,
                ceph::real_time *mtime,
                const ceph::real_time *mod_ptr,
                const ceph::real_time *unmod_ptr,
                bool high_precision_time,
+=======
+               time_t *src_mtime,
+               time_t *mtime,
+               const time_t *mod_ptr,
+               const time_t *unmod_ptr,
+>>>>>>> upstream/hammer
                const char *if_match,
                const char *if_nomatch,
                AttrsMod attrs_mod,
@@ -2812,29 +2895,41 @@ public:
    */
   virtual int delete_bucket(rgw_bucket& bucket, RGWObjVersionTracker& objv_tracker);
 
+<<<<<<< HEAD
   bool is_meta_master();
 
+=======
+>>>>>>> upstream/hammer
   /**
    * Check to see if the bucket metadata is synced
    */
   bool is_syncing_bucket_meta(rgw_bucket& bucket);
+<<<<<<< HEAD
   void wakeup_meta_sync_shards(set<int>& shard_ids);
   void wakeup_data_sync_shards(const string& source_zone, map<int, set<string> >& shard_ids);
 
   RGWMetaSyncStatusManager* get_meta_sync_manager();
   RGWDataSyncStatusManager* get_data_sync_manager(const std::string& source_zone);
 
+=======
+  
+>>>>>>> upstream/hammer
   int set_bucket_owner(rgw_bucket& bucket, ACLOwner& owner);
   int set_buckets_enabled(std::vector<rgw_bucket>& buckets, bool enabled);
   int bucket_suspended(rgw_bucket& bucket, bool *suspended);
 
   /** Delete an object.*/
+<<<<<<< HEAD
   virtual int delete_obj(RGWObjectCtx& obj_ctx,
                          RGWBucketInfo& bucket_owner,
                          const rgw_obj& src_obj,
                          int versioning_status,
                          uint16_t bilog_flags = 0,
                          const ceph::real_time& expiration_time = ceph::real_time());
+=======
+  virtual int delete_obj(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_owner, const rgw_obj& src_obj,
+                         int versioning_status, uint16_t bilog_flags = 0);
+>>>>>>> upstream/hammer
 
   /* Delete a system object */
   virtual int delete_system_obj(rgw_obj& src_obj, RGWObjVersionTracker *objv_tracker = NULL);
@@ -2927,8 +3022,12 @@ public:
   int olh_init_modification_impl(RGWObjState& state, rgw_obj& olh_obj, string *op_tag);
   int bucket_index_link_olh(RGWObjState& olh_state, rgw_obj& obj_instance, bool delete_marker,
                             const string& op_tag, struct rgw_bucket_dir_entry_meta *meta,
+<<<<<<< HEAD
                             uint64_t olh_epoch,
                             ceph::real_time unmod_since, bool high_precision_time);
+=======
+                            uint64_t olh_epoch);
+>>>>>>> upstream/hammer
   int bucket_index_unlink_instance(rgw_obj& obj_instance, const string& op_tag, const string& olh_tag, uint64_t olh_epoch);
   int bucket_index_read_olh_log(RGWObjState& state, rgw_obj& obj_instance, uint64_t ver_marker,
                                 map<uint64_t, vector<rgw_bucket_olh_log_entry> > *log, bool *is_truncated);
@@ -3052,6 +3151,7 @@ public:
   int key_to_shard_id(const string& key, int max_shards);
   void shard_name(const string& prefix, unsigned max_shards, const string& key, string& name, int *shard_id);
   void shard_name(const string& prefix, unsigned max_shards, const string& section, const string& key, string& name);
+<<<<<<< HEAD
   void shard_name(const string& prefix, unsigned shard_id, string& name);
   int get_target_shard_id(const RGWBucketInfo& bucket_info, const string& obj_key, int *shard_id);
   void time_log_prepare_entry(cls_log_entry& entry, const ceph::real_time& ut, const string& section, const string& key, bufferlist& bl);
@@ -3060,6 +3160,13 @@ public:
 		   librados::AioCompletion *completion, bool monotonic_inc = true);
   int time_log_add(const string& oid, const ceph::real_time& ut, const string& section, const string& key, bufferlist& bl);
   int time_log_list(const string& oid, const ceph::real_time& start_time, const ceph::real_time& end_time,
+=======
+  int get_target_shard_id(const RGWBucketInfo& bucket_info, const string& obj_key, int *shard_id);
+  void time_log_prepare_entry(cls_log_entry& entry, const utime_t& ut, const string& section, const string& key, bufferlist& bl);
+  int time_log_add(const string& oid, list<cls_log_entry>& entries);
+  int time_log_add(const string& oid, const utime_t& ut, const string& section, const string& key, bufferlist& bl);
+  int time_log_list(const string& oid, utime_t& start_time, utime_t& end_time,
+>>>>>>> upstream/hammer
                     int max_entries, list<cls_log_entry>& entries,
 		    const string& marker, string *out_marker, bool *truncated);
   int time_log_info(const string& oid, cls_log_header *header);
@@ -3158,7 +3265,11 @@ public:
     char buf[16 + 2 + 1]; /* uint64_t needs 16, 2 hyphens add further 2 */
 
     snprintf(buf, sizeof(buf), "-%llx-", (unsigned long long)instance_id());
+<<<<<<< HEAD
     url_encode(string(buf) + get_zone_params().get_name(), trans_id_suffix);
+=======
+    url_encode(string(buf) + zone.name, trans_id_suffix);
+>>>>>>> upstream/hammer
   }
 
   /* In order to preserve compability with Swift API, transaction ID
@@ -3365,31 +3476,53 @@ protected:
                           const char *if_match, const char *if_nomatch) = 0;
 
 public:
+<<<<<<< HEAD
   RGWPutObjProcessor(RGWObjectCtx& _obj_ctx, RGWBucketInfo& _bi) : store(NULL), 
                                                                    obj_ctx(_obj_ctx), 
                                                                    is_complete(false), 
                                                                    bucket_info(_bi), 
                                                                    canceled(false) {}
+=======
+  RGWPutObjProcessor(RGWObjectCtx& _obj_ctx, RGWBucketInfo& _bi) : store(NULL), obj_ctx(_obj_ctx), is_complete(false), bucket_info(_bi), canceled(false) {}
+>>>>>>> upstream/hammer
   virtual ~RGWPutObjProcessor() {}
   virtual int prepare(RGWRados *_store, string *oid_rand) {
     store = _store;
     return 0;
   }
+<<<<<<< HEAD
 
   int complete(size_t accounted_size, const string& etag,
                ceph::real_time *mtime, ceph::real_time set_mtime,
                map<string, bufferlist>& attrs, ceph::real_time delete_at,
                const char *if_match = NULL, const char *if_nomatch = NULL);
+=======
+  virtual int handle_data(bufferlist& bl, off_t ofs, MD5 *hash, void **phandle, rgw_obj *pobj, bool *again) = 0;
+  virtual int throttle_data(void *handle, const rgw_obj& obj, bool need_to_wait) = 0;
+  virtual void complete_hash(MD5 *hash) {
+    assert(0);
+  }
+  virtual int complete(string& etag, time_t *mtime, time_t set_mtime,
+                       map<string, bufferlist>& attrs,
+                       const char *if_match = NULL, const char *if_nomatch = NULL);
+>>>>>>> upstream/hammer
 
   CephContext *ctx();
 
   bool is_canceled() { return canceled; }
+<<<<<<< HEAD
 }; /* RGWPutObjProcessor */
+=======
+};
+>>>>>>> upstream/hammer
 
 struct put_obj_aio_info {
   void *handle;
   rgw_obj obj;
+<<<<<<< HEAD
   uint64_t size;
+=======
+>>>>>>> upstream/hammer
 };
 
 #define RGW_PUT_OBJ_MIN_WINDOW_SIZE_DEFAULT (16 * 1024 * 1024)
@@ -3419,8 +3552,12 @@ protected:
   int handle_obj_data(rgw_obj& obj, bufferlist& bl, off_t ofs, off_t abs_ofs, void **phandle, bool exclusive);
 
 public:
+<<<<<<< HEAD
   int prepare(RGWRados *store, string *oid_rand);
   int throttle_data(void *handle, const rgw_obj& obj, uint64_t size, bool need_to_wait);
+=======
+  int throttle_data(void *handle, const rgw_obj& obj, bool need_to_wait);
+>>>>>>> upstream/hammer
 
   RGWPutObjProcessor_Aio(RGWObjectCtx& obj_ctx, RGWBucketInfo& bucket_info) : RGWPutObjProcessor(obj_ctx, bucket_info) {}
   virtual ~RGWPutObjProcessor_Aio();
@@ -3454,10 +3591,16 @@ protected:
   RGWObjManifest::generator manifest_gen;
 
   int write_data(bufferlist& bl, off_t ofs, void **phandle, rgw_obj *pobj, bool exclusive);
+<<<<<<< HEAD
   int do_complete(size_t accounted_size, const string& etag,
                   ceph::real_time *mtime, ceph::real_time set_mtime,
                   map<string, bufferlist>& attrs, ceph::real_time delete_at,
                   const char *if_match, const char *if_nomatch) override;
+=======
+  virtual int do_complete(string& etag, time_t *mtime, time_t set_mtime,
+                          map<string, bufferlist>& attrs,
+                          const char *if_match = NULL, const char *if_nomatch = NULL);
+>>>>>>> upstream/hammer
 
   int prepare_next_part(off_t ofs);
   int complete_parts();
@@ -3483,7 +3626,16 @@ public:
                                 unique_tag(_t) {}
   int prepare(RGWRados *store, string *oid_rand);
   virtual bool immutable_head() { return false; }
+<<<<<<< HEAD
   virtual int handle_data(bufferlist& bl, off_t ofs, void **phandle, rgw_obj *pobj, bool *again);
+=======
+  void set_extra_data_len(uint64_t len) {
+    extra_data_len = len;
+  }
+  virtual int handle_data(bufferlist& bl, off_t ofs, MD5 *hash, void **phandle, rgw_obj *pobj, bool *again);
+  virtual void complete_hash(MD5 *hash);
+  bufferlist& get_extra_data() { return extra_data_bl; }
+>>>>>>> upstream/hammer
 
   void set_olh_epoch(uint64_t epoch) {
     olh_epoch = epoch;

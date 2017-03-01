@@ -100,6 +100,7 @@ public:
   struct fuse_args args;
 };
 
+<<<<<<< HEAD
 static int getgroups(fuse_req_t req, gid_t **sgids)
 {
 #if FUSE_VERSION >= FUSE_MAKE_VERSION(2, 8)
@@ -142,6 +143,8 @@ static int getgroups_cb(void *handle, gid_t **sgids)
   } }
 
 
+=======
+>>>>>>> upstream/hammer
 static CephFuse::Handle *fuse_ll_req_prepare(fuse_req_t req)
 {
   CephFuse::Handle *cfuse = (CephFuse::Handle *)fuse_req_userdata(req);
@@ -325,11 +328,16 @@ static void fuse_ll_opendir(fuse_req_t req, fuse_ino_t ino,
   Inode *in = cfuse->iget(ino);
   void *dirp;
 
+<<<<<<< HEAD
   UserPerm perms(ctx->uid, ctx->gid);
   GET_GROUPS(perms, req);
 
   int r = cfuse->client->ll_opendir(in, fi->flags, (dir_result_t **)&dirp,
 				    perms);
+=======
+  int r = cfuse->client->ll_opendir(in, (dir_result_t **)&dirp,
+				    ctx->uid, ctx->gid);
+>>>>>>> upstream/hammer
   if (r >= 0) {
     fi->fh = (uint64_t)dirp;
     fuse_reply_open(req, fi);
@@ -625,10 +633,17 @@ static void fuse_ll_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg, st
       struct ceph_ioctl_layout l;
       Fh *fh = (Fh*)fi->fh;
       cfuse->client->ll_file_layout(fh, &layout);
+<<<<<<< HEAD
       l.stripe_unit = layout.stripe_unit;
       l.stripe_count = layout.stripe_count;
       l.object_size = layout.object_size;
       l.data_pool = layout.pool_id;
+=======
+      l.stripe_unit = layout.fl_stripe_unit;
+      l.stripe_count = layout.fl_stripe_count;
+      l.object_size = layout.fl_object_size;
+      l.data_pool = layout.fl_pg_pool;
+>>>>>>> upstream/hammer
       fuse_reply_ioctl(req, 0, &l, sizeof(struct ceph_ioctl_layout));
     }
     break;
@@ -867,6 +882,7 @@ static void fuse_ll_flock(fuse_req_t req, fuse_ino_t ino,
 }
 #endif
 
+<<<<<<< HEAD
 #if !defined(DARWIN)
 static mode_t umask_cb(void *handle)
 {
@@ -874,8 +890,37 @@ static mode_t umask_cb(void *handle)
   fuse_req_t req = cfuse->get_fuse_req();
   const struct fuse_ctx *ctx = fuse_req_ctx(req);
   return ctx->umask;
-}
+=======
+static int getgroups_cb(void *handle, gid_t **sgids)
+{
+#if FUSE_VERSION >= FUSE_MAKE_VERSION(2, 8)
+  CephFuse::Handle *cfuse = (CephFuse::Handle *)handle;
+  fuse_req_t req = cfuse->get_fuse_req();
+
+  assert(sgids);
+  int c = fuse_req_getgroups(req, 0, NULL);
+  if (c < 0) {
+    return c;
+  }
+  if (c == 0) {
+    return 0;
+  }
+
+  *sgids = (gid_t*)malloc(c*sizeof(**sgids));
+  if (!*sgids) {
+    return -ENOMEM;
+  }
+  c = fuse_req_getgroups(req, c, *sgids);
+  if (c < 0) {
+    free(*sgids);
+    return c;
+  }
+  return c;
+#else
+  return -ENOSYS;
 #endif
+>>>>>>> upstream/hammer
+}
 
 static void ino_invalidate_cb(void *handle, vinodeno_t vino, int64_t off,
 			      int64_t len)
@@ -1128,11 +1173,15 @@ int CephFuse::Handle::start()
     switch_intr_cb: switch_interrupt_cb,
 #if defined(__linux__)
     remount_cb: remount_cb,
+<<<<<<< HEAD
 #endif
     getgroups_cb: getgroups_cb,
 #if !defined(DARWIN)
     umask_cb: umask_cb,
 #endif
+=======
+    getgroups_cb: getgroups_cb,
+>>>>>>> upstream/hammer
   };
   client->ll_register_callbacks(&args);
 
@@ -1213,6 +1262,14 @@ void CephFuse::Handle::set_fuse_req(fuse_req_t req)
   pthread_setspecific(fuse_req_key, (void*)req);
 }
 
+<<<<<<< HEAD
+=======
+void CephFuse::Handle::set_fuse_req(fuse_req_t req)
+{
+  pthread_setspecific(fuse_req_key, (void*)req);
+}
+
+>>>>>>> upstream/hammer
 fuse_req_t CephFuse::Handle::get_fuse_req()
 {
   return (fuse_req_t) pthread_getspecific(fuse_req_key);

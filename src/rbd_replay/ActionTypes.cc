@@ -36,7 +36,11 @@ void decode_big_endian_string(std::string &str, bufferlist::iterator &it) {
 
 class EncodeVisitor : public boost::static_visitor<void> {
 public:
+<<<<<<< HEAD
   explicit EncodeVisitor(bufferlist &bl) : m_bl(bl) {
+=======
+  EncodeVisitor(bufferlist &bl) : m_bl(bl) {
+>>>>>>> upstream/hammer
   }
 
   template <typename Action>
@@ -65,7 +69,11 @@ private:
 
 class DumpVisitor : public boost::static_visitor<void> {
 public:
+<<<<<<< HEAD
   explicit DumpVisitor(Formatter *formatter) : m_formatter(formatter) {}
+=======
+  DumpVisitor(Formatter *formatter) : m_formatter(formatter) {}
+>>>>>>> upstream/hammer
 
   template <typename Action>
   inline void operator()(const Action &action) const {
@@ -218,6 +226,7 @@ void OpenImageAction::dump(Formatter *f) const {
   f->dump_bool("read_only", read_only);
 }
 
+<<<<<<< HEAD
 void AioOpenImageAction::encode(bufferlist &bl) const {
   ImageActionBase::encode(bl);
   ::encode(name, bl);
@@ -244,6 +253,8 @@ void AioOpenImageAction::dump(Formatter *f) const {
   f->dump_bool("read_only", read_only);
 }
 
+=======
+>>>>>>> upstream/hammer
 void UnknownAction::encode(bufferlist &bl) const {
   assert(false);
 }
@@ -288,30 +299,39 @@ void ActionEntry::decode(__u8 version, bufferlist::iterator &it) {
   case ACTION_TYPE_WRITE:
     action = WriteAction();
     break;
+<<<<<<< HEAD
   case ACTION_TYPE_DISCARD:
     action = DiscardAction();
     break;
+=======
+>>>>>>> upstream/hammer
   case ACTION_TYPE_AIO_READ:
     action = AioReadAction();
     break;
   case ACTION_TYPE_AIO_WRITE:
     action = AioWriteAction();
     break;
+<<<<<<< HEAD
   case ACTION_TYPE_AIO_DISCARD:
     action = AioDiscardAction();
     break;
+=======
+>>>>>>> upstream/hammer
   case ACTION_TYPE_OPEN_IMAGE:
     action = OpenImageAction();
     break;
   case ACTION_TYPE_CLOSE_IMAGE:
     action = CloseImageAction();
     break;
+<<<<<<< HEAD
   case ACTION_TYPE_AIO_OPEN_IMAGE:
     action = AioOpenImageAction();
     break;
   case ACTION_TYPE_AIO_CLOSE_IMAGE:
     action = AioCloseImageAction();
     break;
+=======
+>>>>>>> upstream/hammer
   }
 
   boost::apply_visitor(DecodeVisitor(version, it), action);
@@ -336,18 +356,24 @@ void ActionEntry::generate_test_instances(std::list<ActionEntry *> &o) {
   o.push_back(new ActionEntry(WriteAction()));
   o.push_back(new ActionEntry(WriteAction(1, 123456789, dependencies, 3, 4,
                                           5)));
+<<<<<<< HEAD
   o.push_back(new ActionEntry(DiscardAction()));
   o.push_back(new ActionEntry(DiscardAction(1, 123456789, dependencies, 3, 4,
                                             5)));
+=======
+>>>>>>> upstream/hammer
   o.push_back(new ActionEntry(AioReadAction()));
   o.push_back(new ActionEntry(AioReadAction(1, 123456789, dependencies, 3, 4,
                                             5)));
   o.push_back(new ActionEntry(AioWriteAction()));
   o.push_back(new ActionEntry(AioWriteAction(1, 123456789, dependencies, 3, 4,
                                              5)));
+<<<<<<< HEAD
   o.push_back(new ActionEntry(AioDiscardAction()));
   o.push_back(new ActionEntry(AioDiscardAction(1, 123456789, dependencies, 3, 4,
                                                5)));
+=======
+>>>>>>> upstream/hammer
 
   o.push_back(new ActionEntry(OpenImageAction()));
   o.push_back(new ActionEntry(OpenImageAction(1, 123456789, dependencies, 3,
@@ -355,6 +381,7 @@ void ActionEntry::generate_test_instances(std::list<ActionEntry *> &o) {
                                               true)));
   o.push_back(new ActionEntry(CloseImageAction()));
   o.push_back(new ActionEntry(CloseImageAction(1, 123456789, dependencies, 3)));
+<<<<<<< HEAD
 
   o.push_back(new ActionEntry(AioOpenImageAction()));
   o.push_back(new ActionEntry(AioOpenImageAction(1, 123456789, dependencies, 3,
@@ -362,6 +389,8 @@ void ActionEntry::generate_test_instances(std::list<ActionEntry *> &o) {
                                               true)));
   o.push_back(new ActionEntry(AioCloseImageAction()));
   o.push_back(new ActionEntry(AioCloseImageAction(1, 123456789, dependencies, 3)));
+=======
+>>>>>>> upstream/hammer
 }
 
 } // namespace action
@@ -384,30 +413,39 @@ std::ostream &operator<<(std::ostream &out,
   case ACTION_TYPE_WRITE:
     out << "Write";
     break;
+<<<<<<< HEAD
   case ACTION_TYPE_DISCARD:
     out << "Discard";
     break;
+=======
+>>>>>>> upstream/hammer
   case ACTION_TYPE_AIO_READ:
     out << "AioRead";
     break;
   case ACTION_TYPE_AIO_WRITE:
     out << "AioWrite";
     break;
+<<<<<<< HEAD
   case ACTION_TYPE_AIO_DISCARD:
     out << "AioDiscard";
     break;
+=======
+>>>>>>> upstream/hammer
   case ACTION_TYPE_OPEN_IMAGE:
     out << "OpenImage";
     break;
   case ACTION_TYPE_CLOSE_IMAGE:
     out << "CloseImage";
     break;
+<<<<<<< HEAD
   case ACTION_TYPE_AIO_OPEN_IMAGE:
     out << "AioOpenImage";
     break;
   case ACTION_TYPE_AIO_CLOSE_IMAGE:
     out << "AioCloseImage";
     break;
+=======
+>>>>>>> upstream/hammer
   default:
     out << "Unknown (" << static_cast<uint32_t>(type) << ")";
     break;

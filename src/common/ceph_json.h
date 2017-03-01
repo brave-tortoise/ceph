@@ -240,7 +240,11 @@ void decode_json_obj(multimap<K, V>& m, JSONObj *obj)
     JSONObj *o = *iter;
     JSONDecoder::decode_json("key", key, o);
     JSONDecoder::decode_json("val", val, o);
+<<<<<<< HEAD
     m.insert(make_pair(key, val));
+=======
+    m.insert(make_pair<K, V>(key, val));
+>>>>>>> upstream/hammer
   }
 }
 
@@ -356,6 +360,22 @@ static void encode_json(const char *name, const std::list<T>& l, ceph::Formatter
   }
   f->close_section();
 }
+<<<<<<< HEAD
+=======
+
+template<class K, class V>
+static void encode_json(const char *name, const std::multimap<K, V>& m, ceph::Formatter *f)
+{
+  f->open_array_section(name);
+  for (typename std::multimap<K, V>::const_iterator i = m.begin(); i != m.end(); ++i) {
+    f->open_object_section("entry");
+    encode_json("key", i->first, f);
+    encode_json("val", i->second, f);
+    f->close_section();
+  }
+  f->close_section();
+}
+>>>>>>> upstream/hammer
 template<class T>
 static void encode_json(const char *name, const std::deque<T>& l, ceph::Formatter *f)
 {

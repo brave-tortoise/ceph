@@ -135,6 +135,7 @@ public:
     hobject_t ret;
     ret.set_hash(hash);
     ret.pool = pool;
+<<<<<<< HEAD
     return ret;
   }
 
@@ -143,6 +144,8 @@ public:
       return *this;
     hobject_t ret = *this;
     ret.snap = 0;
+=======
+>>>>>>> upstream/hammer
     return ret;
   }
 

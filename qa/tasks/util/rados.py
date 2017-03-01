@@ -25,26 +25,25 @@ def rados(ctx, remote, cmd, wait=True, check_status=False):
         return proc
 
 def create_ec_pool(remote, name, profile_name, pgnum, profile={}):
-    remote.run(args=['sudo', 'ceph'] +
-               cmd_erasure_code_profile(profile_name, profile))
+    remote.run(args=['ceph'] + cmd_erasure_code_profile(profile_name, profile))
     remote.run(args=[
-        'sudo', 'ceph', 'osd', 'pool', 'create', name,
+        'ceph', 'osd', 'pool', 'create', name,
         str(pgnum), str(pgnum), 'erasure', profile_name,
         ])
 
 def create_replicated_pool(remote, name, pgnum):
     remote.run(args=[
-        'sudo', 'ceph', 'osd', 'pool', 'create', name, str(pgnum), str(pgnum),
+        'ceph', 'osd', 'pool', 'create', name, str(pgnum), str(pgnum),
         ])
 
 def create_cache_pool(remote, base_name, cache_name, pgnum, size):
     remote.run(args=[
-        'sudo', 'ceph', 'osd', 'pool', 'create', cache_name, str(pgnum)
-    ])
+            'ceph', 'osd', 'pool', 'create', cache_name, str(pgnum)
+            ])
     remote.run(args=[
-        'sudo', 'ceph', 'osd', 'tier', 'add-cache', base_name, cache_name,
-        str(size),
-    ])
+            'ceph', 'osd', 'tier', 'add-cache', base_name, cache_name,
+            str(size),
+            ])
 
 def cmd_erasure_code_profile(profile_name, profile):
     """

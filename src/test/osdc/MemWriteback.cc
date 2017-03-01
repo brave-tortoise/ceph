@@ -3,27 +3,58 @@
 
 #include <errno.h>
 #include <time.h>
+<<<<<<< HEAD
 
 #include <thread>
+=======
+#include <stdio.h>
+
+>>>>>>> upstream/hammer
 #include "common/debug.h"
 #include "common/Cond.h"
 #include "common/Finisher.h"
 #include "common/Mutex.h"
 #include "include/assert.h"
+<<<<<<< HEAD
 #include "common/ceph_time.h"
 
 #include "MemWriteback.h"
 
 #define dout_context g_ceph_context
+=======
+
+#include "MemWriteback.h"
+
+>>>>>>> upstream/hammer
 #define dout_subsys ceph_subsys_objectcacher
 #undef dout_prefix
 #define dout_prefix *_dout << "MemWriteback(" << this << ") "
 
+<<<<<<< HEAD
+=======
+static void sleep_ns(uint64_t delay_ns) {
+  struct timespec ts, remaining;
+  ts.tv_sec = delay_ns/1000000000ULL;
+  ts.tv_nsec = delay_ns%1000000000ULL;
+  while (nanosleep(&ts, &remaining) != 0) {
+    if (errno != EINTR) {
+      perror("nanosleep");
+      assert(NULL == "nanosleep failed");
+    }
+    memcpy(&ts, &remaining, sizeof(ts));
+  }
+}
+
+>>>>>>> upstream/hammer
 class C_DelayRead : public Context {
   MemWriteback *wb;
   CephContext *m_cct;
   Context *m_con;
+<<<<<<< HEAD
   ceph::timespan m_delay;
+=======
+  uint64_t m_delay;
+>>>>>>> upstream/hammer
   Mutex *m_lock;
   object_t m_oid;
   uint64_t m_off;
@@ -34,11 +65,18 @@ public:
   C_DelayRead(MemWriteback *mwb, CephContext *cct, Context *c, Mutex *lock,
 	      const object_t& oid, uint64_t off, uint64_t len, bufferlist *pbl,
 	      uint64_t delay_ns=0)
+<<<<<<< HEAD
     : wb(mwb), m_cct(cct), m_con(c),
       m_delay(delay_ns * std::chrono::nanoseconds(1)),
       m_lock(lock), m_oid(oid), m_off(off), m_len(len), m_bl(pbl) {}
   void finish(int r) override {
     std::this_thread::sleep_for(m_delay);
+=======
+    : wb(mwb), m_cct(cct), m_con(c), m_delay(delay_ns),
+      m_lock(lock), m_oid(oid), m_off(off), m_len(len), m_bl(pbl) { }
+  void finish(int r) {
+    sleep_ns(m_delay);
+>>>>>>> upstream/hammer
     m_lock->Lock();
     r = wb->read_object_data(m_oid, m_off, m_len, m_bl);
     if (m_con)
@@ -51,7 +89,11 @@ class C_DelayWrite : public Context {
   MemWriteback *wb;
   CephContext *m_cct;
   Context *m_con;
+<<<<<<< HEAD
   ceph::timespan m_delay;
+=======
+  uint64_t m_delay;
+>>>>>>> upstream/hammer
   Mutex *m_lock;
   object_t m_oid;
   uint64_t m_off;
@@ -63,10 +105,17 @@ public:
 	       const object_t& oid, uint64_t off, uint64_t len,
 	       const bufferlist& bl, uint64_t delay_ns=0)
     : wb(mwb), m_cct(cct), m_con(c),
+<<<<<<< HEAD
       m_delay(delay_ns * std::chrono::nanoseconds(1)),
       m_lock(lock), m_oid(oid), m_off(off), m_len(len), m_bl(bl) {}
   void finish(int r) override {
     std::this_thread::sleep_for(m_delay);
+=======
+      m_delay(delay_ns),
+      m_lock(lock), m_oid(oid), m_off(off), m_len(len), m_bl(bl) {}
+  void finish(int r) {
+    sleep_ns(m_delay);
+>>>>>>> upstream/hammer
     m_lock->Lock();
     wb->write_object_data(m_oid, m_off, m_len, m_bl);
     if (m_con)
@@ -104,9 +153,15 @@ ceph_tid_t MemWriteback::write(const object_t& oid,
 				const object_locator_t& oloc,
 				uint64_t off, uint64_t len,
 				const SnapContext& snapc,
+<<<<<<< HEAD
 				const bufferlist &bl, ceph::real_time mtime,
 				uint64_t trunc_size, __u32 trunc_seq,
 				ceph_tid_t journal_tid, Context *oncommit)
+=======
+				const bufferlist &bl, utime_t mtime,
+				uint64_t trunc_size, __u32 trunc_seq,
+				Context *oncommit)
+>>>>>>> upstream/hammer
 {
   assert(snapc.seq == 0);
   C_DelayWrite *wrapper = new C_DelayWrite(this, m_cct, oncommit, m_lock, oid,
@@ -143,7 +198,11 @@ int MemWriteback::read_object_data(const object_t& oid, uint64_t off, uint64_t l
 				   bufferlist *data_bl)
 {
   dout(1) << "reading " << oid << " " << off << "~" << len << dendl;
+<<<<<<< HEAD
   auto obj_i = object_data.find(oid);
+=======
+  std::map<object_t, bufferlist>::iterator obj_i = object_data.find(oid);
+>>>>>>> upstream/hammer
   if (obj_i == object_data.end()) {
     dout(1) << oid << "DNE!" << dendl;
     return -ENOENT;

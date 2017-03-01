@@ -105,7 +105,10 @@ int TestIoCtxImpl::aio_operate(const std::string& oid, TestObjectOperationImpl &
                                int flags) {
   // TODO flags for now
   ops.get();
+<<<<<<< HEAD
   m_pending_ops.inc();
+=======
+>>>>>>> upstream/hammer
   m_client->add_aio_operation(oid, true, boost::bind(
     &TestIoCtxImpl::execute_aio_operations, this, oid, &ops,
     reinterpret_cast<bufferlist*>(0),
@@ -119,9 +122,14 @@ int TestIoCtxImpl::aio_operate_read(const std::string& oid,
                                     bufferlist *pbl) {
   // TODO ignoring flags for now
   ops.get();
+<<<<<<< HEAD
   m_pending_ops.inc();
   m_client->add_aio_operation(oid, true, boost::bind(
     &TestIoCtxImpl::execute_aio_operations, this, oid, &ops, pbl, m_snapc), c);
+=======
+  m_client->add_aio_operation(oid, true, boost::bind(
+    &TestIoCtxImpl::execute_aio_operations, this, oid, &ops, pbl), c);
+>>>>>>> upstream/hammer
   return 0;
 }
 
@@ -176,10 +184,16 @@ int TestIoCtxImpl::operate(const std::string& oid, TestObjectOperationImpl &ops)
   AioCompletionImpl *comp = new AioCompletionImpl();
 
   ops.get();
+<<<<<<< HEAD
   m_pending_ops.inc();
   m_client->add_aio_operation(oid, false, boost::bind(
     &TestIoCtxImpl::execute_aio_operations, this, oid, &ops,
     reinterpret_cast<bufferlist*>(0), m_snapc), comp);
+=======
+  m_client->add_aio_operation(oid, false, boost::bind(
+    &TestIoCtxImpl::execute_aio_operations, this, oid, &ops,
+    reinterpret_cast<bufferlist*>(NULL)), comp);
+>>>>>>> upstream/hammer
 
   comp->wait_for_safe();
   int ret = comp->get_return_value();
@@ -192,10 +206,15 @@ int TestIoCtxImpl::operate_read(const std::string& oid, TestObjectOperationImpl 
   AioCompletionImpl *comp = new AioCompletionImpl();
 
   ops.get();
+<<<<<<< HEAD
   m_pending_ops.inc();
   m_client->add_aio_operation(oid, false, boost::bind(
     &TestIoCtxImpl::execute_aio_operations, this, oid, &ops, pbl,
     m_snapc), comp);
+=======
+  m_client->add_aio_operation(oid, false, boost::bind(
+    &TestIoCtxImpl::execute_aio_operations, this, oid, &ops, pbl), comp);
+>>>>>>> upstream/hammer
 
   comp->wait_for_complete();
   int ret = comp->get_return_value();
@@ -298,12 +317,15 @@ int TestIoCtxImpl::watch(const std::string& o, uint64_t *handle,
                          librados::WatchCtx *ctx, librados::WatchCtx2 *ctx2) {
   return m_client->get_watch_notify().watch(o, get_instance_id(), handle, ctx,
                                             ctx2);
+<<<<<<< HEAD
 }
 
 int TestIoCtxImpl::execute_operation(const std::string& oid,
                                      const Operation &operation) {
   TestRadosClient::Transaction transaction(m_client, oid);
   return operation(this, oid);
+=======
+>>>>>>> upstream/hammer
 }
 
 int TestIoCtxImpl::execute_aio_operations(const std::string& oid,

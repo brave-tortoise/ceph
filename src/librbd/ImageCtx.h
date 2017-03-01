@@ -213,6 +213,9 @@ namespace librbd {
       delete this;
     }
 
+    ContextWQ *aio_work_queue;
+    ContextWQ *op_work_queue;
+
     /**
      * Either image_name or image_id must be set.
      * If id is not known, pass the empty std::string,
@@ -276,6 +279,7 @@ namespace librbd {
 			     size_t len, uint64_t off, Context *onfinish,
 			     int fadvise_flags);
     void write_to_cache(object_t o, const bufferlist& bl, size_t len,
+<<<<<<< HEAD
 			uint64_t off, Context *onfinish, int fadvise_flags,
                         uint64_t journal_tid);
     void user_flushed();
@@ -283,6 +287,15 @@ namespace librbd {
     void shut_down_cache(Context *on_finish);
     int invalidate_cache(bool purge_on_error);
     void invalidate_cache(bool purge_on_error, Context *on_finish);
+=======
+			uint64_t off, Context *onfinish, int fadvise_flags);
+    void user_flushed();
+    int flush_cache();
+    void flush_cache(Context *onfinish);
+    int shutdown_cache();
+    int invalidate_cache(bool purge_on_error=false);
+    void invalidate_cache(Context *on_finish);
+>>>>>>> upstream/hammer
     void clear_nonexistence_cache();
     bool is_cache_empty();
     void register_watch(Context *on_finish);

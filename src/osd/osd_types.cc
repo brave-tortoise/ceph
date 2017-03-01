@@ -1189,10 +1189,13 @@ void pg_pool_t::dump(Formatter *f) const
   f->close_section();
   f->dump_unsigned("stripe_width", get_stripe_width());
   f->dump_unsigned("expected_num_objects", expected_num_objects);
+<<<<<<< HEAD
   f->dump_bool("fast_read", fast_read);
   f->open_object_section("options");
   opts.dump(f);
   f->close_section(); // options
+=======
+>>>>>>> upstream/hammer
 }
 
 void pg_pool_t::convert_to_pg_shards(const vector<int> &from, set<pg_shard_t>* to) const {
@@ -1203,6 +1206,18 @@ void pg_pool_t::convert_to_pg_shards(const vector<int> &from, set<pg_shard_t>* t
           from[i],
           ec_pool() ? shard_id_t(i) : shard_id_t::NO_SHARD));
     }
+<<<<<<< HEAD
+=======
+  }
+}
+
+int pg_pool_t::calc_bits_of(int t)
+{
+  int b = 0;
+  while (t > 0) {
+    t = t >> 1;
+    ++b;
+>>>>>>> upstream/hammer
   }
 }
 
@@ -1492,6 +1507,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
+<<<<<<< HEAD
   uint8_t v = 25;
   if (!(features & CEPH_FEATURE_NEW_OSDOP_ENCODING)) {
     // this was the first post-hammer thing we added; if it's missing, encode
@@ -1505,6 +1521,62 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   }
 
   ENCODE_START(v, 5, bl);
+=======
+  if ((features & CEPH_FEATURE_OSD_HITSET_GMT) == 0) {
+    // CEPH_FEATURE_OSD_HITSET_GMT requires pg_pool_t v21 which has
+    // use_gmt_hitset, and two fields added before v21. it's backward
+    // compatible, but re-encoding the same osdmap with different ceph
+    // versions causes CRC mismatch at the OSD side, the tracker#12410
+    // prevents the monitor from sending the single full map requested
+    // by OSD. so we need a way to encode pg_pool_t the same old way.
+    ENCODE_START(17, 5, bl);
+    ::encode(type, bl);
+    ::encode(size, bl);
+    ::encode(crush_ruleset, bl);
+    ::encode(object_hash, bl);
+    ::encode(pg_num, bl);
+    ::encode(pgp_num, bl);
+    __u32 lpg_num = 0, lpgp_num = 0;  // tell old code that there are no localized pgs.
+    ::encode(lpg_num, bl);
+    ::encode(lpgp_num, bl);
+    ::encode(last_change, bl);
+    ::encode(snap_seq, bl);
+    ::encode(snap_epoch, bl);
+    ::encode(snaps, bl, features);
+    ::encode(removed_snaps, bl);
+    ::encode(auid, bl);
+    ::encode(flags, bl);
+    ::encode(crash_replay_interval, bl);
+    ::encode(min_size, bl);
+    ::encode(quota_max_bytes, bl);
+    ::encode(quota_max_objects, bl);
+    ::encode(tiers, bl);
+    ::encode(tier_of, bl);
+    __u8 c = cache_mode;
+    ::encode(c, bl);
+    ::encode(read_tier, bl);
+    ::encode(write_tier, bl);
+    ::encode(properties, bl);
+    ::encode(hit_set_params, bl);
+    ::encode(hit_set_period, bl);
+    ::encode(hit_set_count, bl);
+    ::encode(stripe_width, bl);
+    ::encode(target_max_bytes, bl);
+    ::encode(target_max_objects, bl);
+    ::encode(cache_target_dirty_ratio_micro, bl);
+    ::encode(cache_target_full_ratio_micro, bl);
+    ::encode(cache_min_flush_age, bl);
+    ::encode(cache_min_evict_age, bl);
+    ::encode(erasure_code_profile, bl);
+    ::encode(last_force_op_resend, bl);
+    ::encode(min_read_recency_for_promote, bl);
+    ::encode(expected_num_objects, bl);
+    ENCODE_FINISH(bl);
+    return;
+  }
+
+  ENCODE_START(21, 5, bl);
+>>>>>>> upstream/hammer
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1546,6 +1618,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(last_force_op_resend_preluminous, bl);
   ::encode(min_read_recency_for_promote, bl);
   ::encode(expected_num_objects, bl);
+<<<<<<< HEAD
   if (v >= 19) {
     ::encode(cache_target_dirty_high_ratio_micro, bl);
   }
@@ -1568,12 +1641,21 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   if (v >= 25) {
     ::encode(last_force_op_resend, bl);
   }
+=======
+  ::encode(uint32_t(.6 * 1e6), bl);
+  ::encode(uint32_t(1), bl);
+  ::encode(use_gmt_hitset, bl);
+>>>>>>> upstream/hammer
   ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
+<<<<<<< HEAD
   DECODE_START_LEGACY_COMPAT_LEN(24, 5, 5, bl);
+=======
+  DECODE_START_LEGACY_COMPAT_LEN(21, 5, 5, bl);
+>>>>>>> upstream/hammer
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1686,6 +1768,7 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
     expected_num_objects = 0;
   }
   if (struct_v >= 19) {
+<<<<<<< HEAD
     ::decode(cache_target_dirty_high_ratio_micro, bl);
   } else {
     cache_target_dirty_high_ratio_micro = cache_target_dirty_ratio_micro;
@@ -1694,12 +1777,21 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
     ::decode(min_write_recency_for_promote, bl);
   } else {
     min_write_recency_for_promote = 1;
+=======
+    uint32_t dummy;	    
+    ::decode(dummy, bl);
+  }
+  if (struct_v >= 20) {
+    uint32_t dummy;
+    ::decode(dummy, bl);
+>>>>>>> upstream/hammer
   }
   if (struct_v >= 21) {
     ::decode(use_gmt_hitset, bl);
   } else {
     use_gmt_hitset = false;
   }
+<<<<<<< HEAD
   if (struct_v >= 22) {
     ::decode(fast_read, bl);
   } else {
@@ -1720,6 +1812,8 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   } else {
     last_force_op_resend = last_force_op_resend_preluminous;
   }
+=======
+>>>>>>> upstream/hammer
   DECODE_FINISH(bl);
   calc_pg_masks();
   calc_grade_table();
@@ -3071,8 +3165,12 @@ bool pg_interval_t::is_new_interval(
     new_up != old_up ||
     old_min_size != new_min_size ||
     old_size != new_size ||
+<<<<<<< HEAD
     pgid.is_split(old_pg_num, new_pg_num, 0) ||
     old_sort_bitwise != new_sort_bitwise;
+=======
+    pgid.is_split(old_pg_num, new_pg_num, 0);
+>>>>>>> upstream/hammer
 }
 
 bool pg_interval_t::is_new_interval(
@@ -3197,7 +3295,10 @@ bool pg_interval_t::check_new_interval(
       if (*p != CRUSH_ITEM_NONE)
 	++num_acting;
 
+<<<<<<< HEAD
     assert(lastmap->get_pools().count(pgid.pool()));
+=======
+>>>>>>> upstream/hammer
     const pg_pool_t& old_pg_pool = lastmap->get_pools().find(pgid.pool())->second;
     set<pg_shard_t> old_acting_shards;
     old_pg_pool.convert_to_pg_shards(old_acting, &old_acting_shards);
@@ -3929,6 +4030,31 @@ void object_copy_cursor_t::generate_test_instances(list<object_copy_cursor_t*>& 
 
 void object_copy_data_t::encode(bufferlist& bl, uint64_t features) const
 {
+<<<<<<< HEAD
+=======
+  if ((features & CEPH_FEATURE_OSD_OBJECT_DIGEST) == 0) {
+    ENCODE_START(4, 1, bl);
+    ::encode(size, bl);
+    ::encode(mtime, bl);
+    ::encode((__u32)0, bl);  // was category; no longer used
+    ::encode(attrs, bl);
+    ::encode(data, bl);
+    if (omap_data.length())
+      bl.append(omap_data);
+    else
+      ::encode((__u32)0, bl);
+    ::encode(cursor, bl);
+    ::encode(omap_header, bl);
+    ::encode(snaps, bl);
+    ::encode(snap_seq, bl);
+    ::encode(flags, bl);
+    ::encode(data_digest, bl);
+    ::encode(omap_digest, bl);
+    ENCODE_FINISH(bl);
+    return;
+  }
+
+>>>>>>> upstream/hammer
   ENCODE_START(7, 5, bl);
   ::encode(size, bl);
   ::encode(mtime, bl);
@@ -4566,7 +4692,20 @@ void object_info_t::encode(bufferlist& bl, uint64_t features) const
        ++i) {
     old_watchers.insert(make_pair(i->first.second, i->second));
   }
+<<<<<<< HEAD
   ENCODE_START(16, 8, bl);
+=======
+
+  // kludge to reduce xattr size for most rbd objects
+  int ev = 15;
+  if (!(flags & FLAG_OMAP_DIGEST) &&
+      !(flags & FLAG_DATA_DIGEST) &&
+      local_mtime == utime_t()) {
+    ev = 13;
+  }
+
+  ENCODE_START(ev, 8, bl);
+>>>>>>> upstream/hammer
   ::encode(soid, bl);
   ::encode(myoloc, bl);	//Retained for compatibility
   ::encode((__u32)0, bl); // was category, no longer used
@@ -4591,19 +4730,33 @@ void object_info_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(watchers, bl, features);
   __u32 _flags = flags;
   ::encode(_flags, bl);
+<<<<<<< HEAD
   ::encode(local_mtime, bl);
   ::encode(data_digest, bl);
   ::encode(omap_digest, bl);
   ::encode(expected_object_size, bl);
   ::encode(expected_write_size, bl);
   ::encode(alloc_hint_flags, bl);
+=======
+  if (ev >= 14) {
+    ::encode(local_mtime, bl);
+  }
+  if (ev >= 15) {
+    ::encode(data_digest, bl);
+    ::encode(omap_digest, bl);
+  }
+>>>>>>> upstream/hammer
   ENCODE_FINISH(bl);
 }
 
 void object_info_t::decode(bufferlist::iterator& bl)
 {
   object_locator_t myoloc;
+<<<<<<< HEAD
   DECODE_START_LEGACY_COMPAT_LEN(16, 8, 8, bl);
+=======
+  DECODE_START_LEGACY_COMPAT_LEN(15, 8, 8, bl);
+>>>>>>> upstream/hammer
   map<entity_name_t, watch_info_t> old_watchers;
   ::decode(soid, bl);
   ::decode(myoloc, bl);

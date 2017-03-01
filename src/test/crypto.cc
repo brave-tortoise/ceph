@@ -8,6 +8,11 @@
 #include "common/ceph_crypto.h"
 #include "common/ceph_context.h"
 #include "global/global_context.h"
+<<<<<<< HEAD
+=======
+
+#include "test/unit.h"
+>>>>>>> upstream/hammer
 
 class CryptoEnvironment: public ::testing::Environment {
 public:
@@ -166,14 +171,22 @@ TEST(AES, Loop) {
 TEST(AES, LoopKey) {
   bufferptr k(16);
   get_random_bytes(k.c_str(), k.length());
+<<<<<<< HEAD
   CryptoKey key(CEPH_CRYPTO_AES, ceph_clock_now(), k);
+=======
+  CryptoKey key(CEPH_CRYPTO_AES, ceph_clock_now(NULL), k);
+>>>>>>> upstream/hammer
 
   bufferlist data;
   bufferptr r(128);
   get_random_bytes(r.c_str(), r.length());
   data.append(r);
 
+<<<<<<< HEAD
   utime_t start = ceph_clock_now();
+=======
+  utime_t start = ceph_clock_now(NULL);
+>>>>>>> upstream/hammer
   int n = 100000;
 
   for (int i=0; i<n; ++i) {
@@ -183,7 +196,11 @@ TEST(AES, LoopKey) {
     ASSERT_EQ(r, 0);
   }
 
+<<<<<<< HEAD
   utime_t end = ceph_clock_now();
+=======
+  utime_t end = ceph_clock_now(NULL);
+>>>>>>> upstream/hammer
   utime_t dur = end - start;
   cout << n << " encoded in " << dur << std::endl;
 }

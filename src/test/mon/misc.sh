@@ -42,6 +42,7 @@ function TEST_osd_pool_get_set() {
     run_mon $dir a || return 1
 
     local flag
+<<<<<<< HEAD
     for flag in nodelete nopgchange nosizechange write_fadvise_dontneed noscrub nodeep-scrub; do
 	ceph osd pool set $TEST_POOL $flag 0 || return 1
 	! ceph osd dump | grep 'pool ' | grep $flag || return 1
@@ -50,6 +51,21 @@ function TEST_osd_pool_get_set() {
 	ceph osd pool set $TEST_POOL $flag false || return 1
 	! ceph osd dump | grep 'pool ' | grep $flag || return 1
 	ceph osd pool set $TEST_POOL $flag false || return 1
+=======
+    for flag in hashpspool nodelete nopgchange nosizechange; do
+        if [ $flag = hashpspool ]; then
+	    ./ceph osd dump | grep 'pool 0' | grep $flag || return 1
+        else
+	    ! ./ceph osd dump | grep 'pool 0' | grep $flag || return 1
+        fi
+	./ceph osd pool set $TEST_POOL $flag 0 || return 1
+	! ./ceph osd dump | grep 'pool 0' | grep $flag || return 1
+	./ceph osd pool set $TEST_POOL $flag 1 || return 1
+	./ceph osd dump | grep 'pool 0' | grep $flag || return 1
+	./ceph osd pool set $TEST_POOL $flag false || return 1
+	! ./ceph osd dump | grep 'pool 0' | grep $flag || return 1
+	./ceph osd pool set $TEST_POOL $flag false || return 1
+>>>>>>> upstream/hammer
         # check that setting false twice does not toggle to true (bug)
 	! ceph osd dump | grep 'pool ' | grep $flag || return 1
 	ceph osd pool set $TEST_POOL $flag true || return 1
@@ -129,6 +145,13 @@ function TEST_mon_add_to_single_mon() {
     teardown $dir || return 1
 }
 
+<<<<<<< HEAD
+=======
+    teardown $dir || return 1
+
+}
+
+>>>>>>> upstream/hammer
 function TEST_no_segfault_for_bad_keyring() {
     local dir=$1
     setup $dir || return 1

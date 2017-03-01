@@ -247,7 +247,11 @@ TEST_F(LibRadosIoPP, SparseReadOpPP) {
     int rval = -1;
     ObjectReadOperation op;
     op.sparse_read(0, sizeof(buf), &extents, &read_bl, &rval);
+<<<<<<< HEAD
     ASSERT_EQ(0, ioctx.operate("foo", &op, nullptr));
+=======
+    ASSERT_EQ(0, ioctx.operate("foo", &op, NULL));
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, rval);
     assert_eq_sparse(bl, extents, read_bl);
   }
@@ -773,7 +777,11 @@ TEST_F(LibRadosIoECPP, SparseReadOpPP) {
     int rval = -1;
     ObjectReadOperation op;
     op.sparse_read(0, sizeof(buf), &extents, &read_bl, &rval);
+<<<<<<< HEAD
     ASSERT_EQ(0, ioctx.operate("foo", &op, nullptr));
+=======
+    ASSERT_EQ(0, ioctx.operate("foo", &op, NULL));
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, rval);
     assert_eq_sparse(bl, extents, read_bl);
   }

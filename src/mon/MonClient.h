@@ -196,7 +196,11 @@ private:
 
   list<Message*> waiting_for_session;
   utime_t last_rotating_renew_sent;
+<<<<<<< HEAD
   std::unique_ptr<Context> session_established_context;
+=======
+  Context *session_established_context;
+>>>>>>> upstream/hammer
   bool had_a_connection;
   double reopen_interval_multiplier;
 

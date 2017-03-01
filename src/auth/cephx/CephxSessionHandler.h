@@ -34,8 +34,13 @@ public:
 
   int _calc_signature(Message *m, uint64_t *psig);
 
+<<<<<<< HEAD
   int sign_message(Message *m) override;
   int check_message_signature(Message *m) override ;
+=======
+  int sign_message(Message *m);
+  int check_message_signature(Message *m) ;
+>>>>>>> upstream/hammer
 
   // Cephx does not currently encrypt messages, so just return 0 if called.  PLR
 

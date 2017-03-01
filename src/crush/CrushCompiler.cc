@@ -770,6 +770,9 @@ int CrushCompiler::parse_crush(iter_t const& i)
     if (r < 0) {
       return r;
     }
+    if (r < 0) {
+      return r;
+    }
   }
 
   //err << "max_devices " << crush.get_max_devices() << std::endl;

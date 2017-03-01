@@ -48,7 +48,10 @@ enum TestOpType {
   TEST_OP_READ,
   TEST_OP_WRITE,
   TEST_OP_WRITE_EXCL,
+<<<<<<< HEAD
   TEST_OP_WRITESAME,
+=======
+>>>>>>> upstream/hammer
   TEST_OP_DELETE,
   TEST_OP_SNAP_CREATE,
   TEST_OP_SNAP_REMOVE,
@@ -736,8 +739,12 @@ public:
 	  bool do_excl,
 	  TestOpStat *stat = 0)
     : TestOp(n, context, stat),
+<<<<<<< HEAD
       oid(oid), rcompletion(NULL), waiting_on(0), 
       last_acked_tid(0), do_append(do_append),
+=======
+      oid(oid), waiting_on(0), last_acked_tid(0), do_append(do_append),
+>>>>>>> upstream/hammer
       do_excl(do_excl)
   {}
 		
@@ -1174,11 +1181,18 @@ public:
 
   ceph::shared_ptr<int> in_use;
 
+<<<<<<< HEAD
   vector<bufferlist> results;
   vector<int> retvals;
   vector<std::map<uint64_t, uint64_t>> extent_results;
   vector<bool> is_sparse_read;
   uint64_t waiting_on;
+=======
+  bufferlist result;
+  int retval;
+  std::map<uint64_t, uint64_t> extent_result;
+  bool is_sparse_read;
+>>>>>>> upstream/hammer
 
   map<string, bufferlist> attrs;
   int attrretval;
@@ -1199,6 +1213,7 @@ public:
       completions(3),
       oid(oid),
       snap(0),
+<<<<<<< HEAD
       balance_reads(balance_reads),
       results(3),
       retvals(3),
@@ -1228,6 +1243,13 @@ public:
     }
   }
 
+=======
+      retval(0),
+      is_sparse_read(false),
+      attrretval(0)
+  {}
+  
+>>>>>>> upstream/hammer
   void _begin()
   {
     context->state_lock.Lock();
@@ -1273,7 +1295,29 @@ public:
     if (snap >= 0) {
       context->io_ctx.snap_set_read(context->snaps[snap]);
     }
+<<<<<<< HEAD
     _do_read(op, 0);
+=======
+
+    uint64_t read_len = 0;
+    if (old_value.has_contents())
+      read_len = old_value.most_recent_gen()->get_length(old_value.most_recent());
+    if (rand() % 2) {
+      is_sparse_read = false;
+      op.read(0,
+	      read_len,
+	      &result,
+	      &retval);
+    } else {
+      is_sparse_read = true;
+      op.sparse_read(0,
+		     read_len,
+		     &extent_result,
+		     &result,
+		     &retval);
+    }
+
+>>>>>>> upstream/hammer
     for (map<string, ContDesc>::iterator i = old_value.attrs.begin();
 	 i != old_value.attrs.end();
 	 ++i) {
@@ -1380,6 +1424,7 @@ public:
 	       << ", expected " << old_value.most_recent() << std::endl;
 	  context->errors++;
 	}
+<<<<<<< HEAD
         for (unsigned i = 0; i < results.size(); i++) {
 	  if (is_sparse_read[i]) {
 	    if (!old_value.check_sparse(extent_results[i], results[i])) {
@@ -1391,6 +1436,17 @@ public:
 	      cerr << num << ": oid " << oid << " contents " << to_check << " corrupt" << std::endl;
 	      context->errors++;
 	    }
+=======
+	if (is_sparse_read) {
+	  if (!old_value.check_sparse(extent_result, result)) {
+	    cerr << num << ": oid " << oid << " contents " << to_check << " corrupt" << std::endl;
+	    context->errors++;
+	  }
+	} else {
+	  if (!old_value.check(result)) {
+	    cerr << num << ": oid " << oid << " contents " << to_check << " corrupt" << std::endl;
+	    context->errors++;
+>>>>>>> upstream/hammer
 	  }
 	}
 	if (context->errors) ceph_abort();

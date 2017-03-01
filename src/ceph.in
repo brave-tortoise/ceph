@@ -408,8 +408,13 @@ PROMPT = 'ceph> '
 if sys.stdin.isatty():
     def read_input():
         while True:
+<<<<<<< HEAD
             line = input(PROMPT).rstrip()
             if line in ['q', 'quit', 'Q', 'exit']:
+=======
+            line = raw_input(PROMPT).rstrip()
+            if line in ['q', 'quit', 'Q']:
+>>>>>>> upstream/hammer
                 return None
             if line:
                 return line
@@ -450,8 +455,13 @@ def new_style_command(parsed_args, cmdargs, target, sigdict, inbuf, verbose):
         else:
             if sys.stdin.isatty():
                 # do the command-interpreter looping
+<<<<<<< HEAD
                 # for input to do readline cmd editing
                 import readline  # noqa
+=======
+                # for raw_input to do readline cmd editing
+                import readline
+>>>>>>> upstream/hammer
 
             while True:
                 interactive_input = read_input()
@@ -461,12 +471,21 @@ def new_style_command(parsed_args, cmdargs, target, sigdict, inbuf, verbose):
                 try:
                     target = find_cmd_target(cmdargs)
                 except Exception as e:
+<<<<<<< HEAD
                     print('error handling command target: {0}'.format(e), 
                         file=sys.stderr)
                     continue
                 if len(cmdargs) and cmdargs[0] == 'tell':
                     print('Can not use \'tell\' in interactive mode.', 
                         file=sys.stderr)
+=======
+                    print >> sys.stderr, \
+                            'error handling command target: {0}'.format(e)
+                    return 1, '', ''
+                if len(cmdargs) and cmdargs[0] == 'tell':
+                    print >> sys.stderr, \
+                          'Can not use \'tell\' in interactive mode.'
+>>>>>>> upstream/hammer
                     continue
                 valid_dict = validate_command(sigdict, cmdargs, verbose)
                 if valid_dict:
@@ -479,8 +498,13 @@ def new_style_command(parsed_args, cmdargs, target, sigdict, inbuf, verbose):
                                                      argdict=valid_dict)
                     if ret:
                         ret = abs(ret)
+<<<<<<< HEAD
                         print('Error: {0} {1}'.format(ret, errno.errorcode.get(ret, 'Unknown')), 
                             file=sys.stderr)
+=======
+                        print >> sys.stderr, \
+                            'Error: {0} {1}'.format(ret, errno.errorcode.get(ret, 'Unknown'))
+>>>>>>> upstream/hammer
                     if outbuf:
                         print(outbuf)
                     if outs:
@@ -722,8 +746,12 @@ def main():
     if len(childargs) >= 2 and \
         childargs[0] in ['mon', 'osd'] and \
         childargs[1] == 'tell':
+<<<<<<< HEAD
         print('"{0} tell" is deprecated; try "tell {0}.<id> <command> [options...]" instead (id can be "*") '.format(childargs[0]), 
             file=sys.stderr)
+=======
+        print >> sys.stderr, '"{0} tell" is deprecated; try "tell {0}.<id> <command> [options...]" instead (id can be "*") '.format(childargs[0])
+>>>>>>> upstream/hammer
         return 1
 
     if parsed_args.help:
@@ -838,9 +866,15 @@ def main():
         if injectargs:
             childargs = injectargs
         if not len(childargs):
+<<<<<<< HEAD
             print('"{0} tell" requires additional arguments.'.format(sys.argv[0]),
                 'Try "{0} tell <name> <command> [options...]" instead.'.format(sys.argv[0]), 
                 file=sys.stderr)
+=======
+            print >> sys.stderr, \
+                '"{0} tell" requires additional arguments.'.format(sys.argv[0]), \
+                'Try "{0} tell <name> <command> [options...]" instead.'.format(sys.argv[0])
+>>>>>>> upstream/hammer
             return errno.EINVAL
 
     # fetch JSON sigs from command
@@ -904,12 +938,20 @@ def main():
                                                           sigdict, inbuf, verbose)
                     if ret < 0:
                         ret = -ret
+<<<<<<< HEAD
                         print(prefix + 'Second attempt of previously successful command failed with {0}: {1}'.format(errno.errorcode.get(ret, 'Unknown'), outs), 
                             file=sys.stderr) 
 
         if ret < 0:
             ret = -ret
             print(u'Error {0}: {1}'.format(errno.errorcode.get(ret, 'Unknown'), outs), file=sys.stderr)
+=======
+                        print >> sys.stderr, prefix + 'Second attempt of previously successful command failed with {0}: {1}'.format(errno.errorcode.get(ret, 'Unknown'), outs)
+
+        if ret < 0:
+            ret = -ret
+            print >> sys.stderr, prefix + 'Error {0}: {1}'.format(errno.errorcode.get(ret, 'Unknown'), outs)
+>>>>>>> upstream/hammer
             if len(targets) > 1:
                 final_ret = ret
             else:

@@ -9,6 +9,7 @@ LimitNOFILE=1048576
 LimitNPROC=1048576
 EnvironmentFile=-/etc/sysconfig/ceph
 Environment=CLUSTER=ceph
+<<<<<<< HEAD
 ExecStart=/usr/bin/ceph-osd -f --cluster ${CLUSTER} --id %i --setuser ceph --setgroup ceph
 ExecStartPre=/usr/lib/ceph/ceph-osd-prestart.sh --cluster ${CLUSTER} --id %i
 ExecReload=/bin/kill -HUP $MAINPID
@@ -20,6 +21,11 @@ Restart=on-failure
 StartLimitInterval=30min
 StartLimitBurst=30
 RestartSec=20s
+=======
+ExecStart=/usr/bin/ceph-osd -f --cluster ${CLUSTER} --id %i
+ExecStartPre=/usr/libexec/ceph/ceph-osd-prestart.sh --cluster ${CLUSTER} --id %i
+LimitNOFILE=131072
+>>>>>>> upstream/hammer
 
 [Install]
 WantedBy=ceph-osd.target

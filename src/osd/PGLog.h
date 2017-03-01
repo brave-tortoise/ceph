@@ -490,6 +490,11 @@ protected:
   pg_missing_tracker_t missing;
   IndexedLog  log;
 
+<<<<<<< HEAD
+=======
+  /// Log is clean on [dirty_to, dirty_from)
+  bool touched_log;
+>>>>>>> upstream/hammer
   eversion_t dirty_to;         ///< must clear/writeout all keys <= dirty_to
   eversion_t dirty_from;       ///< must clear/writeout all keys >= dirty_from
   eversion_t writeout_from;    ///< must writout keys >= writeout_from

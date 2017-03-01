@@ -360,8 +360,13 @@ void rgw_cls_bucket_update_stats_op::dump(Formatter *f) const
 {
   ::encode_json("absolute", absolute, f);
   map<int, rgw_bucket_category_stats> s;
+<<<<<<< HEAD
   for (auto& entry : stats) {
     s[(int)entry.first] = entry.second;
+=======
+  for (map<uint8_t, rgw_bucket_category_stats>::const_iterator iter = stats.begin(); iter != stats.end(); ++iter) {
+    s[(int)iter->first] = iter->second;
+>>>>>>> upstream/hammer
   }
   ::encode_json("stats", s, f);
 }

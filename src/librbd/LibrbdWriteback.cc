@@ -50,12 +50,24 @@ namespace librbd {
    */
   class C_ReadRequest : public Context {
   public:
+<<<<<<< HEAD
     C_ReadRequest(CephContext *cct, Context *c, Mutex *cache_lock)
       : m_cct(cct), m_ctx(c), m_cache_lock(cache_lock) {
     }
     void finish(int r) override {
       ldout(m_cct, 20) << "aio_cb completing " << dendl;
       {
+=======
+    C_ReadRequest(CephContext *cct, Context *c, RWLock *owner_lock,
+                  Mutex *cache_lock)
+      : m_cct(cct), m_ctx(c), m_owner_lock(owner_lock),
+        m_cache_lock(cache_lock) {
+    }
+    virtual void finish(int r) {
+      ldout(m_cct, 20) << "aio_cb completing " << dendl;
+      {
+        RWLock::RLocker owner_locker(*m_owner_lock);
+>>>>>>> upstream/hammer
         Mutex::Locker cache_locker(*m_cache_lock);
 	m_ctx->complete(r);
       }
@@ -64,6 +76,10 @@ namespace librbd {
   private:
     CephContext *m_cct;
     Context *m_ctx;
+<<<<<<< HEAD
+=======
+    RWLock *m_owner_lock;
+>>>>>>> upstream/hammer
     Mutex *m_cache_lock;
   };
 
@@ -192,6 +208,10 @@ namespace librbd {
     : m_tid(0), m_lock(lock), m_ictx(ictx) {
   }
 
+  void LibrbdWriteback::queue(Context *ctx, int r) {
+    m_finisher->queue(ctx, r);
+  }
+
   void LibrbdWriteback::read(const object_t& oid, uint64_t object_no,
 			     const object_locator_t& oloc,
 			     uint64_t off, uint64_t len, snapid_t snapid,
@@ -199,6 +219,7 @@ namespace librbd {
 			     __u32 trunc_seq, int op_flags, Context *onfinish)
   {
     // on completion, take the mutex and then call onfinish.
+<<<<<<< HEAD
     Context *req = new C_ReadRequest(m_ictx->cct, onfinish, &m_lock);
 
     {
@@ -206,6 +227,14 @@ namespace librbd {
       if (m_ictx->object_map != nullptr &&
           !m_ictx->object_map->object_may_exist(object_no)) {
         m_ictx->op_work_queue->queue(req, -ENOENT);
+=======
+    Context *req = new C_ReadRequest(m_ictx->cct, onfinish, &m_ictx->owner_lock,
+                                     &m_lock);
+
+    {
+      if (!m_ictx->object_map.object_may_exist(object_no)) {
+	queue(req, -ENOENT);
+>>>>>>> upstream/hammer
 	return;
       }
     }
@@ -256,12 +285,19 @@ namespace librbd {
 				    __u32 trunc_seq, ceph_tid_t journal_tid,
 				    Context *oncommit)
   {
+<<<<<<< HEAD
     uint64_t object_no = oid_to_object_no(oid.name, m_ictx->object_prefix);
 
+=======
+    assert(m_ictx->owner_lock.is_locked());
+    uint64_t object_no = oid_to_object_no(oid.name, m_ictx->object_prefix);
+    
+>>>>>>> upstream/hammer
     write_result_d *result = new write_result_d(oid.name, oncommit);
     m_writes[oid.name].push(result);
     ldout(m_ictx->cct, 20) << "write will wait for result " << result << dendl;
     C_OrderedWrite *req_comp = new C_OrderedWrite(m_ictx->cct, result, this);
+<<<<<<< HEAD
 
     // all IO operations are flushed prior to closing the journal
     assert(journal_tid == 0 || m_ictx->journal != NULL);
@@ -312,6 +348,20 @@ namespace librbd {
 					        it->second, 0);
       }
     }
+=======
+    AioWrite *req = new AioWrite(m_ictx, oid.name, object_no, off, bl, snapc,
+                                 req_comp);
+    req->send();
+    return ++m_tid;
+  }
+
+  void LibrbdWriteback::get_client_lock() {
+    m_ictx->owner_lock.get_read();
+  }
+
+  void LibrbdWriteback::put_client_lock() {
+    m_ictx->owner_lock.put_read();
+>>>>>>> upstream/hammer
   }
 
   void LibrbdWriteback::complete_writes(const std::string& oid)

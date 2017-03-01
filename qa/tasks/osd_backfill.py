@@ -51,7 +51,7 @@ def task(ctx, config):
         )
 
     while len(manager.get_osd_status()['up']) < 3:
-        time.sleep(10)
+        manager.sleep(10)
     manager.raw_cluster_cmd('tell', 'osd.0', 'flush_pg_stats')
     manager.raw_cluster_cmd('tell', 'osd.1', 'flush_pg_stats')
     manager.raw_cluster_cmd('tell', 'osd.2', 'flush_pg_stats')
@@ -90,10 +90,6 @@ def task(ctx, config):
     # wait for our writes to complete + succeed
     err = p.wait()
     log.info('err is %d' % err)
-
-    # wait for osd.1 and osd.2 to be up
-    manager.wait_till_osd_is_up(1)
-    manager.wait_till_osd_is_up(2)
 
     # cluster must recover
     manager.raw_cluster_cmd('tell', 'osd.1', 'flush_pg_stats')

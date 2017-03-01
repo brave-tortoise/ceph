@@ -9513,6 +9513,346 @@ void MDCache::fetch_backtrace(inodeno_t ino, int64_t pool, bufferlist& bl, Conte
   mds->objecter->getxattr(oid, object_locator_t(pool), "parent", CEPH_NOSNAP, &bl, 0, fin);
 }
 
+<<<<<<< HEAD
+=======
+class C_IO_MDC_PurgeStrayPurged : public MDCacheIOContext {
+  CDentry *dn;
+  bool only_head;
+public:
+  C_IO_MDC_PurgeStrayPurged(MDCache *c, CDentry *d, bool oh) :
+    MDCacheIOContext(c), dn(d), only_head(oh) { }
+  void finish(int r) {
+    assert(r == 0 || r == -ENOENT);
+    mdcache->_purge_stray_purged(dn, only_head);
+  }
+};
+
+void MDCache::truncate_stray(CDentry *dn)
+{
+  CDentry::linkage_t *dnl = dn->get_projected_linkage();
+  CInode *in = dnl->get_inode();
+  dout(10) << "truncate_stray " << *dn << " " << *in << dendl;
+  assert(!dn->is_replicated());
+
+  dn->state_set(CDentry::STATE_PURGING);
+  dn->get(CDentry::PIN_PURGING);
+  in->state_set(CInode::STATE_PURGING);
+
+  if (dn->item_stray.is_on_list())
+    dn->item_stray.remove_myself();
+
+  C_GatherBuilder gather(
+    g_ceph_context,
+    new C_OnFinisher(new C_IO_MDC_PurgeStrayPurged(this, dn, true),
+		     &mds->finisher));
+
+  SnapRealm *realm = in->find_snaprealm();
+  assert(realm);
+  dout(10) << " realm " << *realm << dendl;
+  const SnapContext *snapc = &realm->get_snap_context();
+
+  uint64_t to = in->inode.get_max_size();
+  to = MAX(in->inode.size, to);
+  // when truncating a file, the filer does not delete stripe objects that are
+  // truncated to zero. so we need to purge stripe objects up to the max size
+  // the file has ever been.
+  to = MAX(in->inode.max_size_ever, to);
+  if (to > 0) {
+    uint64_t num = Striper::get_num_objects(in->inode.layout, to);
+    dout(10) << "purge_stray 0~" << to << " objects 0~" << num
+	     << " snapc " << snapc << " on " << *in << dendl;
+
+    // keep backtrace object
+    if (num > 1) {
+      mds->filer->purge_range(in->ino(), &in->inode.layout, *snapc,
+			      1, num - 1, ceph_clock_now(g_ceph_context),
+			      0, gather.new_sub());
+    }
+    mds->filer->zero(in->ino(), &in->inode.layout, *snapc,
+		     0, (uint64_t)in->inode.layout.fl_object_size,
+		     ceph_clock_now(g_ceph_context),
+		     0, true, NULL, gather.new_sub());
+  }
+
+  assert(gather.has_subs());
+  gather.activate();
+}
+
+void MDCache::purge_stray(CDentry *dn)
+{
+  CDentry::linkage_t *dnl = dn->get_projected_linkage();
+  CInode *in = dnl->get_inode();
+  dout(10) << "purge_stray " << *dn << " " << *in << dendl;
+  assert(!dn->is_replicated());
+
+  dn->state_set(CDentry::STATE_PURGING);
+  dn->get(CDentry::PIN_PURGING);
+  in->state_set(CInode::STATE_PURGING);
+
+  num_strays_purging++;
+  logger->set(l_mdc_num_strays_purging, num_strays_purging);
+
+  if (dn->item_stray.is_on_list()) {
+    dn->item_stray.remove_myself();
+    num_strays_delayed--;
+    logger->set(l_mdc_num_strays_delayed, num_strays_delayed);
+  }
+
+  if (in->is_dirty_parent())
+    in->clear_dirty_parent();
+
+  // CHEAT.  there's no real need to journal our intent to purge, since
+  // that is implicit in the dentry's presence and non-use in the stray
+  // dir.  on recovery, we'll need to re-eval all strays anyway.
+  
+  SnapContext nullsnapc;
+  C_GatherBuilder gather(
+    g_ceph_context,
+    new C_OnFinisher(new C_IO_MDC_PurgeStrayPurged(this, dn, false),
+		     &mds->finisher));
+
+  if (in->is_dir()) {
+    object_locator_t oloc(mds->mdsmap->get_metadata_pool());
+    list<frag_t> ls;
+    if (!in->dirfragtree.is_leaf(frag_t()))
+      in->dirfragtree.get_leaves(ls);
+    ls.push_back(frag_t());
+    for (list<frag_t>::iterator p = ls.begin();
+         p != ls.end();
+         ++p) {
+      object_t oid = CInode::get_object_name(in->inode.ino, *p, "");
+      dout(10) << "purge_stray remove dirfrag " << oid << dendl;
+      mds->objecter->remove(oid, oloc, nullsnapc, ceph_clock_now(g_ceph_context),
+                            0, NULL, gather.new_sub());
+    }
+    assert(gather.has_subs());
+    gather.activate();
+    return;
+  }
+
+  const SnapContext *snapc;
+  SnapRealm *realm = in->find_snaprealm();
+  if (realm) {
+    dout(10) << " realm " << *realm << dendl;
+    snapc = &realm->get_snap_context();
+  } else {
+    dout(10) << " NO realm, using null context" << dendl;
+    snapc = &nullsnapc;
+    assert(in->last == CEPH_NOSNAP);
+  }
+
+  if (in->is_file()) {
+    uint64_t to = in->inode.get_max_size();
+    to = MAX(in->inode.size, to);
+    // when truncating a file, the filer does not delete stripe objects that are
+    // truncated to zero. so we need to purge stripe objects up to the max size
+    // the file has ever been.
+    to = MAX(in->inode.max_size_ever, to);
+    if (to > 0) {
+      uint64_t num = Striper::get_num_objects(in->inode.layout, to);
+      dout(10) << "purge_stray 0~" << to << " objects 0~" << num
+	       << " snapc " << snapc << " on " << *in << dendl;
+      mds->filer->purge_range(in->inode.ino, &in->inode.layout, *snapc,
+			      0, num, ceph_clock_now(g_ceph_context), 0,
+			      gather.new_sub());
+    }
+  }
+
+  inode_t *pi = in->get_projected_inode();
+  object_t oid = CInode::get_object_name(pi->ino, frag_t(), "");
+  // remove the backtrace object if it was not purged
+  if (!gather.has_subs()) {
+    object_locator_t oloc(pi->layout.fl_pg_pool);
+    dout(10) << "purge_stray remove backtrace object " << oid
+	     << " pool " << oloc.pool << " snapc " << snapc << dendl;
+    mds->objecter->remove(oid, oloc, *snapc, ceph_clock_now(g_ceph_context), 0,
+			  NULL, gather.new_sub());
+  }
+  // remove old backtrace objects
+  for (vector<int64_t>::iterator p = pi->old_pools.begin();
+       p != pi->old_pools.end();
+       ++p) {
+    object_locator_t oloc(*p);
+    dout(10) << "purge_stray remove backtrace object " << oid
+	     << " old pool " << *p << " snapc " << snapc << dendl;
+    mds->objecter->remove(oid, oloc, *snapc, ceph_clock_now(g_ceph_context), 0,
+			  NULL, gather.new_sub());
+  }
+  assert(gather.has_subs());
+  gather.activate();
+}
+
+class C_MDC_PurgeStrayLogged : public MDCacheContext {
+  CDentry *dn;
+  version_t pdv;
+  LogSegment *ls;
+public:
+  C_MDC_PurgeStrayLogged(MDCache *c, CDentry *d, version_t v, LogSegment *s) : 
+    MDCacheContext(c), dn(d), pdv(v), ls(s) { }
+  void finish(int r) {
+    mdcache->_purge_stray_logged(dn, pdv, ls);
+  }
+};
+class C_MDC_PurgeStrayLoggedTruncate : public MDCacheContext {
+  CDentry *dn;
+  LogSegment *ls;
+public:
+  C_MDC_PurgeStrayLoggedTruncate(MDCache *c, CDentry *d, LogSegment *s) : 
+    MDCacheContext(c), dn(d), ls(s) { }
+  void finish(int r) {
+    mdcache->_purge_stray_logged_truncate(dn, ls);
+  }
+};
+
+void MDCache::_purge_stray_purged(CDentry *dn, bool only_head)
+{
+  CInode *in = dn->get_projected_linkage()->get_inode();
+  dout(10) << "_purge_stray_purged " << *dn << " " << *in << dendl;
+
+  if (!only_head &&
+      in->get_num_ref() == (int)in->is_dirty() &&
+      dn->get_num_ref() == (int)dn->is_dirty() + !!in->get_num_ref() + 1/*PIN_PURGING*/) {
+    // kill dentry.
+    version_t pdv = dn->pre_dirty();
+    dn->push_projected_linkage(); // NULL
+
+    EUpdate *le = new EUpdate(mds->mdlog, "purge_stray");
+    mds->mdlog->start_entry(le);
+
+    // update dirfrag fragstat, rstat
+    CDir *dir = dn->get_dir();
+    fnode_t *pf = dir->project_fnode();
+    pf->version = dir->pre_dirty();
+    if (in->is_dir())
+      pf->fragstat.nsubdirs--;
+    else
+      pf->fragstat.nfiles--;
+    pf->rstat.sub(in->inode.accounted_rstat);
+
+    le->metablob.add_dir_context(dn->dir);
+    EMetaBlob::dirlump& dl = le->metablob.add_dir(dn->dir, true);
+    le->metablob.add_null_dentry(dl, dn, true);
+    le->metablob.add_destroyed_inode(in->ino());
+
+    mds->mdlog->submit_entry(le, new C_MDC_PurgeStrayLogged(this, dn, pdv, mds->mdlog->get_current_segment()));
+
+    num_strays_purging--;
+    num_strays--;
+    logger->set(l_mdc_num_strays, num_strays);
+    logger->set(l_mdc_num_strays_purging, num_strays_purging);
+    logger->inc(l_mdc_strays_purged);
+  } else {
+    // new refs.. just truncate to 0
+    EUpdate *le = new EUpdate(mds->mdlog, "purge_stray truncate");
+    mds->mdlog->start_entry(le);
+    
+    inode_t *pi = in->project_inode();
+    pi->size = 0;
+    pi->max_size_ever = 0;
+    pi->client_ranges.clear();
+    pi->truncate_size = 0;
+    pi->truncate_from = 0;
+    pi->version = in->pre_dirty();
+
+    le->metablob.add_dir_context(dn->dir);
+    le->metablob.add_primary_dentry(dn, in, true);
+
+    mds->mdlog->submit_entry(le, new C_MDC_PurgeStrayLoggedTruncate(this, dn, mds->mdlog->get_current_segment()));
+  }
+}
+
+void MDCache::_purge_stray_logged(CDentry *dn, version_t pdv, LogSegment *ls)
+{
+  CInode *in = dn->get_linkage()->get_inode();
+  dout(10) << "_purge_stray_logged " << *dn << " " << *in << dendl;
+
+  assert(!in->state_test(CInode::STATE_RECOVERING));
+
+  // unlink
+  assert(dn->get_projected_linkage()->is_null());
+  dn->dir->unlink_inode(dn);
+  dn->pop_projected_linkage();
+  dn->mark_dirty(pdv, ls);
+
+  dn->dir->pop_and_dirty_projected_fnode(ls);
+
+  in->state_clear(CInode::STATE_ORPHAN);
+  dn->state_clear(CDentry::STATE_PURGING);
+  dn->put(CDentry::PIN_PURGING);
+
+  // drop inode
+  if (in->is_dirty())
+    in->mark_clean();
+
+  remove_inode(in);
+
+  // drop dentry?
+  if (dn->is_new()) {
+    dout(20) << " dn is new, removing" << dendl;
+    dn->mark_clean();
+    dn->dir->remove_dentry(dn);
+  } else
+    touch_dentry_bottom(dn);  // drop dn as quickly as possible.
+}
+
+void MDCache::_purge_stray_logged_truncate(CDentry *dn, LogSegment *ls)
+{
+  CInode *in = dn->get_projected_linkage()->get_inode();
+  dout(10) << "_purge_stray_logged_truncate " << *dn << " " << *in << dendl;
+
+  dn->state_clear(CDentry::STATE_PURGING);
+  dn->put(CDentry::PIN_PURGING);
+
+  in->pop_and_dirty_projected_inode(ls);
+
+  eval_stray(dn);
+}
+
+void MDCache::reintegrate_stray(CDentry *straydn, CDentry *rdn)
+{
+  dout(10) << "reintegrate_stray " << *straydn << " into " << *rdn << dendl;
+  
+  // rename it to another mds.
+  filepath src;
+  straydn->make_path(src);
+  filepath dst;
+  rdn->make_path(dst);
+
+  MClientRequest *req = new MClientRequest(CEPH_MDS_OP_RENAME);
+  req->set_filepath(dst);
+  req->set_filepath2(src);
+  req->set_tid(mds->issue_tid());
+
+  mds->send_message_mds(req, rdn->authority().first);
+}
+ 
+
+void MDCache::migrate_stray(CDentry *dn, mds_rank_t to)
+{
+  CInode *in = dn->get_linkage()->get_inode();
+  assert(in);
+  CInode *diri = dn->dir->get_inode();
+  assert(diri->is_stray());
+  dout(10) << "migrate_stray from mds." << MDS_INO_STRAY_OWNER(diri->inode.ino)
+	   << " to mds." << to
+	   << " " << *dn << " " << *in << dendl;
+
+  // rename it to another mds.
+  filepath src;
+  dn->make_path(src);
+
+  string dname;
+  in->name_stray_dentry(dname);
+  filepath dst(dname, MDS_INO_STRAY(to, 0));
+
+  MClientRequest *req = new MClientRequest(CEPH_MDS_OP_RENAME);
+  req->set_filepath(dst);
+  req->set_filepath2(src);
+  req->set_tid(mds->issue_tid());
+
+  mds->send_message_mds(req, to);
+}
+>>>>>>> upstream/hammer
 
 
 

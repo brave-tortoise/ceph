@@ -55,9 +55,17 @@ public:
   size_t complete_header() override;
   size_t send_content_length(uint64_t len) override;
 
+<<<<<<< HEAD
   size_t recv_body(char* buf, size_t max) override {
     return read_data(buf, max);
   }
+=======
+  int send_status(int status, const char *status_name);
+  int send_100_continue();
+  int complete_header();
+  int complete_request();
+  int send_content_length(uint64_t len);
+>>>>>>> upstream/hammer
 
   size_t send_body(const char* buf, size_t len) override {
     return write_data(buf, len);

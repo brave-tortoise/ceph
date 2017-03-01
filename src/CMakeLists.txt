@@ -985,6 +985,7 @@ if(WITH_RADOSGW)
 
 endif(WITH_RADOSGW)
 
+<<<<<<< HEAD
 install(FILES
   sample.ceph.conf
   DESTINATION ${CMAKE_INSTALL_DOCDIR})
@@ -1048,3 +1049,89 @@ add_subdirectory(script)
 if(WITH_EMBEDDED)
   add_subdirectory(libcephd)
 endif()
+=======
+if(${WITH_RADOSGW})
+  set(rgw_a_srcs
+    rgw/librgw.cc
+    rgw/rgw_acl.cc
+    rgw/rgw_acl_s3.cc
+    rgw/rgw_acl_swift.cc
+    rgw/rgw_client_io.cc
+    rgw/rgw_fcgi.cc
+    rgw/rgw_xml.cc
+    rgw/rgw_usage.cc
+    rgw/rgw_json_enc.cc
+    rgw/rgw_user.cc
+    rgw/rgw_bucket.cc
+    rgw/rgw_tools.cc
+    rgw/rgw_rados.cc
+    rgw/rgw_http_client.cc
+    rgw/rgw_rest_client.cc
+    rgw/rgw_rest_conn.cc
+    rgw/rgw_op.cc
+    rgw/rgw_common.cc
+    rgw/rgw_cache.cc
+    rgw/rgw_formats.cc
+    rgw/rgw_log.cc
+    rgw/rgw_multi.cc
+    rgw/rgw_policy_s3.cc
+    rgw/rgw_gc.cc
+    rgw/rgw_multi_del.cc
+    rgw/rgw_env.cc
+    rgw/rgw_cors.cc
+    rgw/rgw_cors_s3.cc
+    rgw/rgw_auth_s3.cc
+    rgw/rgw_metadata.cc
+    rgw/rgw_replica_log.cc
+    rgw/rgw_keystone.cc
+    rgw/rgw_quota.cc
+    rgw/rgw_dencoder.cc)
+
+  add_library(rgw_a STATIC ${rgw_a_srcs})
+
+  include_directories("${CMAKE_SOURCE_DIR}/src/civetweb/include")
+
+  set(radosgw_srcs
+    rgw/rgw_resolve.cc
+    rgw/rgw_rest.cc
+    rgw/rgw_rest_swift.cc
+    rgw/rgw_rest_s3.cc
+    rgw/rgw_rest_usage.cc
+    rgw/rgw_rest_user.cc
+    rgw/rgw_rest_bucket.cc
+    rgw/rgw_rest_metadata.cc
+    rgw/rgw_replica_log.cc
+    rgw/rgw_rest_log.cc
+    rgw/rgw_rest_opstate.cc
+    rgw/rgw_rest_replica_log.cc
+    rgw/rgw_rest_config.cc
+    rgw/rgw_http_client.cc
+    rgw/rgw_swift.cc
+    rgw/rgw_swift_auth.cc
+    rgw/rgw_loadgen.cc
+    rgw/rgw_civetweb.cc
+    rgw/rgw_civetweb_log.cc
+    civetweb/src/civetweb.c
+    rgw/rgw_main.cc)
+
+  set(radosgw_admin_srcs
+    rgw/rgw_admin.cc
+    rgw/rgw_orphan.cc)
+
+  add_executable(radosgw ${radosgw_srcs} $<TARGET_OBJECTS:heap_profiler_objs>)
+  target_link_libraries(radosgw rgw_a librados
+    cls_rgw_client cls_lock_client cls_refcount_client
+    cls_log_client cls_statelog_client cls_version_client
+    cls_replica_log_client cls_user_client
+    curl expat global fcgi resolv ${TCMALLOC_LIBS})
+  install(TARGETS radosgw DESTINATION bin)
+
+  add_executable(radosgw-admin ${radosgw_admin_srcs} $<TARGET_OBJECTS:heap_profiler_objs>)
+  target_link_libraries(radosgw-admin rgw_a librados
+    cls_rgw_client cls_lock_client cls_refcount_client
+    cls_log_client cls_statelog_client cls_version_client
+    cls_replica_log_client cls_user_client
+    curl expat global fcgi resolv ${TCMALLOC_LIBS})
+  install(TARGETS radosgw-admin DESTINATION bin)
+endif(${WITH_RADOSGW})
+>>>>>>> upstream/hammer

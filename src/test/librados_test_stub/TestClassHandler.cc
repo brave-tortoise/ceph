@@ -6,12 +6,17 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <dlfcn.h>
 #include <errno.h>
+<<<<<<< HEAD
 #include <stdlib.h>
 #include <string.h>
 #include "common/debug.h"
 #include "include/assert.h"
 
 #define dout_context g_ceph_context
+=======
+#include "common/debug.h"
+
+>>>>>>> upstream/hammer
 #define dout_subsys ceph_subsys_rados
 
 namespace librados {

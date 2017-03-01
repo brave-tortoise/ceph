@@ -18,7 +18,11 @@
 // This code assumes that IO IDs and timestamps are related monotonically.
 // In other words, (a.id < b.id) == (a.timestamp < b.timestamp) for all IOs a and b.
 
+<<<<<<< HEAD
 #include "include/buffer_fwd.h"
+=======
+#include "include/buffer.h"
+>>>>>>> upstream/hammer
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/shared_ptr.hpp>
 #include <iostream>
@@ -117,7 +121,11 @@ public:
     : IO(ionum, start_time, thread_id, io_set_t()) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   void write_debug(std::ostream& out) const override;
 };
@@ -131,7 +139,11 @@ public:
     : IO(ionum, start_time, thread_id, deps) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   void write_debug(std::ostream& out) const override;
 };
@@ -151,7 +163,11 @@ public:
       m_length(length) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   void write_debug(std::ostream& out) const override;
 
@@ -176,7 +192,11 @@ public:
       m_length(length) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   void write_debug(std::ostream& out) const override;
 
@@ -226,7 +246,11 @@ public:
       m_length(length) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   void write_debug(std::ostream& out) const override;
 
@@ -246,6 +270,7 @@ public:
 	     uint64_t offset,
 	     uint64_t length)
     : IO(ionum, start_time, thread_id, deps),
+<<<<<<< HEAD
       m_imagectx(imagectx),
       m_offset(offset),
       m_length(length) {
@@ -271,12 +296,18 @@ public:
 	       uint64_t offset,
 	       uint64_t length)
     : IO(ionum, start_time, thread_id, deps),
+=======
+>>>>>>> upstream/hammer
       m_imagectx(imagectx),
       m_offset(offset),
       m_length(length) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   void write_debug(std::ostream& out) const override;
 
@@ -303,7 +334,11 @@ public:
       m_readonly(readonly) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   imagectx_id_t imagectx() const {
     return m_imagectx;
@@ -329,7 +364,11 @@ public:
       m_imagectx(imagectx) {
   }
 
+<<<<<<< HEAD
   void encode(bufferlist &bl) const override;
+=======
+  virtual void encode(bufferlist &bl) const;
+>>>>>>> upstream/hammer
 
   imagectx_id_t imagectx() const {
     return m_imagectx;
@@ -341,6 +380,7 @@ private:
   imagectx_id_t m_imagectx;
 };
 
+<<<<<<< HEAD
 class AioOpenImageIO : public IO {
 public:
   AioOpenImageIO(action_id_t ionum,
@@ -396,6 +436,8 @@ private:
   imagectx_id_t m_imagectx;
 };
 
+=======
+>>>>>>> upstream/hammer
 }
 
 #endif

@@ -144,6 +144,68 @@ public:
     return (m_notifies.size() == m_notify_acks.size());
   }
 
+<<<<<<< HEAD
+=======
+
+  librbd::AioCompletion *create_aio_completion(librbd::ImageCtx &ictx) {
+    librbd::AioCompletion *aio_completion = new librbd::AioCompletion();
+    aio_completion->complete_cb = &handle_aio_completion;
+    aio_completion->complete_arg = this;
+
+    aio_completion->init_time(&ictx, librbd::AIO_TYPE_NONE);
+    m_aio_completions.insert(aio_completion);
+    return aio_completion;
+  }
+
+  static void handle_aio_completion(void *arg1, void *arg2) {
+    TestImageWatcher *test_image_watcher =
+      reinterpret_cast<TestImageWatcher *>(arg2);
+    assert(test_image_watcher->m_callback_lock.is_locked());
+    test_image_watcher->m_callback_cond.Signal();
+  }
+
+  int handle_restart_aio(librbd::ImageCtx *ictx,
+			 librbd::AioCompletion *aio_completion) {
+    Mutex::Locker callback_locker(m_callback_lock);
+    ++m_aio_completion_restarts;
+
+    RWLock::RLocker owner_locker(ictx->owner_lock);
+    if (!ictx->image_watcher->is_lock_owner() &&
+        (m_expected_aio_restarts == 0 ||
+	 m_aio_completion_restarts < m_expected_aio_restarts)) {
+      ictx->image_watcher->request_lock(
+        boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+	aio_completion);
+    } else {
+      {
+	Mutex::Locker completion_locker(aio_completion->lock);
+	aio_completion->complete(ictx->cct);
+      }
+
+      m_aio_completions.erase(aio_completion);
+      aio_completion->release();
+    }
+
+    m_callback_cond.Signal();
+    return 0;
+  }
+
+  bool wait_for_aio_completions(librbd::ImageCtx &ictx) {
+    Mutex::Locker l(m_callback_lock);
+    int r = 0;
+    while (!m_aio_completions.empty() &&
+           (m_expected_aio_restarts == 0 ||
+	    m_aio_completion_restarts < m_expected_aio_restarts)) {
+      r = m_callback_cond.WaitInterval(ictx.cct, m_callback_lock,
+				       utime_t(10, 0));
+      if (r != 0) {
+        break;
+      }
+    }
+    return (r == 0);
+  }
+
+>>>>>>> upstream/hammer
   bufferlist create_response_message(int r) {
     bufferlist bl;
     ::encode(ResponseMessage(r), bl);
@@ -393,9 +455,21 @@ TEST_F(TestImageWatcher, NotifyRebuildObjectMap) {
 
   m_notify_acks = {{NOTIFY_OP_REBUILD_OBJECT_MAP, create_response_message(0)}};
 
+<<<<<<< HEAD
   ProgressContext progress_context;
   RebuildObjectMapTask rebuild_task(ictx, &progress_context);
   boost::thread thread(boost::ref(rebuild_task));
+=======
+  {
+    RWLock::WLocker l(ictx->owner_lock);
+    ictx->image_watcher->request_lock(
+      boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+      create_aio_completion(*ictx));
+    ictx->image_watcher->request_lock(
+      boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+      create_aio_completion(*ictx));
+  }
+>>>>>>> upstream/hammer
 
   ASSERT_TRUE(wait_for_notifies(*ictx));
 
@@ -428,18 +502,71 @@ TEST_F(TestImageWatcher, NotifySnapCreate) {
 
   m_notify_acks = {{NOTIFY_OP_SNAP_CREATE, create_response_message(0)}};
 
+<<<<<<< HEAD
   RWLock::RLocker l(ictx->owner_lock);
   C_SaferCond notify_ctx;
   ictx->image_watcher->notify_snap_create("snap",
 	cls::rbd::UserSnapshotNamespace(), &notify_ctx);
   ASSERT_EQ(0, notify_ctx.wait());
+=======
+  m_expected_aio_restarts = 1;
+  {
+    RWLock::WLocker l(ictx->owner_lock);
+    ictx->image_watcher->request_lock(
+      boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+      create_aio_completion(*ictx));
+  }
+>>>>>>> upstream/hammer
 
   NotifyOps expected_notify_ops;
   expected_notify_ops += NOTIFY_OP_SNAP_CREATE;
   ASSERT_EQ(expected_notify_ops, m_notifies);
 }
 
+<<<<<<< HEAD
 TEST_F(TestImageWatcher, NotifySnapCreateError) {
+=======
+TEST_F(TestImageWatcher, RequestLockIgnored) {
+  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+
+  librbd::ImageCtx *ictx;
+  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+  ASSERT_EQ(0, register_image_watch(*ictx));
+  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+			  "auto " + stringify(m_watch_ctx->get_handle())));
+
+  m_notify_acks = boost::assign::list_of(
+    std::make_pair(NOTIFY_OP_REQUEST_LOCK, create_response_message(0)));
+
+  int orig_notify_timeout = ictx->cct->_conf->client_notify_timeout;
+  ictx->cct->_conf->set_val("client_notify_timeout", "0");
+  BOOST_SCOPE_EXIT( (ictx)(orig_notify_timeout) ) {
+    ictx->cct->_conf->set_val("client_notify_timeout",
+                              stringify(orig_notify_timeout));
+  } BOOST_SCOPE_EXIT_END;
+
+  {
+    RWLock::WLocker l(ictx->owner_lock);
+    ictx->image_watcher->request_lock(
+      boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+      create_aio_completion(*ictx));
+  }
+
+  ASSERT_TRUE(wait_for_notifies(*ictx));
+  NotifyOps expected_notify_ops;
+  expected_notify_ops += NOTIFY_OP_REQUEST_LOCK;
+  ASSERT_EQ(expected_notify_ops, m_notifies);
+
+  // after the request times out -- it will be resent
+  ASSERT_TRUE(wait_for_notifies(*ictx));
+  ASSERT_EQ(expected_notify_ops, m_notifies);
+
+  ASSERT_EQ(0, unlock_image());
+  ASSERT_TRUE(wait_for_aio_completions(*ictx));
+}
+
+TEST_F(TestImageWatcher, RequestLockTryLockRace) {
+>>>>>>> upstream/hammer
   REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
 
   librbd::ImageCtx *ictx;
@@ -451,11 +578,21 @@ TEST_F(TestImageWatcher, NotifySnapCreateError) {
 
   m_notify_acks = {{NOTIFY_OP_SNAP_CREATE, create_response_message(-EEXIST)}};
 
+<<<<<<< HEAD
   RWLock::RLocker l(ictx->owner_lock);
   C_SaferCond notify_ctx;
   ictx->image_watcher->notify_snap_create("snap",
        cls::rbd::UserSnapshotNamespace(), &notify_ctx);
   ASSERT_EQ(-EEXIST, notify_ctx.wait());
+=======
+  m_expected_aio_restarts = 1;
+  {
+    RWLock::WLocker l(ictx->owner_lock);
+    ictx->image_watcher->request_lock(
+      boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+      create_aio_completion(*ictx));
+  }
+>>>>>>> upstream/hammer
 
   NotifyOps expected_notify_ops;
   expected_notify_ops += NOTIFY_OP_SNAP_CREATE;
@@ -468,16 +605,44 @@ TEST_F(TestImageWatcher, NotifySnapRename) {
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
+<<<<<<< HEAD
+=======
+  m_expected_aio_restarts = 1;
+  {
+    RWLock::WLocker l(ictx->owner_lock);
+    ictx->image_watcher->request_lock(
+      boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+      create_aio_completion(*ictx));
+  }
+  ASSERT_TRUE(wait_for_aio_completions(*ictx));
+}
+
+TEST_F(TestImageWatcher, RequestLockPostTryLockFailed) {
+  REQUIRE_FEATURE(RBD_FEATURE_EXCLUSIVE_LOCK);
+
+  librbd::ImageCtx *ictx;
+  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+>>>>>>> upstream/hammer
   ASSERT_EQ(0, register_image_watch(*ictx));
   ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_RENAME, create_response_message(0)}};
 
+<<<<<<< HEAD
   RWLock::RLocker l(ictx->owner_lock);
   C_SaferCond notify_ctx;
   ictx->image_watcher->notify_snap_rename(1, "snap-rename", &notify_ctx);
   ASSERT_EQ(0, notify_ctx.wait());
+=======
+  m_expected_aio_restarts = 1;
+  {
+    RWLock::WLocker l(ictx->owner_lock);
+    ictx->image_watcher->request_lock(
+      boost::bind(&TestImageWatcher::handle_restart_aio, this, ictx, _1),
+      create_aio_completion(*ictx));
+  }
+>>>>>>> upstream/hammer
 
   NotifyOps expected_notify_ops;
   expected_notify_ops += NOTIFY_OP_SNAP_RENAME;

@@ -19,7 +19,11 @@
 source $CEPH_ROOT/qa/workunits/ceph-helpers.sh
 
 export CEPH_VSTART_WRAPPER=1
+<<<<<<< HEAD
 export CEPH_DIR="${TMPDIR:-$PWD}/td/t-$CEPH_PORT"
+=======
+export CEPH_DIR="$PWD/testdir/test-$CEPH_PORT"
+>>>>>>> upstream/hammer
 export CEPH_DEV_DIR="$CEPH_DIR/dev"
 export CEPH_OUT_DIR="$CEPH_DIR/out"
 
@@ -30,8 +34,12 @@ function vstart_setup()
     trap "teardown $CEPH_DIR" EXIT
     export LC_ALL=C # some tests are vulnerable to i18n
     export PATH="$(pwd):${PATH}"
+<<<<<<< HEAD
     $CEPH_ROOT/src/vstart.sh \
         --short \
+=======
+    ./vstart.sh \
+>>>>>>> upstream/hammer
         -o 'paxos propose interval = 0.01' \
         -n -l $CEPH_START || return 1
     export CEPH_CONF=$CEPH_DIR/ceph.conf

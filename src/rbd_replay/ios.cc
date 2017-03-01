@@ -62,7 +62,11 @@ void IO::write_debug_base(ostream& out, string type) const {
 }
 
 
+<<<<<<< HEAD
 ostream& operator<<(ostream &out, const IO::ptr &io) {
+=======
+ostream& operator<<(ostream& out, IO::ptr io) {
+>>>>>>> upstream/hammer
   io->write_debug(out);
   return out;
 }
@@ -111,6 +115,7 @@ void WriteIO::write_debug(std::ostream& out) const {
   out << ", imagectx=" << m_imagectx << ", offset=" << m_offset << ", length=" << m_length << "]";
 }
 
+<<<<<<< HEAD
 void DiscardIO::encode(bufferlist &bl) const {
   action::Action action((action::DiscardAction(
     ionum(), thread_id(), convert_dependencies(start_time(), dependencies()),
@@ -123,6 +128,8 @@ void DiscardIO::write_debug(std::ostream& out) const {
   out << ", imagectx=" << m_imagectx << ", offset=" << m_offset << ", length=" << m_length << "]";
 }
 
+=======
+>>>>>>> upstream/hammer
 void AioReadIO::encode(bufferlist &bl) const {
   action::Action action((action::AioReadAction(
     ionum(), thread_id(), convert_dependencies(start_time(), dependencies()),
@@ -147,6 +154,7 @@ void AioWriteIO::write_debug(std::ostream& out) const {
   out << ", imagectx=" << m_imagectx << ", offset=" << m_offset << ", length=" << m_length << "]";
 }
 
+<<<<<<< HEAD
 void AioDiscardIO::encode(bufferlist &bl) const {
   action::Action action((action::AioDiscardAction(
     ionum(), thread_id(), convert_dependencies(start_time(), dependencies()),
@@ -159,6 +167,8 @@ void AioDiscardIO::write_debug(std::ostream& out) const {
   out << ", imagectx=" << m_imagectx << ", offset=" << m_offset << ", length=" << m_length << "]";
 }
 
+=======
+>>>>>>> upstream/hammer
 void OpenImageIO::encode(bufferlist &bl) const {
   action::Action action((action::OpenImageAction(
     ionum(), thread_id(), convert_dependencies(start_time(), dependencies()),

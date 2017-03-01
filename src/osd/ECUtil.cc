@@ -55,7 +55,12 @@ int ECUtil::decode(
   for (map<int, bufferlist>::iterator i = to_decode.begin();
        i != to_decode.end();
        ++i) {
+<<<<<<< HEAD
     assert(i->second.length() == total_data_size);
+=======
+    if (i->second.length() != total_chunk_size)
+      return -EINVAL;
+>>>>>>> upstream/hammer
   }
 
   if (total_data_size == 0)

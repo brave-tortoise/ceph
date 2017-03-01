@@ -232,7 +232,10 @@ function test_mon_injectargs_SI()
   ceph tell mon.a injectargs '--mon_pg_warn_min_objects 1G'
   expect_config_value "mon.a" "mon_pg_warn_min_objects" 1073741824
   expect_false ceph tell mon.a injectargs '--mon_pg_warn_min_objects 10F'
+<<<<<<< HEAD
   expect_false ceph tell mon.a injectargs '--mon_globalid_prealloc -1'
+=======
+>>>>>>> upstream/hammer
   $SUDO ceph daemon mon.a config set mon_pg_warn_min_objects $initial_value
 }
 
@@ -253,11 +256,16 @@ function test_tiering_agent()
   # wait for the object to be evicted from the cache
   local evicted
   evicted=false
+<<<<<<< HEAD
   for i in `seq 1 300` ; do
+=======
+  for i in 1 2 4 8 16 32 64 128 256 ; do
+>>>>>>> upstream/hammer
       if ! rados -p $fast ls | grep obj1 ; then
           evicted=true
           break
       fi
+<<<<<<< HEAD
       sleep 1
   done
   $evicted # assert
@@ -266,11 +274,25 @@ function test_tiering_agent()
   # wait for the promoted object to be evicted again
   evicted=false
   for i in `seq 1 300` ; do
+=======
+      sleep $i
+  done
+  $evicted # assert
+  # the object is proxy read and promoted to the cache
+  rados -p $slow get obj1 /tmp/obj1
+  # wait for the promoted object to be evicted again
+  evicted=false
+  for i in 1 2 4 8 16 32 64 128 256 ; do
+>>>>>>> upstream/hammer
       if ! rados -p $fast ls | grep obj1 ; then
           evicted=true
           break
       fi
+<<<<<<< HEAD
       sleep 1
+=======
+      sleep $i
+>>>>>>> upstream/hammer
   done
   $evicted # assert
   ceph osd tier remove-overlay $slow
@@ -370,6 +392,7 @@ function test_tiering()
   ceph osd pool delete snap_base snap_base --yes-i-really-really-mean-it
   ceph osd pool delete snap_cache snap_cache --yes-i-really-really-mean-it
 
+<<<<<<< HEAD
   # make sure we can't create snapshot on tier
   ceph osd pool create basex 2
   ceph osd pool create cachex 2
@@ -379,6 +402,8 @@ function test_tiering()
   ceph osd pool delete basex basex --yes-i-really-really-mean-it
   ceph osd pool delete cachex cachex --yes-i-really-really-mean-it
 
+=======
+>>>>>>> upstream/hammer
   # make sure we can't create an ec pool tier
   ceph osd pool create eccache 2 2 erasure
   ceph osd pool create repbase 2
@@ -811,7 +836,16 @@ function test_mon_mds()
 
   # We don't want any MDSs to be up, their activity can interfere with
   # the "current_epoch + 1" checking below if they're generating updates
+<<<<<<< HEAD
   fail_all_mds $FS_NAME
+=======
+  fail_all_mds
+
+  # Check for default crash_replay_interval set automatically in 'fs new'
+  #This may vary based on ceph.conf (e.g., it's 5 in teuthology runs)
+  #ceph osd dump | grep fs_data > $TMPFILE
+  #check_response "crash_replay_interval 45 "
+>>>>>>> upstream/hammer
 
   ceph mds compat show
   expect_false ceph mds deactivate 2
@@ -936,15 +970,25 @@ function test_mon_mds()
   tier_poolnum=$(ceph osd dump | grep "pool.* 'mds-tier" | awk '{print $2;}')
 
   # Use of a readonly tier should be forbidden
+<<<<<<< HEAD
   ceph osd tier cache-mode mds-tier readonly --yes-i-really-mean-it
   set +e
   ceph fs new $FS_NAME fs_metadata mds-ec-pool --force 2>$TMPFILE
+=======
+  ceph osd tier cache-mode mds-tier readonly
+  set +e
+  ceph fs new cephfs fs_metadata mds-ec-pool 2>$TMPFILE
+>>>>>>> upstream/hammer
   check_response 'has a write tier (mds-tier) that is configured to forward' $? 22
   set -e
 
   # Use of a writeback tier should enable FS creation
   ceph osd tier cache-mode mds-tier writeback
+<<<<<<< HEAD
   ceph fs new $FS_NAME fs_metadata mds-ec-pool --force
+=======
+  ceph fs new cephfs fs_metadata mds-ec-pool
+>>>>>>> upstream/hammer
 
   # While a FS exists using the tiered pools, I should not be allowed
   # to remove the tier
@@ -982,8 +1026,13 @@ function test_mon_mds()
   check_response 'in use by CephFS' $? 16
   set -e
 
+<<<<<<< HEAD
   fail_all_mds $FS_NAME
   ceph fs rm $FS_NAME --yes-i-really-mean-it
+=======
+  fail_all_mds
+  ceph fs rm cephfs --yes-i-really-mean-it
+>>>>>>> upstream/hammer
   ceph osd pool delete mds-ec-pool mds-ec-pool --yes-i-really-really-mean-it
 
   # Create a FS and check that we can subsequently add a cache tier to it
@@ -996,14 +1045,23 @@ function test_mon_mds()
 
   # Removing tier should be permitted because the underlying pool is
   # replicated (#11504 case)
+<<<<<<< HEAD
   ceph osd tier cache-mode mds-tier proxy
+=======
+  ceph osd tier cache-mode mds-tier forward
+>>>>>>> upstream/hammer
   ceph osd tier remove-overlay fs_metadata
   ceph osd tier remove fs_metadata mds-tier
   ceph osd pool delete mds-tier mds-tier --yes-i-really-really-mean-it
 
   # Clean up FS
+<<<<<<< HEAD
   fail_all_mds $FS_NAME
   ceph fs rm $FS_NAME --yes-i-really-mean-it
+=======
+  fail_all_mds
+  ceph fs rm cephfs --yes-i-really-mean-it
+>>>>>>> upstream/hammer
 
   ceph mds stat
   # ceph mds tell mds.a getmap
@@ -1371,7 +1429,10 @@ function test_mon_pg()
   ceph pg ls
   ceph pg ls 0
   ceph pg ls stale
+<<<<<<< HEAD
   expect_false ceph pg ls scrubq
+=======
+>>>>>>> upstream/hammer
   ceph pg ls active stale repair recovering
   ceph pg ls 0 active
   ceph pg ls 0 active stale
@@ -1688,12 +1749,16 @@ function test_mon_osd_misc()
 
   ceph osd reweight-by-utilization 110
   ceph osd reweight-by-utilization 110 .5
+<<<<<<< HEAD
   expect_false ceph osd reweight-by-utilization 110 0
   expect_false ceph osd reweight-by-utilization 110 -0.1
   ceph osd test-reweight-by-utilization 110 .5 --no-increasing
   ceph osd test-reweight-by-utilization 110 .5 4 --no-increasing
   expect_false ceph osd test-reweight-by-utilization 110 .5 0 --no-increasing
   expect_false ceph osd test-reweight-by-utilization 110 .5 -10 --no-increasing
+=======
+  ceph osd test-reweight-by-utilization 110 .5 --no-increasing
+>>>>>>> upstream/hammer
   ceph osd reweight-by-pg 110
   ceph osd test-reweight-by-pg 110 .5
   ceph osd reweight-by-pg 110 rbd
@@ -1791,6 +1856,7 @@ function test_mon_crushmap_validation()
   local map=$TEMP_DIR/map
   ceph osd getcrushmap -o $map
 
+<<<<<<< HEAD
   local crushtool_path="${TEMP_DIR}/crushtool"
   touch "${crushtool_path}"
   chmod +x "${crushtool_path}"
@@ -1802,6 +1868,31 @@ function test_mon_crushmap_validation()
        cat > /dev/null
        exit 0" > "${crushtool_path}"
 
+=======
+  # crushtool validation timesout and is ignored
+  cat > $TMPDIR/crushtool <<EOF
+#!/bin/sh
+sleep 1000
+exit 0 # success
+EOF
+  chmod +x $TMPDIR/crushtool
+  ceph tell mon.* injectargs --crushtool $TMPDIR/crushtool
+  ceph osd setcrushmap -i $map 2>&1 | grep 'took too long'
+
+  # crushtool validation fails and is ignored
+  cat > $TMPDIR/crushtool <<EOF
+#!/bin/sh
+echo 'TEST FAIL' >&2
+exit 1 # failure
+EOF
+  chmod +x $TMPDIR/crushtool
+  ceph tell mon.* injectargs --crushtool $TMPDIR/crushtool
+  ceph osd setcrushmap -i $map 2>&1 | grep 'Failed crushmap test'
+
+  ceph tell mon.* injectargs --crushtool crushtool
+
+  # crushtool validation succeeds
+>>>>>>> upstream/hammer
   ceph osd setcrushmap -i $map
 
   printf "%s\n" \
@@ -1904,6 +1995,30 @@ function test_mon_cephdf_commands()
   expect_false test $cal_raw_used_size != $raw_used_size
 }
 
+function test_mon_cephdf_commands()
+{
+  # ceph df detail:
+  # pool section:
+  # RAW USED The near raw used per pool in raw total
+
+  ceph osd pool create cephdf_for_test 32 32 replicated
+  ceph osd pool set cephdf_for_test size 2
+
+  dd if=/dev/zero of=./cephdf_for_test bs=4k count=1
+  rados put cephdf_for_test cephdf_for_test -p cephdf_for_test
+
+  #wait for update
+  sleep 10
+
+  cal_raw_used_size=`ceph df detail | grep cephdf_for_test | awk -F ' ' '{printf "%d\n", 2 * $4}'`
+  raw_used_size=`ceph df detail | grep cephdf_for_test | awk -F ' '  '{print $11}'`
+
+  ceph osd pool delete cephdf_for_test cephdf_for_test --yes-i-really-really-mean-it
+  rm ./cephdf_for_test
+
+  expect_false test $cal_raw_used_size != $raw_used_size
+}
+
 #
 # New tests should be added to the TESTS array below
 #
@@ -1939,10 +2054,15 @@ MON_TESTS+=" mon_osd_misc"
 MON_TESTS+=" mon_heap_profiler"
 MON_TESTS+=" mon_tell"
 MON_TESTS+=" mon_crushmap_validation"
+<<<<<<< HEAD
 MON_TESTS+=" mon_ping"
 MON_TESTS+=" mon_deprecated_commands"
 MON_TESTS+=" mon_caps"
 MON_TESTS+=" mon_cephdf_commands"
+=======
+MON_TESTS+=" mon_cephdf_commands"
+
+>>>>>>> upstream/hammer
 OSD_TESTS+=" osd_bench"
 OSD_TESTS+=" osd_negative_filestore_merge_threshold"
 OSD_TESTS+=" tiering_agent"

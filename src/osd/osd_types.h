@@ -1331,12 +1331,16 @@ public:
   uint32_t hit_set_period;      ///< periodicity of HitSet segments (seconds)
   uint32_t hit_set_count;       ///< number of periods to retain
   bool use_gmt_hitset;	        ///< use gmt to name the hitset archive object
+<<<<<<< HEAD
   uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote on read
   uint32_t min_write_recency_for_promote;  ///< minimum number of HitSet to check before promote on write
   uint32_t hit_set_grade_decay_rate;   ///< current hit_set has highest priority on objects
                                        ///temperature count,the follow hit_set's priority decay 
                                        ///by this params than pre hit_set
   uint32_t hit_set_search_last_n;   ///<accumulate atmost N hit_sets for temperature
+=======
+  uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote
+>>>>>>> upstream/hammer
 
   uint32_t stripe_width;        ///< erasure coded stripe size in bytes
 
@@ -2036,6 +2040,7 @@ struct pg_hit_set_info_t {
   utime_t begin, end;   ///< time interval
   eversion_t version;   ///< version this HitSet object was written
   bool using_gmt;	///< use gmt for creating the hit_set archive object name
+<<<<<<< HEAD
 
   friend bool operator==(const pg_hit_set_info_t& l,
 			 const pg_hit_set_info_t& r) {
@@ -2048,6 +2053,12 @@ struct pg_hit_set_info_t {
 
   explicit pg_hit_set_info_t(bool using_gmt = true)
     : using_gmt(using_gmt) {}
+=======
+  pg_hit_set_info_t(bool using_gmt = true)
+    : using_gmt(using_gmt) {}
+  pg_hit_set_info_t(utime_t b, bool using_gmt)
+    : begin(b), using_gmt(using_gmt) {}
+>>>>>>> upstream/hammer
 
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &bl);
@@ -4085,7 +4096,7 @@ struct object_info_t {
   }
   void new_object() {
     set_data_digest(-1);
-    set_omap_digest(-1);
+    clear_omap_digest();
   }
 
   void encode(bufferlist& bl, uint64_t features) const;

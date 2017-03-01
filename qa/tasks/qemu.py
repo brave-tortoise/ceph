@@ -6,7 +6,6 @@ from cStringIO import StringIO
 import contextlib
 import logging
 import os
-import yaml
 
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -16,27 +15,20 @@ from teuthology.config import config as teuth_config
 
 log = logging.getLogger(__name__)
 
-DEFAULT_NUM_DISKS = 2
+DEFAULT_NUM_RBD = 1
 DEFAULT_IMAGE_URL = 'http://download.ceph.com/qa/ubuntu-12.04.qcow2'
-DEFAULT_IMAGE_SIZE = 10240 # in megabytes
-DEFAULT_CPUS = 1
 DEFAULT_MEM = 4096 # in megabytes
 
 def create_images(ctx, config, managers):
     for client, client_config in config.iteritems():
-        disks = client_config.get('disks', DEFAULT_NUM_DISKS)
-        if not isinstance(disks, list):
-            disks = [{} for n in range(int(disks))]
+        num_rbd = client_config.get('num_rbd', 1)
         clone = client_config.get('clone', False)
-        assert disks, 'at least one rbd device must be used'
-        for i, disk in enumerate(disks[1:]):
+        assert num_rbd > 0, 'at least one rbd device must be used'
+        for i in xrange(num_rbd):
             create_config = {
                 client: {
-                    'image_name': '{client}.{num}'.format(client=client,
-                                                          num=i + 1),
+                    'image_name': '{client}.{num}'.format(client=client, num=i),
                     'image_format': 2 if clone else 1,
-                    'image_size': (disk or {}).get('image_size',
-                                                   DEFAULT_IMAGE_SIZE),
                     }
                 }
             managers.append(
@@ -46,12 +38,10 @@ def create_images(ctx, config, managers):
 
 def create_clones(ctx, config, managers):
     for client, client_config in config.iteritems():
+        num_rbd = client_config.get('num_rbd', 1)
         clone = client_config.get('clone', False)
         if clone:
-            num_disks = client_config.get('disks', DEFAULT_NUM_DISKS)
-            if isinstance(num_disks, list):
-                num_disks = len(num_disks)
-            for i in xrange(num_disks):
+            for i in xrange(num_rbd):
                 create_config = {
                     client: {
                         'image_name':
@@ -136,11 +126,8 @@ def generate_iso(ctx, config):
 
         user_data = test_setup
         if client_config.get('type', 'filesystem') == 'filesystem':
-            num_disks = client_config.get('disks', DEFAULT_NUM_DISKS)
-            if isinstance(num_disks, list):
-                num_disks = len(num_disks)
-            for i in xrange(1, num_disks):
-                dev_letter = chr(ord('a') + i)
+            for i in xrange(0, client_config.get('num_rbd', DEFAULT_NUM_RBD)):
+                dev_letter = chr(ord('b') + i)
                 user_data += """
 - |
   #!/bin/bash
@@ -148,18 +135,6 @@ def generate_iso(ctx, config):
   mkfs -t xfs /dev/vd{dev_letter}
   mount -t xfs /dev/vd{dev_letter} /mnt/test_{dev_letter}
 """.format(dev_letter=dev_letter)
-
-        user_data += """
-- |
-  #!/bin/bash
-  test -d /etc/ceph || mkdir /etc/ceph
-  cp /mnt/cdrom/ceph.* /etc/ceph/
-"""
-
-        cloud_config_archive = client_config.get('cloud_config_archive', [])
-        if cloud_config_archive:
-          user_data += yaml.safe_dump(cloud_config_archive, default_style='|',
-                                      default_flow_style=False)
 
         # this may change later to pass the directories as args to the
         # script or something. xfstests needs that.
@@ -194,8 +169,6 @@ def generate_iso(ctx, config):
                 '-graft-points',
                 'user-data={userdata}'.format(userdata=userdata_path),
                 'meta-data={metadata}'.format(metadata=metadata_path),
-                'ceph.conf=/etc/ceph/ceph.conf',
-                'ceph.keyring=/etc/ceph/ceph.keyring',
                 'test.sh={file}'.format(file=test_file),
                 ],
             )
@@ -222,29 +195,9 @@ def download_image(ctx, config):
     for client, client_config in config.iteritems():
         (remote,) = ctx.cluster.only(client).remotes.keys()
         base_file = '{tdir}/qemu/base.{client}.qcow2'.format(tdir=testdir, client=client)
-        image_url = client_config.get('image_url', DEFAULT_IMAGE_URL)
         remote.run(
             args=[
-                'wget', '-nv', '-O', base_file, image_url,
-                ]
-            )
-
-        disks = client_config.get('disks', None)
-        if not isinstance(disks, list):
-            disks = [{}]
-        image_name = '{client}.0'.format(client=client)
-        image_size = (disks[0] or {}).get('image_size', DEFAULT_IMAGE_SIZE)
-        remote.run(
-            args=[
-                'qemu-img', 'convert', '-f', 'qcow2', '-O', 'raw',
-                base_file, 'rbd:rbd/{image_name}'.format(image_name=image_name)
-                ]
-            )
-        remote.run(
-            args=[
-                'rbd', 'resize',
-                '--size={image_size}M'.format(image_size=image_size),
-                image_name,
+                'wget', '-nv', '-O', base_file, DEFAULT_IMAGE_URL,
                 ]
             )
     try:
@@ -284,9 +237,6 @@ def _setup_nfs_mount(remote, client, mount_dir):
     export = "{dir} *(rw,no_root_squash,no_subtree_check,insecure)".format(
         dir=export_dir
     )
-    remote.run(args=[
-        'sudo', 'sed', '-i', '/^\/export\//d', "/etc/exports",
-    ])
     remote.run(args=[
         'echo', export, run.Raw("|"),
         'sudo', 'tee', '-a', "/etc/exports",
@@ -356,13 +306,10 @@ def run_qemu(ctx, config):
         # allow to test to tell teuthology the tests outcome
         _setup_nfs_mount(remote, client, log_dir)
 
-        # Hack to make sure /dev/kvm permissions are set correctly
-        # See http://tracker.ceph.com/issues/17977 and
-        # https://bugzilla.redhat.com/show_bug.cgi?id=1333159
-        remote.run(args='sudo udevadm control --reload')
-        remote.run(args='sudo udevadm trigger /dev/kvm')
-        remote.run(args='ls -l /dev/kvm')
-
+        base_file = '{tdir}/qemu/base.{client}.qcow2'.format(
+            tdir=testdir,
+            client=client
+        )
         qemu_cmd = 'qemu-system-x86_64'
         if remote.os.package_type == "rpm":
             qemu_cmd = "/usr/libexec/qemu-kvm"
@@ -372,17 +319,19 @@ def run_qemu(ctx, config):
             '{tdir}/archive/coverage'.format(tdir=testdir),
             'daemon-helper',
             'term',
-            qemu_cmd, '-enable-kvm', '-nographic', '-cpu', 'host',
-            '-smp', str(client_config.get('cpus', DEFAULT_CPUS)),
+            qemu_cmd, '-enable-kvm', '-nographic',
             '-m', str(client_config.get('memory', DEFAULT_MEM)),
+            # base OS device
+            '-drive',
+            'file={base},format=qcow2,if=virtio'.format(base=base_file),
             # cd holding metadata for cloud-init
             '-cdrom', '{tdir}/qemu/{client}.iso'.format(tdir=testdir, client=client),
             ]
 
         cachemode = 'none'
-        ceph_config = ctx.ceph['ceph'].conf.get('global', {})
-        ceph_config.update(ctx.ceph['ceph'].conf.get('client', {}))
-        ceph_config.update(ctx.ceph['ceph'].conf.get(client, {}))
+        ceph_config = ctx.ceph.conf.get('global', {})
+        ceph_config.update(ctx.ceph.conf.get('client', {}))
+        ceph_config.update(ctx.ceph.conf.get(client, {}))
         if ceph_config.get('rbd cache'):
             if ceph_config.get('rbd cache max dirty', 1) > 0:
                 cachemode = 'writeback'
@@ -390,10 +339,7 @@ def run_qemu(ctx, config):
                 cachemode = 'writethrough'
 
         clone = client_config.get('clone', False)
-        num_disks = client_config.get('disks', DEFAULT_NUM_DISKS)
-        if isinstance(num_disks, list):
-            num_disks = len(num_disks)
-        for i in xrange(num_disks):
+        for i in xrange(client_config.get('num_rbd', DEFAULT_NUM_RBD)):
             suffix = '-clone' if clone else ''
             args.extend([
                 '-drive',
@@ -483,29 +429,15 @@ def task(ctx, config):
             client.0:
               test: http://download.ceph.com/qa/test.sh
               type: block
-              disks: 2
+              num_rbd: 2
 
-    - or -
-
-        tasks:
-        - ceph:
-        - qemu:
-            client.0:
-              test: http://ceph.com/qa/test.sh
-              type: block
-              disks:
-                - image_size: 1024
-                - image_size: 2048
-
-    You can set the amount of CPUs and memory the VM has (default is 1 CPU and
-    4096 MB)::
+    You can set the amount of memory the VM has (default is 1024 MB)::
 
         tasks:
         - ceph:
         - qemu:
             client.0:
               test: http://download.ceph.com/qa/test.sh
-              cpus: 4
               memory: 512 # megabytes
 
     If you want to run a test against a cloned rbd image, set clone to true::
@@ -516,32 +448,6 @@ def task(ctx, config):
             client.0:
               test: http://download.ceph.com/qa/test.sh
               clone: true
-
-    If you need to configure additional cloud-config options, set cloud_config
-    to the required data set::
-
-        tasks:
-        - ceph
-        - qemu:
-            client.0:
-                test: http://ceph.com/qa/test.sh
-                cloud_config_archive:
-                    - |
-                      #/bin/bash
-                      touch foo1
-                    - content: |
-                        test data
-                      type: text/plain
-                      filename: /tmp/data
-
-    If you need to override the default cloud image, set image_url:
-
-        tasks:
-        - ceph
-        - qemu:
-            client.0:
-                test: http://ceph.com/qa/test.sh
-                image_url: https://cloud-images.ubuntu.com/releases/16.04/release/ubuntu-16.04-server-cloudimg-amd64-disk1.img
     """
     assert isinstance(config, dict), \
            "task qemu only supports a dictionary for configuration"

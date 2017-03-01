@@ -68,9 +68,13 @@ CLS_NAME(rbd)
 #define RBD_SNAP_KEY_PREFIX "snapshot_"
 #define RBD_DIR_ID_KEY_PREFIX "id_"
 #define RBD_DIR_NAME_KEY_PREFIX "name_"
+<<<<<<< HEAD
 #define RBD_METADATA_KEY_PREFIX "metadata_"
 
 #define GROUP_SNAP_SEQ "snap_seq"
+=======
+#define RBD_MAX_OBJECT_MAP_OBJECT_COUNT 256000000
+>>>>>>> upstream/hammer
 
 static int snap_read_header(cls_method_context_t hctx, bufferlist& bl)
 {
@@ -2332,7 +2336,11 @@ int object_map_resize(cls_method_context_t hctx, bufferlist *in, bufferlist *out
   }
 
   // protect against excessive memory requirements
+<<<<<<< HEAD
   if (object_count > cls::rbd::MAX_OBJECT_MAP_OBJECT_COUNT) {
+=======
+  if (object_count > RBD_MAX_OBJECT_MAP_OBJECT_COUNT) {
+>>>>>>> upstream/hammer
     CLS_ERR("object map too large: %" PRIu64, object_count);
     return -EINVAL;
   }

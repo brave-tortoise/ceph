@@ -79,7 +79,10 @@ void OpRequest::_unregistered() {
   request->clear_data();
   request->clear_payload();
   request->release_message_throttle();
+<<<<<<< HEAD
   request->set_connection(nullptr);
+=======
+>>>>>>> upstream/hammer
 }
 
 bool OpRequest::check_rmw(int flag) {

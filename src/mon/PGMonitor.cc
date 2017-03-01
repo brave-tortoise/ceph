@@ -890,7 +890,171 @@ void PGMonitor::check_osd_map(epoch_t epoch)
 			       need_check_down_pg_osds, &pending_inc);
   check_all_pgs = false;
 
+<<<<<<< HEAD
   propose_pending();
+=======
+
+  if (split_bits == 0) {
+    dout(10) << "register_new_pgs  will create " << pgid << dendl;
+  } else {
+    dout(10) << "register_new_pgs  will create " << pgid
+	     << " parent " << parent
+	     << " by " << split_bits << " bits"
+	     << dendl;
+  }
+}
+
+bool PGMonitor::register_new_pgs()
+{
+  // iterate over crush mapspace
+  epoch_t epoch = mon->osdmon()->osdmap.get_epoch();
+  dout(10) << "register_new_pgs checking pg pools for osdmap epoch " << epoch
+	   << ", last_pg_scan " << pg_map.last_pg_scan << dendl;
+
+  OSDMap *osdmap = &mon->osdmon()->osdmap;
+
+  int created = 0;
+  for (map<int64_t,pg_pool_t>::iterator p = osdmap->pools.begin();
+       p != osdmap->pools.end();
+       ++p) {
+    int64_t poolid = p->first;
+    pg_pool_t &pool = p->second;
+    int ruleno = osdmap->crush->find_rule(pool.get_crush_ruleset(), pool.get_type(), pool.get_size());
+    if (ruleno < 0 || !osdmap->crush->rule_exists(ruleno))
+      continue;
+
+    if (pool.get_last_change() <= pg_map.last_pg_scan ||
+	pool.get_last_change() <= pending_inc.pg_scan) {
+      dout(10) << " no change in pool " << p->first << " " << pool << dendl;
+      continue;
+    }
+
+    dout(10) << "register_new_pgs scanning pool " << p->first << " " << pool << dendl;
+
+    bool new_pool = pg_map.pg_pool_sum.count(poolid) == 0;  // first pgs in this pool
+
+    for (ps_t ps = 0; ps < pool.get_pg_num(); ps++) {
+      pg_t pgid(ps, poolid, -1);
+      if (pg_map.pg_stat.count(pgid)) {
+	dout(20) << "register_new_pgs  have " << pgid << dendl;
+	continue;
+      }
+      created++;
+      register_pg(pool, pgid, pool.get_last_change(), new_pool);
+    }
+  }
+
+  int removed = 0;
+  for (set<pg_t>::iterator p = pg_map.creating_pgs.begin();
+       p != pg_map.creating_pgs.end();
+       ++p) {
+    if (p->preferred() >= 0) {
+      dout(20) << " removing creating_pg " << *p << " because it is localized and obsolete" << dendl;
+      pending_inc.pg_remove.insert(*p);
+      removed++;
+    }
+    if (!osdmap->have_pg_pool(p->pool())) {
+      dout(20) << " removing creating_pg " << *p << " because containing pool deleted" << dendl;
+      pending_inc.pg_remove.insert(*p);
+      ++removed;
+    }
+  }
+
+  // deleted pools?
+  for (ceph::unordered_map<pg_t,pg_stat_t>::const_iterator p = pg_map.pg_stat.begin();
+       p != pg_map.pg_stat.end(); ++p) {
+    if (!osdmap->have_pg_pool(p->first.pool())) {
+      dout(20) << " removing pg_stat " << p->first << " because "
+	       << "containing pool deleted" << dendl;
+      pending_inc.pg_remove.insert(p->first);
+      ++removed;
+    }
+    if (p->first.preferred() >= 0) {
+      dout(20) << " removing localized pg " << p->first << dendl;
+      pending_inc.pg_remove.insert(p->first);
+      ++removed;
+    }
+  }
+
+  dout(10) << "register_new_pgs registered " << created << " new pgs, removed "
+	   << removed << " uncreated pgs" << dendl;
+  if (created || removed) {
+    pending_inc.pg_scan = epoch;
+    return true;
+  }
+  return false;
+}
+
+void PGMonitor::map_pg_creates()
+{
+  OSDMap *osdmap = &mon->osdmon()->osdmap;
+  if (osdmap->get_epoch() == last_map_pg_create_osd_epoch) {
+    dout(10) << "map_pg_creates to " << pg_map.creating_pgs.size() << " pgs -- no change" << dendl;
+    return;
+  }
+
+  dout(10) << "map_pg_creates to " << pg_map.creating_pgs.size() << " pgs osdmap epoch " << osdmap->get_epoch() << dendl;
+  last_map_pg_create_osd_epoch = osdmap->get_epoch();
+
+  for (set<pg_t>::iterator p = pg_map.creating_pgs.begin();
+       p != pg_map.creating_pgs.end();
+       ++p) {
+    pg_t pgid = *p;
+    pg_t on = pgid;
+    pg_stat_t *s = NULL;
+    ceph::unordered_map<pg_t,pg_stat_t>::iterator q = pg_map.pg_stat.find(pgid);
+    if (q == pg_map.pg_stat.end()) {
+      s = &pg_map.pg_stat[pgid];
+    } else {
+      s = &q->second;
+      pg_map.stat_pg_sub(pgid, *s, true);
+    }
+
+    if (s->parent_split_bits)
+      on = s->parent;
+
+    vector<int> up, acting;
+    int up_primary, acting_primary;
+    osdmap->pg_to_up_acting_osds(
+      on,
+      &up,
+      &up_primary,
+      &acting,
+      &acting_primary);
+
+    if (s->acting_primary != -1) {
+      pg_map.creating_pgs_by_osd[s->acting_primary].erase(pgid);
+      if (pg_map.creating_pgs_by_osd[s->acting_primary].size() == 0)
+        pg_map.creating_pgs_by_osd.erase(s->acting_primary);
+    }
+    s->up = up;
+    s->up_primary = up_primary;
+    s->acting = acting;
+    s->acting_primary = acting_primary;
+    pg_map.stat_pg_add(pgid, *s, true);
+
+    // don't send creates for localized pgs
+    if (pgid.preferred() >= 0)
+      continue;
+
+    // don't send creates for splits
+    if (s->parent_split_bits)
+      continue;
+
+    if (acting_primary != -1) {
+      pg_map.creating_pgs_by_osd[acting_primary].insert(pgid);
+    } else {
+      dout(20) << "map_pg_creates  " << pgid << " -> no osds in epoch "
+	       << mon->osdmon()->osdmap.get_epoch() << ", skipping" << dendl;
+      continue;  // blarney!
+    }
+  }
+  for (map<int, set<pg_t> >::iterator p = pg_map.creating_pgs_by_osd.begin();
+       p != pg_map.creating_pgs_by_osd.end();
+       ++p) {
+    dout(10) << "map_pg_creates osd." << p->first << " has " << p->second.size() << " pgs" << dendl;
+  }
+>>>>>>> upstream/hammer
 }
 
 epoch_t PGMonitor::send_pg_creates(int osd, Connection *con, epoch_t next)
@@ -937,7 +1101,268 @@ epoch_t PGMonitor::send_pg_creates(int osd, Connection *con, epoch_t next)
   return last + 1;
 }
 
+<<<<<<< HEAD
 void PGMonitor::dump_info(Formatter *f) const
+=======
+bool PGMonitor::check_down_pgs()
+{
+  dout(10) << "check_down_pgs" << dendl;
+
+  OSDMap *osdmap = &mon->osdmon()->osdmap;
+  bool ret = false;
+
+  for (ceph::unordered_map<pg_t,pg_stat_t>::iterator p = pg_map.pg_stat.begin();
+       p != pg_map.pg_stat.end();
+       ++p) {
+    if ((p->second.state & PG_STATE_STALE) == 0 &&
+	p->second.acting_primary != -1 &&
+	osdmap->is_down(p->second.acting_primary)) {
+      dout(10) << " marking pg " << p->first << " stale with acting " << p->second.acting << dendl;
+
+      map<pg_t,pg_stat_t>::iterator q = pending_inc.pg_stat_updates.find(p->first);
+      pg_stat_t *stat;
+      if (q == pending_inc.pg_stat_updates.end()) {
+	stat = &pending_inc.pg_stat_updates[p->first];
+	*stat = p->second;
+      } else {
+	stat = &q->second;
+      }
+      stat->state |= PG_STATE_STALE;
+      stat->last_unstale = ceph_clock_now(g_ceph_context);
+      ret = true;
+    }
+  }
+  need_check_down_pgs = false;
+
+  return ret;
+}
+
+inline string percentify(const float& a) {
+  stringstream ss;
+  if (a < 0.01)
+    ss << "0";
+  else
+    ss << std::fixed << std::setprecision(2) << a;
+  return ss.str();
+}
+
+//void PGMonitor::dump_object_stat_sum(stringstream& ss, Formatter *f,
+void PGMonitor::dump_object_stat_sum(TextTable &tbl, Formatter *f,
+				     object_stat_sum_t &sum, uint64_t avail,
+				     float raw_used_rate, bool verbose)
+{
+  float curr_object_copies_rate = 0.0;
+  if (sum.num_object_copies > 0)
+    curr_object_copies_rate = (float)(sum.num_object_copies - sum.num_objects_degraded) / sum.num_object_copies;
+
+  if (f) {
+    f->dump_int("kb_used", SHIFT_ROUND_UP(sum.num_bytes, 10));
+    f->dump_int("bytes_used", sum.num_bytes);
+    f->dump_unsigned("max_avail", avail);
+    f->dump_int("objects", sum.num_objects);
+    if (verbose) {
+      f->dump_int("dirty", sum.num_objects_dirty);
+      f->dump_int("rd", sum.num_rd);
+      f->dump_int("rd_bytes", sum.num_rd_kb * 1024ull);
+      f->dump_int("wr", sum.num_wr);
+      f->dump_int("wr_bytes", sum.num_wr_kb * 1024ull);
+      f->dump_int("raw_bytes_used", sum.num_bytes * raw_used_rate * curr_object_copies_rate);
+    }
+  } else {
+    tbl << stringify(si_t(sum.num_bytes));
+    float used = 0.0;
+    if (avail) {
+      used = sum.num_bytes * curr_object_copies_rate;
+      used /= used + avail;
+    } else if (sum.num_bytes) {
+      used = 1.0;
+    }
+    tbl << percentify(used*100);
+    tbl << si_t(avail);
+    tbl << sum.num_objects;
+    if (verbose) {
+      tbl << stringify(si_t(sum.num_objects_dirty))
+          << stringify(si_t(sum.num_rd))
+          << stringify(si_t(sum.num_wr))
+          << stringify(si_t(sum.num_bytes * raw_used_rate * curr_object_copies_rate));
+    }
+  }
+}
+
+int64_t PGMonitor::get_rule_avail(OSDMap& osdmap, int ruleno)
+{
+  map<int,float> wm;
+  int r = osdmap.crush->get_rule_weight_osd_map(ruleno, &wm);
+  if (r < 0)
+    return r;
+  if(wm.empty())
+    return 0;
+  int64_t min = -1;
+  for (map<int,float>::iterator p = wm.begin(); p != wm.end(); ++p) {
+    ceph::unordered_map<int32_t,osd_stat_t>::const_iterator osd_info = pg_map.osd_stat.find(p->first);
+    if (osd_info != pg_map.osd_stat.end()) {
+      if (osd_info->second.kb == 0 || p->second == 0) {
+        // osd must be out, hence its stats have been zeroed
+        // (unless we somehow managed to have a disk with size 0...)
+        //
+        // (p->second == 0), if osd weight is 0, no need to
+        // calculate proj below.
+        continue;
+      }
+      int64_t proj = (float)((osd_info->second).kb_avail * 1024ull) /
+        (double)p->second;
+      if (min < 0 || proj < min)
+        min = proj;
+    } else {
+      dout(0) << "Cannot get stat of OSD " << p->first << dendl;
+    }
+  }
+  return min;
+}
+
+void PGMonitor::dump_pool_stats(stringstream &ss, Formatter *f, bool verbose)
+{
+  TextTable tbl;
+
+  if (f) {
+    f->open_array_section("pools");
+  } else {
+    tbl.define_column("NAME", TextTable::LEFT, TextTable::LEFT);
+    tbl.define_column("ID", TextTable::LEFT, TextTable::LEFT);
+    if (verbose)
+      tbl.define_column("CATEGORY", TextTable::LEFT, TextTable::LEFT);
+    tbl.define_column("USED", TextTable::LEFT, TextTable::RIGHT);
+    tbl.define_column("%USED", TextTable::LEFT, TextTable::RIGHT);
+    tbl.define_column("MAX AVAIL", TextTable::LEFT, TextTable::RIGHT);
+    tbl.define_column("OBJECTS", TextTable::LEFT, TextTable::RIGHT);
+    if (verbose) {
+      tbl.define_column("DIRTY", TextTable::LEFT, TextTable::RIGHT);
+      tbl.define_column("READ", TextTable::LEFT, TextTable::RIGHT);
+      tbl.define_column("WRITE", TextTable::LEFT, TextTable::RIGHT);
+      tbl.define_column("RAW USED", TextTable::LEFT, TextTable::RIGHT);
+    }
+  }
+
+  map<int,uint64_t> avail_by_rule;
+  OSDMap &osdmap = mon->osdmon()->osdmap;
+  for (map<int64_t,pg_pool_t>::const_iterator p = osdmap.get_pools().begin();
+       p != osdmap.get_pools().end(); ++p) {
+    int64_t pool_id = p->first;
+    if ((pool_id < 0) || (pg_map.pg_pool_sum.count(pool_id) == 0))
+      continue;
+    const string& pool_name = osdmap.get_pool_name(pool_id);
+    pool_stat_t &stat = pg_map.pg_pool_sum[pool_id];
+
+    const pg_pool_t *pool = osdmap.get_pg_pool(pool_id);
+    int ruleno = osdmap.crush->find_rule(pool->get_crush_ruleset(),
+					 pool->get_type(),
+					 pool->get_size());
+    int64_t avail;
+    float raw_used_rate;
+    if (avail_by_rule.count(ruleno) == 0) {
+      avail = get_rule_avail(osdmap, ruleno);
+      if (avail < 0)
+        avail = 0;
+      avail_by_rule[ruleno] = avail;
+    } else {
+      avail = avail_by_rule[ruleno];
+    }
+    switch (pool->get_type()) {
+    case pg_pool_t::TYPE_REPLICATED:
+      avail /= pool->get_size();
+      raw_used_rate = pool->get_size();
+      break;
+    case pg_pool_t::TYPE_ERASURE:
+    {
+      const map<string,string>& ecp =
+        osdmap.get_erasure_code_profile(pool->erasure_code_profile);
+      map<string,string>::const_iterator pm = ecp.find("m");
+      map<string,string>::const_iterator pk = ecp.find("k");
+      if (pm != ecp.end() && pk != ecp.end()) {
+	int k = atoi(pk->second.c_str());
+	int m = atoi(pm->second.c_str());
+	avail = avail * k / (m + k);
+	raw_used_rate = (float)(m + k) / k;
+      } else {
+	raw_used_rate = 0.0;
+      }
+      break;
+    }
+    default:
+      assert(0 == "unrecognized pool type");
+    }
+
+    if (f) {
+      f->open_object_section("pool");
+      f->dump_string("name", pool_name);
+      f->dump_int("id", pool_id);
+      f->open_object_section("stats");
+    } else {
+      tbl << pool_name
+          << pool_id;
+      if (verbose)
+        tbl << "-";
+    }
+    dump_object_stat_sum(tbl, f, stat.stats.sum, avail, raw_used_rate, verbose);
+    if (f)
+      f->close_section(); // stats
+    else
+      tbl << TextTable::endrow;
+
+    if (f)
+      f->close_section(); // pool
+  }
+  if (f)
+    f->close_section();
+  else {
+    ss << "POOLS:\n";
+    tbl.set_indent(4);
+    ss << tbl;
+  }
+}
+
+void PGMonitor::dump_fs_stats(stringstream &ss, Formatter *f, bool verbose)
+{
+  if (f) {
+    f->open_object_section("stats");
+    f->dump_int("total_bytes", pg_map.osd_sum.kb * 1024ull);
+    f->dump_int("total_used_bytes", pg_map.osd_sum.kb_used * 1024ull);
+    f->dump_int("total_avail_bytes", pg_map.osd_sum.kb_avail * 1024ull);
+    if (verbose) {
+      f->dump_int("total_objects", pg_map.pg_sum.stats.sum.num_objects);
+    }
+    f->close_section();
+  } else {
+    TextTable tbl;
+    tbl.define_column("SIZE", TextTable::LEFT, TextTable::RIGHT);
+    tbl.define_column("AVAIL", TextTable::LEFT, TextTable::RIGHT);
+    tbl.define_column("RAW USED", TextTable::LEFT, TextTable::RIGHT);
+    tbl.define_column("%RAW USED", TextTable::LEFT, TextTable::RIGHT);
+    if (verbose) {
+      tbl.define_column("OBJECTS", TextTable::LEFT, TextTable::RIGHT);
+    }
+    tbl << stringify(si_t(pg_map.osd_sum.kb*1024))
+        << stringify(si_t(pg_map.osd_sum.kb_avail*1024))
+        << stringify(si_t(pg_map.osd_sum.kb_used*1024));
+    float used = 0.0;
+    if (pg_map.osd_sum.kb > 0) {
+      used = ((float)pg_map.osd_sum.kb_used / pg_map.osd_sum.kb);
+    }
+    tbl << percentify(used*100);
+    if (verbose) {
+      tbl << stringify(si_t(pg_map.pg_sum.stats.sum.num_objects));
+    }
+    tbl << TextTable::endrow;
+
+    ss << "GLOBAL:\n";
+    tbl.set_indent(4);
+    ss << tbl;
+  }
+}
+
+
+void PGMonitor::dump_info(Formatter *f)
+>>>>>>> upstream/hammer
 {
   f->open_object_section("pgmap");
   pg_map.dump(f);
@@ -1721,10 +2146,17 @@ void PGMonitor::get_health(list<pair<health_status_t,string> >& summary,
     const string& name = mon->osdmon()->osdmap.get_pool_name(p->first);
     const pool_stat_t& st = pg_map.get_pg_pool_sum_stat(p->first);
     uint64_t ratio = p->second.cache_target_full_ratio_micro +
+<<<<<<< HEAD
                      ((1000000 - p->second.cache_target_full_ratio_micro) *
                       g_conf->mon_cache_target_full_warn_ratio);
     if (p->second.target_max_objects && (uint64_t)(st.stats.sum.num_objects - st.stats.sum.num_objects_hit_set_archive) >
         p->second.target_max_objects * (ratio / 1000000.0)) {
+=======
+      ((1000000 - p->second.cache_target_full_ratio_micro) *
+       g_conf->mon_cache_target_full_warn_ratio);
+    if (p->second.target_max_objects && (uint64_t)st.stats.sum.num_objects >
+	p->second.target_max_objects * (ratio / 1000000.0)) {
+>>>>>>> upstream/hammer
       nearfull = true;
       if (detail) {
 	ostringstream ss;
@@ -1735,8 +2167,13 @@ void PGMonitor::get_health(list<pair<health_status_t,string> >& summary,
 	detail->push_back(make_pair(HEALTH_WARN, ss.str()));
       }
     }
+<<<<<<< HEAD
     if (p->second.target_max_bytes && (uint64_t)(st.stats.sum.num_bytes - st.stats.sum.num_bytes_hit_set_archive) >
         p->second.target_max_bytes * (ratio / 1000000.0)) {
+=======
+    if (p->second.target_max_bytes && (uint64_t)st.stats.sum.num_bytes >
+	p->second.target_max_bytes * (ratio / 1000000.0)) {
+>>>>>>> upstream/hammer
       nearfull = true;
       if (detail) {
 	ostringstream ss;

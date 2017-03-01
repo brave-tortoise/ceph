@@ -5,7 +5,11 @@
 #define CEPH_RBD_REPLAY_ACTION_TYPES_H
 
 #include "include/int_types.h"
+<<<<<<< HEAD
 #include "include/buffer_fwd.h"
+=======
+#include "include/buffer.h"
+>>>>>>> upstream/hammer
 #include "include/encoding.h"
 #include <iosfwd>
 #include <list>
@@ -62,6 +66,7 @@ WRITE_CLASS_ENCODER(Dependency);
 typedef std::vector<Dependency> Dependencies;
 
 enum ActionType {
+<<<<<<< HEAD
   ACTION_TYPE_START_THREAD    = 0,
   ACTION_TYPE_STOP_THREAD     = 1,
   ACTION_TYPE_READ            = 2,
@@ -74,6 +79,16 @@ enum ActionType {
   ACTION_TYPE_AIO_CLOSE_IMAGE = 9,
   ACTION_TYPE_DISCARD         = 10,
   ACTION_TYPE_AIO_DISCARD     = 11
+=======
+  ACTION_TYPE_START_THREAD = 0,
+  ACTION_TYPE_STOP_THREAD  = 1,
+  ACTION_TYPE_READ         = 2,
+  ACTION_TYPE_WRITE        = 3,
+  ACTION_TYPE_AIO_READ     = 4,
+  ACTION_TYPE_AIO_WRITE    = 5,
+  ACTION_TYPE_OPEN_IMAGE   = 6,
+  ACTION_TYPE_CLOSE_IMAGE  = 7
+>>>>>>> upstream/hammer
 };
 
 struct ActionBase {
@@ -172,6 +187,7 @@ struct WriteAction : public IoActionBase {
   }
 };
 
+<<<<<<< HEAD
 struct DiscardAction : public IoActionBase {
   static const ActionType ACTION_TYPE = ACTION_TYPE_DISCARD;
 
@@ -184,6 +200,8 @@ struct DiscardAction : public IoActionBase {
   }
 };
 
+=======
+>>>>>>> upstream/hammer
 struct AioReadAction : public IoActionBase {
   static const ActionType ACTION_TYPE = ACTION_TYPE_AIO_READ;
 
@@ -208,6 +226,7 @@ struct AioWriteAction : public IoActionBase {
   }
 };
 
+<<<<<<< HEAD
 struct AioDiscardAction : public IoActionBase {
   static const ActionType ACTION_TYPE = ACTION_TYPE_AIO_DISCARD;
 
@@ -220,6 +239,8 @@ struct AioDiscardAction : public IoActionBase {
   }
 };
 
+=======
+>>>>>>> upstream/hammer
 struct OpenImageAction : public ImageActionBase {
   static const ActionType ACTION_TYPE = ACTION_TYPE_OPEN_IMAGE;
 
@@ -253,6 +274,7 @@ struct CloseImageAction : public ImageActionBase {
   }
 };
 
+<<<<<<< HEAD
 struct AioOpenImageAction : public ImageActionBase {
   static const ActionType ACTION_TYPE = ACTION_TYPE_AIO_OPEN_IMAGE;
 
@@ -286,6 +308,8 @@ struct AioCloseImageAction : public ImageActionBase {
   }
 };
 
+=======
+>>>>>>> upstream/hammer
 struct UnknownAction {
   static const ActionType ACTION_TYPE = static_cast<ActionType>(-1);
 
@@ -298,6 +322,7 @@ typedef boost::variant<StartThreadAction,
                        StopThreadAction,
                        ReadAction,
                        WriteAction,
+<<<<<<< HEAD
                        DiscardAction,
                        AioReadAction,
                        AioWriteAction,
@@ -306,6 +331,12 @@ typedef boost::variant<StartThreadAction,
                        CloseImageAction,
                        AioOpenImageAction,
                        AioCloseImageAction,
+=======
+                       AioReadAction,
+                       AioWriteAction,
+                       OpenImageAction,
+                       CloseImageAction,
+>>>>>>> upstream/hammer
                        UnknownAction> Action;
 
 class ActionEntry {

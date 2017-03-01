@@ -150,12 +150,15 @@ global_init(std::vector < const char * > *alt_def_args,
   }
   first_run = false;
 
+<<<<<<< HEAD
   // Verify flags have not changed if global_pre_init() has been called
   // manually. If they have, update them.
   if (g_ceph_context->get_init_flags() != flags) {
     g_ceph_context->set_init_flags(flags);
   }
 
+=======
+>>>>>>> upstream/hammer
   // signal stuff
   int siglist[] = { SIGPIPE, 0 };
   block_signals(siglist, NULL);
@@ -344,12 +347,16 @@ void intrusive_ptr_release(CephContext* cct)
   cct->put();
 }
 
+<<<<<<< HEAD
 void global_print_banner(void)
 {
   output_ceph_version();
 }
 
 int global_init_prefork(CephContext *cct)
+=======
+int global_init_prefork(CephContext *cct, int)
+>>>>>>> upstream/hammer
 {
   if (g_code_env != CODE_ENVIRONMENT_DAEMON)
     return -1;
@@ -357,6 +364,7 @@ int global_init_prefork(CephContext *cct)
   const md_config_t *conf = cct->_conf;
   if (!conf->daemonize) {
 
+<<<<<<< HEAD
     if (pidfile_write(conf) < 0)
       exit(1);
 
@@ -365,6 +373,10 @@ int global_init_prefork(CephContext *cct)
       chown_path(conf->pid_file, cct->get_set_uid(), cct->get_set_gid(),
 		 cct->get_set_uid_string(), cct->get_set_gid_string());
     }
+=======
+    if (pidfile_write(g_conf) < 0)
+      exit(1);
+>>>>>>> upstream/hammer
 
     return -1;
   }
@@ -400,8 +412,12 @@ void global_init_daemonize(CephContext *cct)
 void global_init_postfork_start(CephContext *cct)
 {
   // restart log thread
+<<<<<<< HEAD
   cct->_log->start();
   cct->notify_post_fork();
+=======
+  g_ceph_context->_log->start();
+>>>>>>> upstream/hammer
 
   /* This is the old trick where we make file descriptors 0, 1, and possibly 2
    * point to /dev/null.
@@ -426,6 +442,7 @@ void global_init_postfork_start(CephContext *cct)
     exit(1);
   }
 
+<<<<<<< HEAD
   const md_config_t *conf = cct->_conf;
   if (pidfile_write(conf) < 0)
     exit(1);
@@ -435,6 +452,10 @@ void global_init_postfork_start(CephContext *cct)
     chown_path(conf->pid_file, cct->get_set_uid(), cct->get_set_gid(),
 	       cct->get_set_uid_string(), cct->get_set_gid_string());
   }
+=======
+  if (pidfile_write(g_conf) < 0)
+    exit(1);
+>>>>>>> upstream/hammer
 }
 
 void global_init_postfork_finish(CephContext *cct)

@@ -16,15 +16,19 @@ class RGWCivetWeb : public rgw::io::RestfulClient,
   mg_connection *conn;
 
   int port;
+  int status_num;
 
   bool explicit_keepalive;
   bool explicit_conn_close;
+<<<<<<< HEAD
 
   rgw::io::StaticOutputBufferer<> txbuf;
 
   size_t write_data(const char *buf, size_t len) override;
   size_t read_data(char *buf, size_t len);
   size_t dump_date_header();
+=======
+>>>>>>> upstream/hammer
 
 public:
   void init_env(CephContext *cct);
@@ -36,9 +40,17 @@ public:
   size_t send_content_length(uint64_t len) override;
   size_t complete_header() override;
 
+<<<<<<< HEAD
   size_t recv_body(char* buf, size_t max) override {
     return read_data(buf, max);
   }
+=======
+  int send_status(int status, const char *status_name);
+  int send_100_continue();
+  int complete_header();
+  int complete_request();
+  int send_content_length(uint64_t len);
+>>>>>>> upstream/hammer
 
   size_t send_body(const char* buf, size_t len) override {
     return write_data(buf, len);

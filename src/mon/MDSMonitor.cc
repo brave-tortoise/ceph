@@ -283,8 +283,13 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
   }
 
   // check compat
+<<<<<<< HEAD
   if (!m->get_compat().writeable(fsmap.compat)) {
     dout(1) << " mds " << m->get_source_inst() << " can't write to fsmap " << fsmap.compat << dendl;
+=======
+  if (!m->get_compat().writeable(mdsmap.compat)) {
+    dout(1) << " mds " << m->get_source_inst() << " can't write to mdsmap " << mdsmap.compat << dendl;
+>>>>>>> upstream/hammer
     goto ignore;
   }
 
@@ -292,9 +297,18 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
   if (!mon->is_leader())
     return false;
 
+<<<<<<< HEAD
+=======
+  if (pending_mdsmap.test_flag(CEPH_MDSMAP_DOWN)) {
+    dout(7) << " mdsmap DOWN flag set, ignoring mds " << m->get_source_inst() << " beacon" << dendl;
+    goto ignore;
+  }
+
+>>>>>>> upstream/hammer
   // booted, but not in map?
   if (!pending_fsmap.gid_exists(gid)) {
     if (state != MDSMap::STATE_BOOT) {
+<<<<<<< HEAD
       dout(7) << "mds_beacon " << *m << " is not in fsmap (state "
               << ceph_mds_state_name(state) << ")" << dendl;
 
@@ -302,6 +316,11 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
       null_map.epoch = fsmap.epoch;
       null_map.compat = fsmap.compat;
       mon->send_reply(op, new MMDSMap(mon->monmap->fsid, &null_map));
+=======
+      dout(7) << "mds_beacon " << *m << " is not in mdsmap" << dendl;
+      mon->send_reply(m, new MMDSMap(mon->monmap->fsid, &mdsmap));
+      m->put();
+>>>>>>> upstream/hammer
       return true;
     } else {
       return false;  // not booted yet.
@@ -316,6 +335,7 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
     goto ignore;
   }
 
+<<<<<<< HEAD
   // Work out the latest epoch that this daemon should have seen
   {
     fs_cluster_id_t fscid = pending_fsmap.mds_roles.at(gid);
@@ -329,6 +349,12 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
                << " ignoring requested state, because mds hasn't seen latest map" << dendl;
       goto reply;
     }
+=======
+  if (mdsmap.get_epoch() != m->get_last_epoch_seen()) {
+    dout(10) << "mds_beacon " << *m
+	     << " ignoring requested state, because mds hasn't seen latest map" << dendl;
+    goto reply;
+>>>>>>> upstream/hammer
   }
 
   if (info.laggy()) {
@@ -348,6 +374,7 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
 	       << " -> " << ceph_mds_state_name(state) << ")" << dendl;
       goto reply;
     }
+<<<<<<< HEAD
 
     if ((state == MDSMap::STATE_STANDBY || state == MDSMap::STATE_STANDBY_REPLAY)
         && info.rank != MDS_RANK_NONE)
@@ -355,6 +382,18 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
       dout(4) << "mds_beacon MDS can't go back into standby after taking rank: "
                  "held rank " << info.rank << " while requesting state "
               << ceph_mds_state_name(state) << dendl;
+=======
+    
+    if (info.state == MDSMap::STATE_STANDBY &&
+	(state == MDSMap::STATE_STANDBY_REPLAY ||
+	    state == MDSMap::STATE_ONESHOT_REPLAY) &&
+	(pending_mdsmap.is_degraded() ||
+	 ((m->get_standby_for_rank() >= 0) &&
+	     pending_mdsmap.get_state(m->get_standby_for_rank()) < MDSMap::STATE_ACTIVE))) {
+      dout(10) << "mds_beacon can't standby-replay mds." << m->get_standby_for_rank() << " at this time (cluster degraded, or mds not active)" << dendl;
+      dout(10) << "pending_mdsmap.is_degraded()==" << pending_mdsmap.is_degraded()
+          << " rank state: " << ceph_mds_state_name(pending_mdsmap.get_state(m->get_standby_for_rank())) << dendl;
+>>>>>>> upstream/hammer
       goto reply;
     }
     
@@ -377,13 +416,23 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
   _note_beacon(m);
   mon->send_reply(op,
 		  new MMDSBeacon(mon->monmap->fsid, m->get_global_id(), m->get_name(),
+<<<<<<< HEAD
 				 effective_epoch, state, seq,
 				 CEPH_FEATURES_SUPPORTED_DEFAULT));
+=======
+				 mdsmap.get_epoch(), state, seq));
+  m->put();
+>>>>>>> upstream/hammer
   return true;
 
  ignore:
   // I won't reply this beacon, drop it.
+<<<<<<< HEAD
   mon->no_reply(op);
+=======
+  mon->no_reply(m);
+  m->put();
+>>>>>>> upstream/hammer
   return true;
 }
 
@@ -449,6 +498,16 @@ bool MDSMonitor::prepare_beacon(MonOpRequestRef op)
   MDSMap::DaemonState state = m->get_state();
   version_t seq = m->get_seq();
 
+<<<<<<< HEAD
+=======
+  // Ignore beacons if filesystem is disabled
+  if (!mdsmap.get_enabled()) {
+    dout(1) << "warning, MDS " << m->get_orig_source_inst() << " up but filesystem disabled" << dendl;
+    m->put();
+    return false;
+  }
+
+>>>>>>> upstream/hammer
   // Store health
   dout(20) << __func__ << " got health from gid " << gid << " with " << m->get_health().metrics.size() << " metrics." << dendl;
   pending_daemon_health[gid] = m->get_health();
@@ -538,6 +597,7 @@ bool MDSMonitor::prepare_beacon(MonOpRequestRef op)
       dout(0) << "got beacon for MDS in STATE_STOPPING, ignoring requested state change"
 	       << dendl;
       _note_beacon(m);
+      m->put();
       return true;
     }
 
@@ -680,6 +740,7 @@ void MDSMonitor::_updated(MonOpRequestRef op)
 
   if (m->get_state() == MDSMap::STATE_STOPPED) {
     // send the map manually (they're out of the map, so they won't get it automatic)
+<<<<<<< HEAD
     MDSMap null_map;
     null_map.epoch = fsmap.epoch;
     null_map.compat = fsmap.compat;
@@ -693,6 +754,18 @@ void MDSMonitor::_updated(MonOpRequestRef op)
 				       m->get_seq(),
 				       CEPH_FEATURES_SUPPORTED_DEFAULT));
   }
+=======
+    mon->send_reply(m, new MMDSMap(mon->monmap->fsid, &mdsmap));
+  } else {
+    mon->send_reply(m, new MMDSBeacon(mon->monmap->fsid,
+				      m->get_global_id(),
+				      m->get_name(),
+				      mdsmap.get_epoch(),
+				      m->get_state(),
+				      m->get_seq()));
+  }
+  m->put();
+>>>>>>> upstream/hammer
 }
 
 void MDSMonitor::on_active()
@@ -1300,9 +1373,50 @@ int MDSMonitor::parse_role(
     mds_role_t *role,
     std::ostream &ss)
 {
+<<<<<<< HEAD
   const FSMap *relevant_fsmap = &fsmap;
   if (mon->is_leader()) {
     relevant_fsmap = &pending_fsmap;
+=======
+  assert(ss != NULL);
+
+  const pg_pool_t *pool = mon->osdmon()->osdmap.get_pg_pool(pool_id);
+  if (!pool) {
+    *ss << "pool id '" << pool_id << "' does not exist";
+    return -ENOENT;
+  }
+
+  const string& pool_name = mon->osdmon()->osdmap.get_pool_name(pool_id);
+
+  if (pool->is_erasure()) {
+    // EC pools are only acceptable with a cache tier overlay
+    if (!pool->has_tiers() || !pool->has_read_tier() || !pool->has_write_tier()) {
+      *ss << "pool '" << pool_name << "' (id '" << pool_id << "')"
+         << " is an erasure-code pool";
+      return -EINVAL;
+    }
+
+    // That cache tier overlay must be writeback, not readonly (it's the
+    // write operations like modify+truncate we care about support for)
+    const pg_pool_t *write_tier = mon->osdmon()->osdmap.get_pg_pool(
+        pool->write_tier);
+    assert(write_tier != NULL);  // OSDMonitor shouldn't allow DNE tier
+    if (write_tier->cache_mode == pg_pool_t::CACHEMODE_FORWARD
+        || write_tier->cache_mode == pg_pool_t::CACHEMODE_READONLY) {
+      *ss << "EC pool '" << pool_name << "' has a write tier ("
+          << mon->osdmon()->osdmap.get_pool_name(pool->write_tier)
+          << ") that is configured "
+             "to forward writes.  Use a cache mode such as 'writeback' for "
+             "CephFS";
+      return -EINVAL;
+    }
+  }
+
+  if (pool->is_tier()) {
+    *ss << " pool '" << pool_name << "' (id '" << pool_id
+      << "') is already in use as a cache tier.";
+    return -EINVAL;
+>>>>>>> upstream/hammer
   }
   return relevant_fsmap->parse_role(role_str, role, ss);
 }
@@ -1774,6 +1888,7 @@ void MDSMonitor::remove_from_metadata(MonitorDBStore::TransactionRef t)
   t->put(MDS_METADATA_PREFIX, "last_metadata", bl);
 }
 
+<<<<<<< HEAD
 int MDSMonitor::load_metadata(map<mds_gid_t, Metadata>& m)
 {
   bufferlist bl;
@@ -1835,6 +1950,41 @@ int MDSMonitor::print_nodes(Formatter *f)
     if (!fsmap.gid_exists(gid)) {
       dout(5) << __func__ << ": GID " << gid << " not existent" << dendl;
       continue;
+=======
+  } else if (prefix == "mds add_data_pool") {
+    string poolname;
+    cmd_getval(g_ceph_context, cmdmap, "pool", poolname);
+    int64_t poolid = mon->osdmon()->osdmap.lookup_pg_pool_name(poolname);
+    if (poolid < 0) {
+      string err;
+      poolid = strict_strtol(poolname.c_str(), 10, &err);
+      if (err.length()) {
+	poolid = -1;
+	ss << "pool '" << poolname << "' does not exist";
+	return -ENOENT;
+      }
+    }
+
+    r = _check_pool(poolid, &ss);
+    if (r != 0) {
+      return r;
+    }
+
+    pending_mdsmap.add_data_pool(poolid);
+    ss << "added data pool " << poolid << " to mdsmap";
+  } else if (prefix == "mds remove_data_pool") {
+    string poolname;
+    cmd_getval(g_ceph_context, cmdmap, "pool", poolname);
+    int64_t poolid = mon->osdmon()->osdmap.lookup_pg_pool_name(poolname);
+    if (poolid < 0) {
+      string err;
+      poolid = strict_strtol(poolname.c_str(), 10, &err);
+      if (err.length()) {
+	r = -ENOENT;
+	poolid = -1;
+	ss << "pool '" << poolname << "' does not exist";
+      }
+>>>>>>> upstream/hammer
     }
     const MDSMap::mds_info_t& mds_info = fsmap.get_info_gid(gid);
     // FIXME: include filesystem name with rank here

@@ -352,7 +352,11 @@ int cls_rgw_bucket_link_olh(librados::IoCtx& io_ctx, const string& oid, const cl
 
 int cls_rgw_bucket_unlink_instance(librados::IoCtx& io_ctx, const string& oid,
                                    const cls_rgw_obj_key& key, const string& op_tag,
+<<<<<<< HEAD
                                    const string& olh_tag, uint64_t olh_epoch, bool log_op)
+=======
+				   const string& olh_tag, uint64_t olh_epoch, bool log_op)
+>>>>>>> upstream/hammer
 {
   bufferlist in, out;
   struct rgw_cls_unlink_instance_op call;

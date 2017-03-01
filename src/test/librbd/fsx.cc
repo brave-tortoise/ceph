@@ -1,12 +1,11 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:8; indent-tabs-mode:t -*-
-// vim: ts=8 sw=8 smarttab
+// -*- mode:C; tab-width:8; c-basic-offset:8; indent-tabs-mode:t -*- 
 /*
  *	Copyright (C) 1991, NeXT Computer, Inc.  All Rights Reserverd.
  *
- *	File:	fsx.cc
+ *	File:	fsx.c
  *	Author:	Avadis Tevanian, Jr.
  *
- *	File system exerciser.
+ *	File system exerciser. 
  *
  *	Rewritten 8/98 by Conrad Minshall.
  *
@@ -38,24 +37,11 @@
 #include <assert.h>
 #include <errno.h>
 #include <math.h>
-#include <fcntl.h>
-#include <random>
 
 #include "include/intarith.h"
 #include "include/krbd.h"
 #include "include/rados/librados.h"
-#include "include/rados/librados.hpp"
 #include "include/rbd/librbd.h"
-#include "include/rbd/librbd.hpp"
-#include "common/Cond.h"
-#include "common/SubProcess.h"
-#include "common/safe_io.h"
-#include "journal/Journaler.h"
-#include "journal/ReplayEntry.h"
-#include "journal/ReplayHandler.h"
-#include "journal/Settings.h"
-
-#include <boost/scope_exit.hpp>
 
 #define NUMPRINTCOLUMNS 32	/* # columns of data to print on each line */
 
@@ -88,7 +74,6 @@ int			logcount = 0;	/* total ops */
  * TRUNCATE:	-	4
  * FALLOCATE:	-	5
  * PUNCH HOLE:	-	6
- * WRITESAME:	-	7
  *
  * When mapped read/writes are disabled, they are simply converted to normal
  * reads and writes. When fallocate/fpunch calls are disabled, they are
@@ -112,11 +97,10 @@ int			logcount = 0;	/* total ops */
 #define OP_TRUNCATE	4
 #define OP_FALLOCATE	5
 #define OP_PUNCH_HOLE	6
-#define OP_WRITESAME	7
 /* rbd-specific operations */
-#define OP_CLONE        8
-#define OP_FLATTEN	9
-#define OP_MAX_FULL	10
+#define OP_CLONE        7
+#define OP_FLATTEN	8
+#define OP_MAX_FULL	9
 
 /* operation modifiers */
 #define OP_CLOSEOPEN	100
@@ -126,7 +110,6 @@ int			logcount = 0;	/* total ops */
 #define PAGE_SIZE       getpagesize()
 #undef PAGE_MASK
 #define PAGE_MASK       (PAGE_SIZE - 1)
-
 
 char	*original_buf;			/* a pointer to the original data */
 char	*good_buf;			/* a pointer to the correct data */
@@ -142,10 +125,8 @@ unsigned long	simulatedopcount = 0;	/* -b flag */
 int	closeprob = 0;			/* -c flag */
 int	debug = 0;			/* -d flag */
 unsigned long	debugstart = 0;		/* -D flag */
-int	flush_enabled = 0;		/* -f flag */
+int	flush = 0;			/* -f flag */
 int	holebdy = 1;			/* -h flag */
-bool    journal_replay = false;         /* -j flah */
-int	keep_on_success = 0;		/* -k flag */
 int	do_fsync = 0;			/* -y flag */
 unsigned long	maxfilelen = 256 * 1024;	/* -l flag */
 int	sizechecks = 1;			/* -n flag disables them */
@@ -249,250 +230,23 @@ simple_err(const char *msg, int err)
 /*
  * random
  */
-std::mt19937 random_generator;
 
-uint_fast32_t
+#define RND_STATE_LEN	256
+char	rnd_state[RND_STATE_LEN];
+struct random_data rnd_data;
+
+int32_t
 get_random(void)
 {
-	return random_generator();
+	int32_t val;
+
+	if (random_r(&rnd_data, &val) < 0) {
+		prterr("random_r");
+		exit(1);
+	}
+
+	return val;
 }
-
-void replay_imagename(char *buf, size_t len, int clones);
-
-namespace {
-
-static const std::string JOURNAL_CLIENT_ID("fsx");
-
-struct ReplayHandler : public journal::ReplayHandler {
-        journal::Journaler *journaler;
-        journal::Journaler *replay_journaler;
-        Context *on_finish;
-
-        ReplayHandler(journal::Journaler *journaler,
-                      journal::Journaler *replay_journaler, Context *on_finish)
-                : journaler(journaler), replay_journaler(replay_journaler),
-                  on_finish(on_finish) {
-        }
-
-        void get() override {
-        }
-        void put() override {
-        }
-
-        void handle_entries_available() override {
-                while (true) {
-                        journal::ReplayEntry replay_entry;
-                        if (!journaler->try_pop_front(&replay_entry)) {
-                                return;
-                        }
-
-                        replay_journaler->append(0, replay_entry.get_data());
-                }
-        }
-
-        void handle_complete(int r) override {
-                on_finish->complete(r);
-        }
-};
-
-int get_image_id(librados::IoCtx &io_ctx, const char *image_name,
-                 std::string *image_id) {
-        librbd::RBD rbd;
-        librbd::Image image;
-        int r = rbd.open(io_ctx, image, image_name);
-        if (r < 0) {
-                simple_err("failed to open image", r);
-                return r;
-        }
-
-        rbd_image_info_t info;
-        r = image.stat(info, sizeof(info));
-        if (r < 0) {
-                simple_err("failed to stat image", r);
-                return r;
-        }
-
-        *image_id = std::string(&info.block_name_prefix[strlen(RBD_DATA_PREFIX)]);
-        return 0;
-}
-
-int register_journal(rados_ioctx_t ioctx, const char *image_name) {
-        librados::IoCtx io_ctx;
-        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
-
-        std::string image_id;
-        int r = get_image_id(io_ctx, image_name, &image_id);
-        if (r < 0) {
-                return r;
-        }
-
-        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, {});
-        r = journaler.register_client(bufferlist());
-        if (r < 0) {
-                simple_err("failed to register journal client", r);
-                return r;
-        }
-        return 0;
-}
-
-int unregister_journal(rados_ioctx_t ioctx, const char *image_name) {
-        librados::IoCtx io_ctx;
-        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
-
-        std::string image_id;
-        int r = get_image_id(io_ctx, image_name, &image_id);
-        if (r < 0) {
-                return r;
-        }
-
-        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, {});
-        r = journaler.unregister_client();
-        if (r < 0) {
-                simple_err("failed to unregister journal client", r);
-                return r;
-        }
-        return 0;
-}
-
-int create_replay_image(rados_ioctx_t ioctx, int order,
-                        uint64_t stripe_unit, int stripe_count,
-                        const char *replay_image_name,
-                        const char *last_replay_image_name) {
-        librados::IoCtx io_ctx;
-        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
-
-        int r;
-        librbd::RBD rbd;
-        if (last_replay_image_name == nullptr) {
-                r = rbd.create2(io_ctx, replay_image_name, 0,
-                                RBD_FEATURES_ALL, &order);
-        } else {
-                r = rbd.clone2(io_ctx, last_replay_image_name, "snap",
-                               io_ctx, replay_image_name, RBD_FEATURES_ALL,
-                               &order, stripe_unit, stripe_count);
-        }
-
-        if (r < 0) {
-                simple_err("failed to create replay image", r);
-                return r;
-        }
-
-        return 0;
-}
-
-int replay_journal(rados_ioctx_t ioctx, const char *image_name,
-                   const char *replay_image_name) {
-        librados::IoCtx io_ctx;
-        librados::IoCtx::from_rados_ioctx_t(ioctx, io_ctx);
-
-        std::string image_id;
-        int r = get_image_id(io_ctx, image_name, &image_id);
-        if (r < 0) {
-                return r;
-        }
-
-        std::string replay_image_id;
-        r = get_image_id(io_ctx, replay_image_name, &replay_image_id);
-        if (r < 0) {
-                return r;
-        }
-
-        journal::Journaler journaler(io_ctx, image_id, JOURNAL_CLIENT_ID, {});
-        C_SaferCond init_ctx;
-        journaler.init(&init_ctx);
-        BOOST_SCOPE_EXIT_ALL( (&journaler) ) {
-                journaler.shut_down();
-        };
-
-        r = init_ctx.wait();
-        if (r < 0) {
-                simple_err("failed to initialize journal", r);
-                return r;
-        }
-
-        journal::Journaler replay_journaler(io_ctx, replay_image_id, "", {});
-
-        C_SaferCond replay_init_ctx;
-        replay_journaler.init(&replay_init_ctx);
-        BOOST_SCOPE_EXIT_ALL( (&replay_journaler) ) {
-                replay_journaler.shut_down();
-        };
-
-        r = replay_init_ctx.wait();
-        if (r < 0) {
-                simple_err("failed to initialize replay journal", r);
-                return r;
-        }
-
-        replay_journaler.start_append(0, 0, 0);
-
-        C_SaferCond replay_ctx;
-        ReplayHandler replay_handler(&journaler, &replay_journaler,
-                                     &replay_ctx);
-
-        // copy journal events from source image to replay image
-        journaler.start_replay(&replay_handler);
-        r = replay_ctx.wait();
-
-        journaler.stop_replay();
-
-        C_SaferCond stop_ctx;
-        replay_journaler.stop_append(&stop_ctx);
-        int stop_r = stop_ctx.wait();
-        if (r == 0 && stop_r < 0) {
-                r = stop_r;
-        }
-
-        if (r < 0) {
-                simple_err("failed to replay journal", r);
-                return r;
-        }
-
-        librbd::RBD rbd;
-        librbd::Image image;
-        r = rbd.open(io_ctx, image, replay_image_name);
-        if (r < 0) {
-                simple_err("failed to open replay image", r);
-                return r;
-        }
-
-        // perform an IO op to initiate the journal replay
-        bufferlist bl;
-        r = static_cast<ssize_t>(image.write(0, 0, bl));
-        if (r < 0) {
-                simple_err("failed to write to replay image", r);
-                return r;
-        }
-        return 0;
-}
-
-int finalize_journal(rados_ioctx_t ioctx, const char *imagename, int clones,
-                     int order, uint64_t stripe_unit, int stripe_count) {
-        char replayimagename[1024];
-        replay_imagename(replayimagename, sizeof(replayimagename), clones);
-
-        char lastreplayimagename[1024];
-        if (clones > 0) {
-                replay_imagename(lastreplayimagename,
-                                 sizeof(lastreplayimagename), clones - 1);
-        }
-
-        int ret = create_replay_image(ioctx, order, stripe_unit,
-                                      stripe_count, replayimagename,
-                                      clones > 0 ? lastreplayimagename :
-                                                   nullptr);
-        if (ret < 0) {
-                exit(EXIT_FAILURE);
-        }
-
-        ret = replay_journal(ioctx, imagename, replayimagename);
-        if (ret < 0) {
-                exit(EXIT_FAILURE);
-        }
-        return 0;
-}
-
-} // anonymous namespace
 
 /*
  * rbd
@@ -501,11 +255,11 @@ int finalize_journal(rados_ioctx_t ioctx, const char *imagename, int clones,
 struct rbd_ctx {
 	const char *name;	/* image name */
 	rbd_image_t image;	/* image handle */
-	const char *krbd_name;	/* image /dev/rbd<id> name */ /* reused for nbd test */
-	int krbd_fd;		/* image /dev/rbd<id> fd */ /* reused for nbd test */
+	const char *krbd_name;	/* image /dev/rbd<id> name */
+	int krbd_fd;		/* image /dev/rbd<id> fd */
 };
 
-#define RBD_CTX_INIT	(struct rbd_ctx) { NULL, NULL, NULL, -1}
+#define RBD_CTX_INIT	(struct rbd_ctx) { NULL, NULL, NULL, -1 }
 
 struct rbd_operations {
 	int (*open)(const char *name, struct rbd_ctx *ctx);
@@ -520,8 +274,6 @@ struct rbd_operations {
 		     const char *dst_imagename, int *order, int stripe_unit,
 		     int stripe_count);
 	int (*flatten)(struct rbd_ctx *ctx);
-	ssize_t (*writesame)(struct rbd_ctx *ctx, uint64_t off, size_t len,
-			     const char *buf, size_t data_len);
 };
 
 char *pool;			/* name of the pool our test image is in */
@@ -529,7 +281,6 @@ char *iname;			/* name of our test image */
 rados_t cluster;		/* handle for our test cluster */
 rados_ioctx_t ioctx;		/* handle for our test pool */
 struct krbd_ctx *krbd;		/* handle for libkrbd */
-bool skip_partial_discard;	/* rbd_skip_partial_discard config value*/
 
 /*
  * librbd/krbd rbd_operations handlers.  Given the rest of fsx.c, no
@@ -669,26 +420,6 @@ librbd_discard(struct rbd_ctx *ctx, uint64_t off, uint64_t len)
 	return librbd_verify_object_map(ctx);
 }
 
-ssize_t
-librbd_writesame(struct rbd_ctx *ctx, uint64_t off, size_t len,
-                 const char *buf, size_t data_len)
-{
-	ssize_t n;
-	int ret;
-
-	n = rbd_writesame(ctx->image, off, len, buf, data_len, 0);
-	if (n < 0) {
-		prt("rbd_writesame(%llu, %zu) failed\n", off, len);
-		return n;
-	}
-
-	ret = librbd_verify_object_map(ctx);
-	if (ret < 0) {
-		return ret;
-	}
-	return n;
-}
-
 int
 librbd_get_size(struct rbd_ctx *ctx, uint64_t *size)
 {
@@ -749,10 +480,8 @@ __librbd_clone(struct rbd_ctx *ctx, const char *src_snapname,
 
 	uint64_t features = RBD_FEATURES_ALL;
 	if (krbd) {
-		features &= ~(RBD_FEATURE_OBJECT_MAP     |
-                              RBD_FEATURE_FAST_DIFF      |
-                              RBD_FEATURE_DEEP_FLATTEN   |
-                              RBD_FEATURE_JOURNALING);
+		features &= ~(RBD_FEATURE_EXCLUSIVE_LOCK |
+		              RBD_FEATURE_OBJECT_MAP);
 	}
 	ret = rbd_clone2(ioctx, ctx->name, src_snapname, ioctx,
 			 dst_imagename, features, order,
@@ -805,8 +534,7 @@ const struct rbd_operations librbd_operations = {
 	librbd_get_size,
 	librbd_resize,
 	librbd_clone,
-	librbd_flatten,
-	librbd_writesame,
+	librbd_flatten
 };
 
 int
@@ -820,7 +548,7 @@ krbd_open(const char *name, struct rbd_ctx *ctx)
 	if (ret < 0)
 		return ret;
 
-	ret = krbd_map(krbd, pool, name, "", "", &devnode);
+	ret = krbd_map(krbd, pool, name, NULL, NULL, &devnode);
 	if (ret < 0) {
 		prt("krbd_map(%s) failed\n", name);
 		return ret;
@@ -852,7 +580,7 @@ krbd_close(struct rbd_ctx *ctx)
 		return ret;
 	}
 
-	ret = krbd_unmap(krbd, ctx->krbd_name, "");
+	ret = krbd_unmap(krbd, ctx->krbd_name);
 	if (ret < 0) {
 		prt("krbd_unmap(%s) failed\n", ctx->krbd_name);
 		return ret;
@@ -897,7 +625,7 @@ krbd_write(struct rbd_ctx *ctx, uint64_t off, size_t len, const char *buf)
 }
 
 int
-__krbd_flush(struct rbd_ctx *ctx, bool invalidate)
+__krbd_flush(struct rbd_ctx *ctx)
 {
 	int ret;
 
@@ -905,26 +633,13 @@ __krbd_flush(struct rbd_ctx *ctx, bool invalidate)
 		return 0;
 
 	/*
-	 * BLKFLSBUF will sync the filesystem on top of the device (we
-	 * don't care about that here, since we write directly to it),
-	 * write out any dirty buffers and invalidate the buffer cache.
-	 * It won't do a hardware cache flush.
-	 *
-	 * fsync() will write out any dirty buffers and do a hardware
-	 * cache flush (which we don't care about either, because for
-	 * krbd it's a noop).  It won't try to empty the buffer cache
-	 * nor poke the filesystem before writing out.
-	 *
-	 * Given that, for our purposes, fsync is a flush, while
-	 * BLKFLSBUF is a flush+invalidate.
+	 * fsync(2) on the block device does not sync the filesystem
+	 * mounted on top of it, but that's OK - we control the entire
+	 * lifetime of the block device and write directly to it.
 	 */
-        if (invalidate)
-		ret = ioctl(ctx->krbd_fd, BLKFLSBUF, NULL);
-	else
-		ret = fsync(ctx->krbd_fd);
-	if (ret < 0) {
+	if (fsync(ctx->krbd_fd) < 0) {
 		ret = -errno;
-		prt("%s failed\n", invalidate ? "BLKFLSBUF" : "fsync");
+		prt("fsync failed\n");
 		return ret;
 	}
 
@@ -934,7 +649,7 @@ __krbd_flush(struct rbd_ctx *ctx, bool invalidate)
 int
 krbd_flush(struct rbd_ctx *ctx)
 {
-	return __krbd_flush(ctx, false);
+	return __krbd_flush(ctx);
 }
 
 int
@@ -942,26 +657,6 @@ krbd_discard(struct rbd_ctx *ctx, uint64_t off, uint64_t len)
 {
 	uint64_t range[2] = { off, len };
 	int ret;
-
-	/*
-	 * BLKDISCARD goes straight to disk and doesn't do anything
-	 * about dirty buffers.  This means we need to flush so that
-	 *
-	 *   write 0..3M
-	 *   discard 1..2M
-	 *
-	 * results in "data 0000 data" rather than "data data data" on
-	 * disk and invalidate so that
-	 *
-	 *   discard 1..2M
-	 *   read 0..3M
-	 *
-	 * returns "data 0000 data" rather than "data data data" in
-	 * case 1..2M was cached.
-	 */
-	ret = __krbd_flush(ctx, true);
-	if (ret < 0)
-		return ret;
 
 	/*
 	 * off and len must be 512-byte aligned, otherwise BLKDISCARD
@@ -981,9 +676,10 @@ int
 krbd_get_size(struct rbd_ctx *ctx, uint64_t *size)
 {
 	uint64_t bytes;
+	int ret;
 
 	if (ioctl(ctx->krbd_fd, BLKGETSIZE64, &bytes) < 0) {
-		int ret = -errno;
+		ret = -errno;
 		prt("BLKGETSIZE64 failed\n");
 		return ret;
 	}
@@ -1001,20 +697,13 @@ krbd_resize(struct rbd_ctx *ctx, uint64_t size)
 	assert(size % truncbdy == 0);
 
 	/*
-	 * When krbd detects a size change, it calls revalidate_disk(),
-	 * which ends up calling invalidate_bdev(), which invalidates
-	 * clean pages and does nothing about dirty pages beyond the
-	 * new size.  The preceding cache flush makes sure those pages
-	 * are invalidated, which is what we need on shrink so that
-	 *
-	 *  write 0..1M
-	 *  resize 0
-	 *  resize 2M
-	 *  read 0..2M
-	 *
-	 * returns "0000 0000" rather than "data 0000".
+	 * This is essential: when krbd detects a size change, it calls
+	 * revalidate_disk(), which ends up calling invalidate_bdev(),
+	 * which invalidates only clean buffers.  The cache flush makes
+	 * it invalidate everything, which is what we need if we are
+	 * shrinking.
 	 */
-	ret = __krbd_flush(ctx, false);
+	ret = __krbd_flush(ctx);
 	if (ret < 0)
 		return ret;
 
@@ -1028,7 +717,7 @@ krbd_clone(struct rbd_ctx *ctx, const char *src_snapname,
 {
 	int ret;
 
-	ret = __krbd_flush(ctx, false);
+	ret = __krbd_flush(ctx);
 	if (ret < 0)
 		return ret;
 
@@ -1041,7 +730,7 @@ krbd_flatten(struct rbd_ctx *ctx)
 {
 	int ret;
 
-	ret = __krbd_flush(ctx, false);
+	ret = __krbd_flush(ctx);
 	if (ret < 0)
 		return ret;
 
@@ -1059,130 +748,6 @@ const struct rbd_operations krbd_operations = {
 	krbd_resize,
 	krbd_clone,
 	krbd_flatten,
-	NULL,
-};
-
-int
-nbd_open(const char *name, struct rbd_ctx *ctx)
-{
-	int r;
-	int fd;
-	char dev[4096];
-	char *devnode;
-
-	SubProcess process("rbd-nbd", SubProcess::KEEP, SubProcess::PIPE,
-			   SubProcess::KEEP);
-	process.add_cmd_arg("map");
-	std::string img;
-	img.append(pool);
-	img.append("/");
-	img.append(name);
-	process.add_cmd_arg(img.c_str());
-
-	r = __librbd_open(name, ctx);
-	if (r < 0)
-		return r;
-
-        r = process.spawn();
-        if (r < 0) {
-		prt("nbd_open failed to run rbd-nbd error: %s\n", process.err().c_str());
-		return r;
-        }
-	r = safe_read(process.get_stdout(), dev, sizeof(dev));
-	if (r < 0) {
-		prt("nbd_open failed to get nbd device path\n");
-		return r;
-	}
-	for (int i = 0; i < r; ++i)
-	  if (dev[i] == 10 || dev[i] == 13)
-	    dev[i] = 0;
-	dev[r] = 0;
-	r = process.join();
-	if (r) {
-		prt("rbd-nbd failed with error: %s", process.err().c_str());
-		return -EINVAL;
-	}
-
-	devnode = strdup(dev);
-	if (!devnode)
-		return -ENOMEM;
-
-	fd = open(devnode, O_RDWR | o_direct);
-	if (fd < 0) {
-		r = -errno;
-		prt("open(%s) failed\n", devnode);
-		return r;
-	}
-
-	ctx->krbd_name = devnode;
-	ctx->krbd_fd = fd;
-
-	return 0;
-}
-
-int
-nbd_close(struct rbd_ctx *ctx)
-{
-	int r;
-
-	assert(ctx->krbd_name && ctx->krbd_fd >= 0);
-
-	if (close(ctx->krbd_fd) < 0) {
-		r = -errno;
-		prt("close(%s) failed\n", ctx->krbd_name);
-		return r;
-	}
-
-	SubProcess process("rbd-nbd");
-	process.add_cmd_arg("unmap");
-	process.add_cmd_arg(ctx->krbd_name);
-
-        r = process.spawn();
-        if (r < 0) {
-		prt("nbd_close failed to run rbd-nbd error: %s\n", process.err().c_str());
-		return r;
-        }
-	r = process.join();
-	if (r) {
-		prt("rbd-nbd failed with error: %d", process.err().c_str());
-		return -EINVAL;
-	}
-
-	free((void *)ctx->krbd_name);
-
-	ctx->krbd_name = NULL;
-	ctx->krbd_fd = -1;
-
-	return __librbd_close(ctx);
-}
-
-int
-nbd_clone(struct rbd_ctx *ctx, const char *src_snapname,
-	  const char *dst_imagename, int *order, int stripe_unit,
-	  int stripe_count)
-{
-	int ret;
-
-	ret = __krbd_flush(ctx, false);
-	if (ret < 0)
-		return ret;
-
-	return __librbd_clone(ctx, src_snapname, dst_imagename, order,
-			      stripe_unit, stripe_count, false);
-}
-
-const struct rbd_operations nbd_operations = {
-	nbd_open,
-	nbd_close,
-	krbd_read,
-	krbd_write,
-	krbd_flush,
-	krbd_discard,
-	krbd_get_size,
-	krbd_resize,
-	nbd_clone,
-	krbd_flatten,
-	NULL,
 };
 
 struct rbd_ctx ctx = RBD_CTX_INIT;
@@ -1309,14 +874,6 @@ logdump(void)
 						     lp->args[0] + lp->args[1])
 				prt("\t******PPPP");
 			break;
-		case OP_WRITESAME:
-			prt("WRITESAME    0x%x thru 0x%x\t(0x%x bytes) data_size 0x%x",
-			    lp->args[0], lp->args[0] + lp->args[1] - 1,
-			    lp->args[1], lp->args[2]);
-			if (badoff >= lp->args[0] &&
-				badoff < lp->args[0] + lp->args[1])
-				prt("\t***WSWSWSWS");
-			break;
 		case OP_CLONE:
 			prt("CLONE");
 			break;
@@ -1390,40 +947,28 @@ report_failure(int status)
 #define short_at(cp) ((unsigned short)((*((unsigned char *)(cp)) << 8) | \
 				        *(((unsigned char *)(cp)) + 1)))
 
-int
-fsxcmp(char *good_buf, char *temp_buf, unsigned size)
-{
-	if (!skip_partial_discard) {
-		return memcmp(good_buf, temp_buf, size);
-	}
-
-	for (unsigned i = 0; i < size; i++) {
-		if (good_buf[i] != temp_buf[i] && good_buf[i] != 0) {
-			return good_buf[i] - temp_buf[i];
-		}
-	}
-	return 0;
-}
-
 void
 check_buffers(char *good_buf, char *temp_buf, unsigned offset, unsigned size)
 {
-	if (fsxcmp(good_buf + offset, temp_buf, size) != 0) {
-		unsigned i = 0;
-		unsigned n = 0;
+	unsigned char c, t;
+	unsigned i = 0;
+	unsigned n = 0;
+	unsigned op = 0;
+	unsigned bad = 0;
 
+	if (memcmp(good_buf + offset, temp_buf, size) != 0) {
 		prt("READ BAD DATA: offset = 0x%x, size = 0x%x, fname = %s\n",
 		    offset, size, iname);
 		prt("OFFSET\tGOOD\tBAD\tRANGE\n");
 		while (size > 0) {
-			unsigned char c = good_buf[offset];
-			unsigned char t = temp_buf[i];
+			c = good_buf[offset];
+			t = temp_buf[i];
 			if (c != t) {
 			        if (n < 16) {
-					unsigned bad = short_at(&temp_buf[i]);
+					bad = short_at(&temp_buf[i]);
 				        prt("0x%5x\t0x%04x\t0x%04x", offset,
 				            short_at(&good_buf[offset]), bad);
-					unsigned op = temp_buf[(offset & 1) ? i+1 : i];
+					op = temp_buf[offset & 1 ? i+1 : i];
 				        prt("\t0x%5x\n", n);
 					if (op)
 						prt("operation# (mod 256) for "
@@ -1499,7 +1044,6 @@ create_image()
 {
 	int r;
 	int order = 0;
-	char buf[32];
 
 	r = rados_create(&cluster, NULL);
 	if (r < 0) {
@@ -1533,16 +1077,8 @@ create_image()
 		simple_err("Error creating ioctx", r);
 		goto failed_krbd;
 	}
-	if (clone_calls || journal_replay) {
-                uint64_t features = 0;
-                if (clone_calls) {
-                        features |= RBD_FEATURE_LAYERING;
-                }
-                if (journal_replay) {
-                        features |= (RBD_FEATURE_EXCLUSIVE_LOCK |
-                                     RBD_FEATURE_JOURNALING);
-                }
-		r = rbd_create2(ioctx, iname, 0, features, &order);
+	if (clone_calls) {
+		r = rbd_create2(ioctx, iname, 0, RBD_FEATURE_LAYERING, &order);
 	} else {
 		r = rbd_create(ioctx, iname, 0, &order);
 	}
@@ -1550,21 +1086,6 @@ create_image()
 		simple_err("Error creating image", r);
 		goto failed_open;
 	}
-
-        if (journal_replay) {
-                r = register_journal(ioctx, iname);
-                if (r < 0) {
-                        goto failed_open;
-                }
-        }
-
-	r = rados_conf_get(cluster, "rbd_skip_partial_discard", buf,
-			   sizeof(buf));
-	if (r < 0) {
-		simple_err("Could not get rbd_skip_partial_discard value", r);
-		goto failed_open;
-	}
-	skip_partial_discard = (strcmp(buf, "true") == 0);
 
 	return 0;
 
@@ -1620,9 +1141,8 @@ doread(unsigned offset, unsigned size)
 		((progressinterval && testcalls % progressinterval == 0)  ||
 		(debug &&
 		       (monitorstart == -1 ||
-			(static_cast<long>(offset + size) > monitorstart &&
-			 (monitorend == -1 ||
-			  static_cast<long>(offset) <= monitorend))))))
+			(offset + size > monitorstart &&
+			(monitorend == -1 || offset <= monitorend))))))
 		prt("%lu read\t0x%x thru\t0x%x\t(0x%x bytes)\n", testcalls,
 		    offset, offset + size - 1, size);
 
@@ -1721,14 +1241,13 @@ dowrite(unsigned offset, unsigned size)
 		((progressinterval && testcalls % progressinterval == 0) ||
 		       (debug &&
 		       (monitorstart == -1 ||
-			(static_cast<long>(offset + size) > monitorstart &&
-			 (monitorend == -1 ||
-			  static_cast<long>(offset) <= monitorend))))))
+			(offset + size > monitorstart &&
+			(monitorend == -1 || offset <= monitorend))))))
 		prt("%lu write\t0x%x thru\t0x%x\t(0x%x bytes)\n", testcalls,
 		    offset, offset + size - 1, size);
 
 	ret = ops->write(&ctx, offset, size, good_buf + offset);
-	if (ret != (ssize_t)size) {
+	if (ret != size) {
 		if (ret < 0)
 			prterrcode("dowrite: ops->write", ret);
 		else
@@ -1737,7 +1256,7 @@ dowrite(unsigned offset, unsigned size)
 		report_failure(151);
 	}
 
-	if (flush_enabled)
+	if (flush)
 		doflush(offset, size);
 }
 
@@ -1768,7 +1287,7 @@ dotruncate(unsigned size)
 
 	if ((progressinterval && testcalls % progressinterval == 0) ||
 	    (debug && (monitorstart == -1 || monitorend == -1 ||
-		       (long)size <= monitorend)))
+		      size <= monitorend)))
 		prt("%lu trunc\tfrom 0x%x to 0x%x\n", testcalls, oldsize, size);
 
 	ret = ops->resize(&ctx, size);
@@ -1811,7 +1330,7 @@ do_punch_hole(unsigned offset, unsigned length)
 
 	if ((progressinterval && testcalls % progressinterval == 0) ||
 	    (debug && (monitorstart == -1 || monitorend == -1 ||
-		       (long)end_offset <= monitorend))) {
+		      end_offset <= monitorend))) {
 		prt("%lu punch\tfrom 0x%x to 0x%x, (0x%x bytes)\n", testcalls,
 			offset, offset+length, length);
 	}
@@ -1829,101 +1348,6 @@ do_punch_hole(unsigned offset, unsigned length)
 	memset(good_buf + max_offset, '\0', max_len);
 }
 
-unsigned get_data_size(unsigned size)
-{
-	unsigned i;
-	unsigned hint;
-	unsigned max = sqrt((double)size) + 1;
-	unsigned good = 1;
-	unsigned curr = good;
-
-	hint = get_random() % max;
-
-	for (i = 1; i < max && curr < hint; i++) {
-		if (size % i == 0) {
-			good = curr;
-			curr = i;
-		}
-	}
-
-	if (curr == hint)
-		good = curr;
-
-	return good;
-}
-
-void
-dowritesame(unsigned offset, unsigned size)
-{
-	ssize_t ret;
-	off_t newsize;
-	unsigned buf_off;
-	unsigned data_size;
-	int n;
-
-	offset -= offset % writebdy;
-	if (o_direct)
-		size -= size % writebdy;
-	if (size == 0) {
-		if (!quiet && testcalls > simulatedopcount && !o_direct)
-			prt("skipping zero size writesame\n");
-		log4(OP_SKIPPED, OP_WRITESAME, offset, size);
-		return;
-	}
-
-	data_size = get_data_size(size);
-
-	log4(OP_WRITESAME, offset, size, data_size);
-
-	gendata(original_buf, good_buf, offset, data_size);
-	if (file_size < offset + size) {
-		newsize = ceil(((double)offset + size) / truncbdy) * truncbdy;
-		if (file_size < newsize)
-			memset(good_buf + file_size, '\0', newsize - file_size);
-		file_size = newsize;
-		if (lite) {
-			warn("Lite file size bug in fsx!");
-			report_failure(162);
-		}
-		ret = ops->resize(&ctx, newsize);
-		if (ret < 0) {
-			prterrcode("dowritesame: ops->resize", ret);
-			report_failure(163);
-		}
-	}
-
-	for (n = size / data_size, buf_off = data_size; n > 1; n--) {
-		memcpy(good_buf + offset + buf_off, good_buf + offset, data_size);
-		buf_off += data_size;
-	}
-
-	if (testcalls <= simulatedopcount)
-		return;
-
-	if (!quiet &&
-		((progressinterval && testcalls % progressinterval == 0) ||
-		       (debug &&
-		       (monitorstart == -1 ||
-			(static_cast<long>(offset + size) > monitorstart &&
-			 (monitorend == -1 ||
-			  static_cast<long>(offset) <= monitorend))))))
-		prt("%lu writesame\t0x%x thru\t0x%x\tdata_size\t0x%x(0x%x bytes)\n", testcalls,
-		    offset, offset + size - 1, data_size, size);
-
-	ret = ops->writesame(&ctx, offset, size, good_buf + offset, data_size);
-	if (ret != (ssize_t)size) {
-		if (ret < 0)
-			prterrcode("dowritesame: ops->writesame", ret);
-		else
-			prt("short writesame: 0x%x bytes instead of 0x%x\n",
-			    ret, size);
-		report_failure(164);
-	}
-
-	if (flush_enabled)
-		doflush(offset, size);
-}
-
 void clone_filename(char *buf, size_t len, int clones)
 {
 	snprintf(buf, len, "%s/fsx-%s-parent%d",
@@ -1936,17 +1360,9 @@ void clone_imagename(char *buf, size_t len, int clones)
 		snprintf(buf, len, "%s-clone%d", iname, clones);
 	else
 		strncpy(buf, iname, len);
-        buf[len - 1] = '\0';
 }
 
-void replay_imagename(char *buf, size_t len, int clones)
-{
-        clone_imagename(buf, len, clones);
-        strncat(buf, "-replay", len - strlen(buf));
-        buf[len - 1] = '\0';
-}
-
-void check_clone(int clonenum, bool replay_image);
+void check_clone(int clonenum);
 
 void
 do_clone()
@@ -2042,19 +1458,6 @@ do_clone()
 		exit(174);
 	}
 
-        if (journal_replay) {
-                ret = finalize_journal(ioctx, lastimagename, num_clones - 1,
-                                       order, stripe_unit, stripe_count);
-                if (ret < 0) {
-                        exit(EXIT_FAILURE);
-                }
-
-                ret = register_journal(ioctx, imagename);
-                if (ret < 0) {
-                        exit(EXIT_FAILURE);
-                }
-        }
-
 	/*
 	 * Open freshly made clone.
 	 */
@@ -2063,16 +1466,12 @@ do_clone()
 		exit(166);
 	}
 
-	if (num_clones > 1) {
-                if (journal_replay) {
-		        check_clone(num_clones - 2, true);
-                }
-		check_clone(num_clones - 2, false);
-        }
+	if (num_clones > 1)
+		check_clone(num_clones - 2);
 }
 
 void
-check_clone(int clonenum, bool replay_image)
+check_clone(int clonenum)
 {
 	char filename[128];
 	char imagename[128];
@@ -2081,12 +1480,7 @@ check_clone(int clonenum, bool replay_image)
 	struct stat file_info;
 	char *good_buf, *temp_buf;
 
-        if (replay_image) {
-                replay_imagename(imagename, sizeof(imagename), clonenum);
-        } else {
-        	clone_imagename(imagename, sizeof(imagename), clonenum);
-        }
-
+	clone_imagename(imagename, sizeof(imagename), clonenum);
 	if ((ret = ops->open(imagename, &cur_ctx)) < 0) {
 		prterrcode("check_clone: ops->open", ret);
 		exit(167);
@@ -2138,9 +1532,7 @@ check_clone(int clonenum, bool replay_image)
 	}
 	check_buffers(good_buf, temp_buf, 0, file_info.st_size);
 
-        if (!replay_image) {
-	        unlink(filename);
-        }
+	unlink(filename);
 
 	free(good_buf);
 	free(temp_buf);
@@ -2295,12 +1687,6 @@ test(void)
 			goto out;
 		}
 		break;
-	case OP_WRITESAME:
-		/* writesame not implemented */
-		if (!ops->writesame) {
-			log4(OP_SKIPPED, OP_WRITESAME, offset, size);
-			goto out;
-		}
 	}
 
 	switch (op) {
@@ -2333,11 +1719,6 @@ test(void)
 	case OP_PUNCH_HOLE:
 		TRIM_OFF_LEN(offset, size, file_size);
 		do_punch_hole(offset, size);
-		break;
-
-	case OP_WRITESAME:
-		TRIM_OFF_LEN(offset, size, maxfilelen);
-		dowritesame(offset, size);
 		break;
 
 	case OP_CLONE:
@@ -2376,14 +1757,12 @@ void
 usage(void)
 {
 	fprintf(stdout, "usage: %s",
-		"fsx [-dfjknqxyACFHKLORUWZ] [-b opnum] [-c Prob] [-h holebdy] [-l flen] [-m start:end] [-o oplen] [-p progressinterval] [-r readbdy] [-s style] [-t truncbdy] [-w writebdy] [-D startingop] [-N numops] [-P dirpath] [-S seed] pname iname\n\
+		"fsx [-dfnqxyACFHKLORUWZ] [-b opnum] [-c Prob] [-h holebdy] [-l flen] [-m start:end] [-o oplen] [-p progressinterval] [-r readbdy] [-s style] [-t truncbdy] [-w writebdy] [-D startingop] [-N numops] [-P dirpath] [-S seed] pname iname\n\
 	-b opnum: beginning operation number (default 1)\n\
 	-c P: 1 in P chance of file close+open at each op (default infinity)\n\
 	-d: debug output for all operations\n\
 	-f: flush and invalidate cache after I/O\n\
 	-h holebdy: 4096 would make discards page aligned (default 1)\n\
-	-j: journal replay stress test\n\
-	-k: keep data on success (default 0)\n\
 	-l flen: the upper bound on file size (default 262144)\n\
 	-m startop:endop: monitor (print debug output) specified byte range (default 0:infinity)\n\
 	-n: no verifications of file size\n\
@@ -2407,7 +1786,6 @@ usage(void)
 #endif
 "	-H: do not use punch hole calls\n\
 	-K: enable krbd mode (use -t and -h too)\n\
-	-M: enable rbd-nbd mode (use -t and -h too)\n\
 	-L: fsxLite - no file creations & no file size changes\n\
 	-N numops: total # operations to do (default infinity)\n\
 	-O: use oplen (see -o flag) for every op (default random)\n\
@@ -2577,49 +1955,6 @@ test_fallocate()
 
 }
 
-void remove_image(rados_ioctx_t ioctx, char *imagename, bool remove_snap,
-                  bool unregister) {
-	rbd_image_t image;
-	char errmsg[128];
-        int ret;
-
-	if ((ret = rbd_open(ioctx, imagename, &image, NULL)) < 0) {
-		sprintf(errmsg, "rbd_open %s", imagename);
-		prterrcode(errmsg, ret);
-		report_failure(101);
-	}
-	if (remove_snap) {
-		if ((ret = rbd_snap_unprotect(image, "snap")) < 0) {
-			sprintf(errmsg, "rbd_snap_unprotect %s@snap",
-				imagename);
-			prterrcode(errmsg, ret);
-			report_failure(102);
-		}
-		if ((ret = rbd_snap_remove(image, "snap")) < 0) {
-			sprintf(errmsg, "rbd_snap_remove %s@snap",
-				imagename);
-			prterrcode(errmsg, ret);
-			report_failure(103);
-		}
-	}
-	if ((ret = rbd_close(image)) < 0) {
-		sprintf(errmsg, "rbd_close %s", imagename);
-		prterrcode(errmsg, ret);
-		report_failure(104);
-	}
-
-        if (unregister &&
-            (ret = unregister_journal(ioctx, imagename)) < 0) {
-                report_failure(105);
-        }
-
-	if ((ret = rbd_remove(ioctx, imagename)) < 0) {
-		sprintf(errmsg, "rbd_remove %s", imagename);
-		prterrcode(errmsg, ret);
-		report_failure(106);
-	}
-}
-
 int
 main(int argc, char **argv)
 {
@@ -2637,13 +1972,13 @@ main(int argc, char **argv)
 
 	setvbuf(stdout, (char *)0, _IOLBF, 0); /* line buffered stdout */
 
-	while ((ch = getopt(argc, argv, "b:c:dfh:jkl:m:no:p:qr:s:t:w:xyACD:FHKMLN:OP:RS:UWZ"))
+	while ((ch = getopt(argc, argv, "b:c:dfh:l:m:no:p:qr:s:t:w:xyACD:FHKLN:OP:RS:UWZ"))
 	       != EOF)
 		switch (ch) {
 		case 'b':
 			simulatedopcount = getnum(optarg, &endp);
 			if (!quiet)
-				fprintf(stdout, "Will begin at operation %lu\n",
+				fprintf(stdout, "Will begin at operation %ld\n",
 					simulatedopcount);
 			if (simulatedopcount == 0)
 				usage();
@@ -2662,26 +1997,17 @@ main(int argc, char **argv)
 			debug = 1;
 			break;
 		case 'f':
-			flush_enabled = 1;
+			flush = 1;
 			break;
 		case 'h':
 			holebdy = getnum(optarg, &endp);
 			if (holebdy <= 0)
 				usage();
 			break;
-                case 'j':
-                        journal_replay = true;
-                        break;
-		case 'k':
-			keep_on_success = 1;
-			break;
 		case 'l':
-			{
-				int _num = getnum(optarg, &endp);
-				if (_num <= 0)
-					usage();
-				maxfilelen = _num;
-			}
+			maxfilelen = getnum(optarg, &endp);
+			if (maxfilelen <= 0)
+				usage();
 			break;
 		case 'm':
 			monitorstart = getnum(optarg, &endp);
@@ -2759,10 +2085,6 @@ main(int argc, char **argv)
 			prt("krbd mode enabled\n");
 			ops = &krbd_operations;
 			break;
-		case 'M':
-			prt("rbd-nbd mode enabled\n");
-			ops = &nbd_operations;
-			break;
 		case 'L':
 			prt("lite mode not supported for rbd\n");
 			exit(1);
@@ -2786,8 +2108,7 @@ main(int argc, char **argv)
 				prt("file name to long\n");
 				exit(1);
 			}
-			strncpy(logfile, dirpath, sizeof(logfile)-1);
-			logfile[sizeof(logfile)-1] = '\0';
+			strncpy(logfile, dirpath, sizeof(logfile));
 			if (strlen(logfile) < sizeof(logfile)-2) {
 				strcat(logfile, "/");
 			} else {
@@ -2842,7 +2163,14 @@ main(int argc, char **argv)
 	signal(SIGUSR1,	cleanup);
 	signal(SIGUSR2,	cleanup);
 
-	random_generator.seed(seed);
+	if (initstate_r(seed, rnd_state, RND_STATE_LEN, &rnd_data) < 0) {
+		prterr("initstate_r");
+		exit(1);
+	}
+	if (setstate_r(rnd_state, &rnd_data) < 0) {
+		prterr("setstate_r");
+		exit(1);
+	}
 
 	ret = create_image();
 	if (ret < 0) {
@@ -2931,44 +2259,49 @@ main(int argc, char **argv)
 		report_failure(99);
 	}
 
-        if (journal_replay) {
-                char imagename[1024];
-	        clone_imagename(imagename, sizeof(imagename), num_clones);
-                ret = finalize_journal(ioctx, imagename, num_clones, 0, 0, 0);
-                if (ret < 0) {
-                        report_failure(100);
-                }
-        }
+	if (num_clones > 0)
+		check_clone(num_clones - 1);
 
-	if (num_clones > 0) {
-                if (journal_replay) {
-		        check_clone(num_clones - 1, true);
-                }
-		check_clone(num_clones - 1, false);
-        }
+	while (num_clones >= 0) {
+		static int first = 1;
+		rbd_image_t image;
+		char clonename[128];
+		char errmsg[128];
 
-	if (!keep_on_success) {
-		while (num_clones >= 0) {
-			static bool remove_snap = false;
-
-			if (journal_replay) {
-				char replayimagename[1024];
-				replay_imagename(replayimagename,
-						 sizeof(replayimagename),
-						 num_clones);
-				remove_image(ioctx, replayimagename,
-					     remove_snap,
-					     false);
-			}
-
-			char clonename[128];
-			clone_imagename(clonename, 128, num_clones);
-			remove_image(ioctx, clonename, remove_snap,
-				     journal_replay);
-
-			remove_snap = true;
-			num_clones--;
+		clone_imagename(clonename, 128, num_clones);
+		if ((ret = rbd_open(ioctx, clonename, &image, NULL)) < 0) {
+			sprintf(errmsg, "rbd_open %s", clonename);
+			prterrcode(errmsg, ret);
+			report_failure(101);
 		}
+		if (!first) {
+			if ((ret = rbd_snap_unprotect(image, "snap")) < 0) {
+				sprintf(errmsg, "rbd_snap_unprotect %s@snap",
+					clonename);
+				prterrcode(errmsg, ret);
+				report_failure(102);
+			}
+			if ((ret = rbd_snap_remove(image, "snap")) < 0) {
+				sprintf(errmsg, "rbd_snap_remove %s@snap",
+					clonename);
+				prterrcode(errmsg, ret);
+				report_failure(103);
+			}
+		}
+		if ((ret = rbd_close(image)) < 0) {
+			sprintf(errmsg, "rbd_close %s", clonename);
+			prterrcode(errmsg, ret);
+			report_failure(104);
+		}
+
+		if ((ret = rbd_remove(ioctx, clonename)) < 0) {
+			sprintf(errmsg, "rbd_remove %s", clonename);
+			prterrcode(errmsg, ret);
+			report_failure(105);
+		}
+
+		first = 0;
+		num_clones--;
 	}
 
 	prt("All operations completed A-OK!\n");

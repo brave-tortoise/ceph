@@ -317,8 +317,15 @@ public:
     return 0;
   }
 
+<<<<<<< HEAD
   template <class T>
   int wait(T *dest);
+=======
+  int get_obj(const string& uid, req_info *info /* optional */, rgw_obj& obj,
+              const time_t *mod_ptr, const time_t *unmod_ptr,
+              bool prepend_metadata, RGWGetDataCB *cb, RGWRESTStreamReadRequest **req);
+  int complete_request(RGWRESTStreamReadRequest *req, string& etag, time_t *mtime, map<string, string>& attrs);
+>>>>>>> upstream/hammer
 };
 
 template <class T>

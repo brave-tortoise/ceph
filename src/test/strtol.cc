@@ -215,6 +215,7 @@ TEST(SIStrToLL, Error) {
   test_strict_sistrtoll_err("1024E"); // overflows after adding the suffix
 }
 
+<<<<<<< HEAD
 // since strict_sistrtoll is an alias of strict_si_cast<uint64_t>(), quite a few
 // of cases are covered by existing test cases of strict_sistrtoll already.
 TEST(StrictSICast, Error) {
@@ -251,6 +252,8 @@ TEST(StrictSICast, Error) {
   }
 }
 
+=======
+>>>>>>> upstream/hammer
 /*
  * Local Variables:
  * compile-command: "cd .. ; make unittest_strtol && ./unittest_strtol"

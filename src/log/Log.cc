@@ -45,8 +45,11 @@ Log::Log(SubsystemMap *s)
     m_flush_mutex_holder(0),
     m_new(), m_recent(),
     m_fd(-1),
+<<<<<<< HEAD
     m_uid(0),
     m_gid(0),
+=======
+>>>>>>> upstream/hammer
     m_fd_last_error(0),
     m_syslog_log(-2), m_syslog_crash(-2),
     m_stderr_log(1), m_stderr_crash(-1),
@@ -147,6 +150,7 @@ void Log::reopen_log_file()
   }
   m_flush_mutex_holder = 0;
   pthread_mutex_unlock(&m_flush_mutex);
+<<<<<<< HEAD
 }
 
 void Log::chown_log_file(uid_t uid, gid_t gid)
@@ -161,6 +165,8 @@ void Log::chown_log_file(uid_t uid, gid_t gid)
     }
   }
   pthread_mutex_unlock(&m_flush_mutex);
+=======
+>>>>>>> upstream/hammer
 }
 
 void Log::set_syslog_level(int log, int crash)
@@ -315,6 +321,7 @@ void Log::_flush(EntryQueue *t, EntryQueue *requeue, bool crash)
       buflen += snprintf(buf + buflen, buf_size-buflen, " %lx %2d ",
 			(unsigned long)e->m_thread, e->m_prio);
 
+<<<<<<< HEAD
       buflen += e->snprintf(buf + buflen, buf_size - buflen - 1);
       if (buflen > buf_size - 1) { //paranoid check, buf was declared
 				   //to hold everything
@@ -324,6 +331,28 @@ void Log::_flush(EntryQueue *t, EntryQueue *requeue, bool crash)
 
       if (do_syslog) {
         syslog(LOG_USER|LOG_INFO, "%s", buf);
+=======
+      // FIXME: this is slow
+      string s = e->get_str();
+
+      if (do_fd) {
+	int r = safe_write(m_fd, buf, buflen);
+	if (r >= 0)
+	  r = safe_write(m_fd, s.data(), s.size());
+	if (r >= 0)
+	  r = write(m_fd, "\n", 1);
+	if (r != m_fd_last_error) {
+	  if (r < 0)
+	    cerr << "problem writing to " << m_log_file
+		 << ": " << cpp_strerror(r)
+		 << std::endl;
+	  m_fd_last_error = r;
+	}
+      }
+
+      if (do_syslog) {
+	syslog(LOG_USER|LOG_DEBUG, "%s%s", buf, s.c_str());
+>>>>>>> upstream/hammer
       }
 
       if (do_stderr) {
@@ -364,7 +393,11 @@ void Log::_log_message(const char *s, bool crash)
       cerr << "problem writing to " << m_log_file << ": " << cpp_strerror(r) << std::endl;
   }
   if ((crash ? m_syslog_crash : m_syslog_log) >= 0) {
+<<<<<<< HEAD
     syslog(LOG_USER|LOG_INFO, "%s", s);
+=======
+    syslog(LOG_USER|LOG_DEBUG, "%s", s);
+>>>>>>> upstream/hammer
   }
 
   if ((crash ? m_stderr_crash : m_stderr_log) >= 0) {

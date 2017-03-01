@@ -78,7 +78,11 @@ protected:
   }
   static std::string cache_pool_name;
 
+<<<<<<< HEAD
   void SetUp() override {
+=======
+  virtual void SetUp() {
+>>>>>>> upstream/hammer
     cache_pool_name = get_temp_pool_name();
     ASSERT_EQ(0, s_cluster.pool_create(cache_pool_name.c_str()));
     RadosTestPP::SetUp();
@@ -2587,8 +2591,71 @@ TEST_F(LibRadosTwoPoolsPP, ProxyRead) {
   cluster.wait_for_latest_osdmap();
 }
 
+<<<<<<< HEAD
 TEST_F(LibRadosTwoPoolsPP, CachePin) {
   // create object
+=======
+class LibRadosTwoPoolsECPP : public RadosTestECPP
+{
+public:
+  LibRadosTwoPoolsECPP() {};
+  virtual ~LibRadosTwoPoolsECPP() {};
+protected:
+  static void SetUpTestCase() {
+    pool_name = get_temp_pool_name();
+    ASSERT_EQ("", create_one_ec_pool_pp(pool_name, s_cluster));
+  }
+  static void TearDownTestCase() {
+    ASSERT_EQ(0, destroy_one_ec_pool_pp(pool_name, s_cluster));
+  }
+  static std::string cache_pool_name;
+
+  virtual void SetUp() {
+    cache_pool_name = get_temp_pool_name();
+    ASSERT_EQ(0, s_cluster.pool_create(cache_pool_name.c_str()));
+    RadosTestECPP::SetUp();
+    ASSERT_EQ(0, cluster.ioctx_create(cache_pool_name.c_str(), cache_ioctx));
+    cache_ioctx.set_namespace(nspace);
+  }
+  virtual void TearDown() {
+    // flush + evict cache
+    flush_evict_all(cluster, cache_ioctx);
+
+    bufferlist inbl;
+    // tear down tiers
+    ASSERT_EQ(0, cluster.mon_command(
+      "{\"prefix\": \"osd tier remove-overlay\", \"pool\": \"" + pool_name +
+      "\"}",
+      inbl, NULL, NULL));
+    ASSERT_EQ(0, cluster.mon_command(
+      "{\"prefix\": \"osd tier remove\", \"pool\": \"" + pool_name +
+      "\", \"tierpool\": \"" + cache_pool_name + "\"}",
+    inbl, NULL, NULL));
+
+    // wait for maps to settle before next test
+    cluster.wait_for_latest_osdmap();
+
+    RadosTestECPP::TearDown();
+
+    cleanup_default_namespace(cache_ioctx);
+    cleanup_namespace(cache_ioctx, nspace);
+
+    cache_ioctx.close();
+    ASSERT_EQ(0, s_cluster.pool_delete(cache_pool_name.c_str()));
+  }
+
+  librados::IoCtx cache_ioctx;
+};
+
+std::string LibRadosTwoPoolsECPP::cache_pool_name;
+
+TEST_F(LibRadosTierECPP, Dirty) {
+  {
+    ObjectWriteOperation op;
+    op.undirty();
+    ASSERT_EQ(0, ioctx.operate("foo", &op)); // still get 0 if it dne
+  }
+>>>>>>> upstream/hammer
   {
     bufferlist bl;
     bl.append("hi there");

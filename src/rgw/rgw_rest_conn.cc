@@ -105,12 +105,17 @@ int RGWRESTConn::complete_request(RGWRESTStreamWriteRequest *req, string& etag, 
   return ret;
 }
 
+<<<<<<< HEAD
 static void set_date_header(const real_time *t, map<string, string>& headers, const string& header_name)
+=======
+static void set_date_header(const time_t *t, map<string, string>& headers, const string& header_name)
+>>>>>>> upstream/hammer
 {
   if (!t) {
     return;
   }
   stringstream s;
+<<<<<<< HEAD
   utime_t tm = utime_t(*t);
   tm.gmtime_nsec(s);
   headers[header_name] = s.str();
@@ -130,6 +135,17 @@ int RGWRESTConn::get_obj(const rgw_user& uid, req_info *info /* optional */, rgw
                          uint32_t mod_zone_id, uint64_t mod_pg_ver,
                          bool prepend_metadata, bool get_op, bool rgwx_stat,
                          RGWGetDataCB *cb, RGWRESTStreamRWRequest **req)
+=======
+  utime_t tm = utime_t(*t, 0);
+  tm.asctime(s);
+  headers["HTTP_IF_MODIFIED_SINCE"] = s.str();
+}
+
+
+int RGWRESTConn::get_obj(const string& uid, req_info *info /* optional */, rgw_obj& obj,
+                         const time_t *mod_ptr, const time_t *unmod_ptr,
+                         bool prepend_metadata, RGWGetDataCB *cb, RGWRESTStreamReadRequest **req)
+>>>>>>> upstream/hammer
 {
   string url;
   int ret = get_url(url);
@@ -171,12 +187,15 @@ int RGWRESTConn::get_obj(const rgw_user& uid, req_info *info /* optional */, rgw
 
   set_date_header(mod_ptr, extra_headers, "HTTP_IF_MODIFIED_SINCE");
   set_date_header(unmod_ptr, extra_headers, "HTTP_IF_UNMODIFIED_SINCE");
+<<<<<<< HEAD
   if (mod_zone_id != 0) {
     set_header(mod_zone_id, extra_headers, "HTTP_DEST_ZONE_SHORT_ID");
   }
   if (mod_pg_ver != 0) {
     set_header(mod_pg_ver, extra_headers, "HTTP_DEST_PG_VER");
   }
+=======
+>>>>>>> upstream/hammer
 
   return (*req)->get_obj(key, extra_headers, obj);
 }

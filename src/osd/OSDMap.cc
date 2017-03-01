@@ -2929,15 +2929,28 @@ int OSDMap::summarize_mapping_stats(
   if (pools) {
     ls = *pools;
   } else {
+<<<<<<< HEAD
     for (auto &p : get_pools())
       ls.insert(p.first);
+=======
+    for (map<int64_t, pg_pool_t>::const_iterator i = get_pools().begin();
+	 i != get_pools().end();
+	 ++i) {
+      ls.insert(i->first);
+    }
+>>>>>>> upstream/hammer
   }
 
   unsigned total_pg = 0;
   unsigned moved_pg = 0;
   vector<unsigned> base_by_osd(get_max_osd(), 0);
   vector<unsigned> new_by_osd(get_max_osd(), 0);
+<<<<<<< HEAD
   for (int64_t pool_id : ls) {
+=======
+  for (set<int64_t>::iterator p = ls.begin(); p != ls.end(); ++p) {
+    int64_t pool_id = *p;
+>>>>>>> upstream/hammer
     const pg_pool_t *pi = get_pg_pool(pool_id);
     vector<int> up, up2, acting;
     int up_primary, acting_primary;
@@ -2946,14 +2959,24 @@ int OSDMap::summarize_mapping_stats(
       total_pg += pi->get_size();
       pg_to_up_acting_osds(pgid, &up, &up_primary,
 			   &acting, &acting_primary);
+<<<<<<< HEAD
       for (int osd : up) {
+=======
+      for (vector<int>::iterator q = up.begin(); q != up.end(); ++q) {
+	int osd = *q;
+>>>>>>> upstream/hammer
 	if (osd >= 0 && osd < get_max_osd())
 	  ++base_by_osd[osd];
       }
       if (newmap) {
 	newmap->pg_to_up_acting_osds(pgid, &up2, &up_primary,
 				     &acting, &acting_primary);
+<<<<<<< HEAD
 	for (int osd : up2) {
+=======
+	for (vector<int>::iterator q = up2.begin(); q != up2.end(); ++q) {
+	  int osd = *q;
+>>>>>>> upstream/hammer
 	  if (osd >= 0 && osd < get_max_osd())
 	    ++new_by_osd[osd];
 	}
@@ -2964,7 +2987,12 @@ int OSDMap::summarize_mapping_stats(
 	    }
 	  }
 	} else if (pi->type == pg_pool_t::TYPE_REPLICATED) {
+<<<<<<< HEAD
 	  for (int osd : up) {
+=======
+	  for (vector<int>::iterator q = up.begin(); q != up.end(); ++q) {
+	    int osd = *q;
+>>>>>>> upstream/hammer
 	    if (std::find(up2.begin(), up2.end(), osd) == up2.end()) {
 	      ++moved_pg;
 	    }
@@ -2996,12 +3024,20 @@ int OSDMap::summarize_mapping_stats(
       base_stddev += base_diff * base_diff;
       float new_diff = (float)new_by_osd[osd] - avg_pg;
       new_stddev += new_diff * new_diff;
+<<<<<<< HEAD
       if (min < 0 || base_by_osd[osd] < min_base_pg) {
+=======
+      if (min < 0 || min_base_pg < base_by_osd[osd]) {
+>>>>>>> upstream/hammer
 	min = osd;
 	min_base_pg = base_by_osd[osd];
 	min_new_pg = new_by_osd[osd];
       }
+<<<<<<< HEAD
       if (max < 0 || base_by_osd[osd] > max_base_pg) {
+=======
+      if (max < 0 || max_base_pg > base_by_osd[osd]) {
+>>>>>>> upstream/hammer
 	max = osd;
 	max_base_pg = base_by_osd[osd];
 	max_new_pg = new_by_osd[osd];
@@ -3021,11 +3057,16 @@ int OSDMap::summarize_mapping_stats(
       f->dump_unsigned("moved_pgs", moved_pg);
       f->dump_unsigned("total_pgs", total_pg);
     } else {
+<<<<<<< HEAD
       float percent = 0;
       if (total_pg)
         percent = (float)moved_pg * 100.0 / (float)total_pg;
       ss << "moved " << moved_pg << " / " << total_pg
 	 << " (" << percent << "%)\n";
+=======
+      ss << "moved " << moved_pg << " / " << total_pg
+	 << " (" << ((float)moved_pg * 100.0 / (float)total_pg) << "%)\n";
+>>>>>>> upstream/hammer
     }
   }
   if (f) {

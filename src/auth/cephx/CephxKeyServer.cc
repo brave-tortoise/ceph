@@ -267,7 +267,11 @@ bool KeyServer::generate_secret(CryptoKey& secret)
   if (crypto->create(bp) < 0)
     return false;
 
+<<<<<<< HEAD
   secret.set_secret(CEPH_CRYPTO_AES, bp, ceph_clock_now());
+=======
+  secret.set_secret(CEPH_CRYPTO_AES, bp, ceph_clock_now(NULL));
+>>>>>>> upstream/hammer
 
   return true;
 }

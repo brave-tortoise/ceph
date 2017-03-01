@@ -115,7 +115,11 @@ template <uint8_t _b>
 const uint32_t BitVector<_b>::BLOCK_SIZE = 4096;
 
 template <uint8_t _b>
+<<<<<<< HEAD
 BitVector<_b>::BitVector() : m_size(0), m_crc_enabled(true), m_header_crc(0)
+=======
+BitVector<_b>::BitVector() : m_size(0), m_crc_enabled(true)
+>>>>>>> upstream/hammer
 {
 }
 

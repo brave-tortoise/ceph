@@ -445,10 +445,17 @@ WRITE_CLASS_ENCODER(rgw_cls_check_index_ret)
 
 struct rgw_cls_bucket_update_stats_op
 {
+<<<<<<< HEAD
   bool absolute{false};
   map<uint8_t, rgw_bucket_category_stats> stats;
 
   rgw_cls_bucket_update_stats_op() {}
+=======
+  bool absolute;
+  map<uint8_t, rgw_bucket_category_stats> stats;
+
+  rgw_cls_bucket_update_stats_op() : absolute(false) {}
+>>>>>>> upstream/hammer
 
   void encode(bufferlist &bl) const {
     ENCODE_START(1, 1, bl);

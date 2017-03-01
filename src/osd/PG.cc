@@ -178,7 +178,11 @@ void PGPool::update(OSDMapRef map)
         newly_removed_snaps.subtract(cached_removed_snaps);
         cached_removed_snaps.union_of(newly_removed_snaps);
     } else {
+<<<<<<< HEAD
         lgeneric_subdout(cct, osd, 0) << __func__
+=======
+        lgeneric_subdout(g_ceph_context, osd, 0) << __func__
+>>>>>>> upstream/hammer
           << " cached_removed_snaps shrank from " << cached_removed_snaps
           << " to " << newly_removed_snaps << dendl;
         cached_removed_snaps = newly_removed_snaps;
@@ -199,7 +203,11 @@ void PGPool::update(OSDMapRef map)
     newly_removed_snaps.clear();
   }
   cached_epoch = map->get_epoch();
+<<<<<<< HEAD
   lgeneric_subdout(cct, osd, 20)
+=======
+  lgeneric_subdout(g_ceph_context, osd, 20)
+>>>>>>> upstream/hammer
     << "PGPool::update cached_removed_snaps "
     << cached_removed_snaps
     << " newly_removed_snaps "
@@ -329,10 +337,14 @@ void PG::proc_master_log(
   // See doc/dev/osd_internals/last_epoch_started
   if (oinfo.last_epoch_started > info.last_epoch_started) {
     info.last_epoch_started = oinfo.last_epoch_started;
+<<<<<<< HEAD
     dirty_info = true;
   }
   if (info.history.merge(oinfo.history))
     dirty_info = true;
+=======
+  info.history.merge(oinfo.history);
+>>>>>>> upstream/hammer
   assert(cct->_conf->osd_find_best_info_ignore_history_les ||
 	 info.last_epoch_started >= info.history.last_epoch_started);
 
@@ -750,10 +762,15 @@ void PG::generate_past_intervals()
   epoch_t cur_epoch, end_epoch;
   if (!_calc_past_interval_range(&cur_epoch, &end_epoch,
       osd->get_superblock().oldest_map)) {
+<<<<<<< HEAD
     if (info.history.same_interval_since == 0) {
       info.history.same_interval_since = end_epoch;
       dirty_info = true;
     }
+=======
+    if (info.history.same_interval_since == 0)
+      info.history.same_interval_since = end_epoch;
+>>>>>>> upstream/hammer
     return;
   }
 
@@ -1007,11 +1024,16 @@ PG::Scrubber::~Scrubber() {}
  *  3) Prefer current primary
  */
 map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
+<<<<<<< HEAD
   const map<pg_shard_t, pg_info_t> &infos,
   bool restrict_to_up_acting,
   bool *history_les_bound) const
 {
   assert(history_les_bound);
+=======
+  const map<pg_shard_t, pg_info_t> &infos) const
+{
+>>>>>>> upstream/hammer
   /* See doc/dev/osd_internals/last_epoch_started.rst before attempting
    * to make changes to this process.  Also, make sure to update it
    * when you find bugs! */
@@ -1027,6 +1049,10 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
     }
     if (!i->second.is_incomplete() &&
 	max_last_epoch_started_found < i->second.last_epoch_started) {
+<<<<<<< HEAD
+=======
+      min_last_update_acceptable = eversion_t::max();
+>>>>>>> upstream/hammer
       max_last_epoch_started_found = i->second.last_epoch_started;
     }
   }
@@ -1639,6 +1665,12 @@ void PG::activate(ObjectStore::Transaction& t,
                 << pool.cached_removed_snaps << ")" << dendl;
         snap_trimq.subtract(intersection);
     }
+<<<<<<< HEAD
+=======
+    dout(10) << "activate - snap_trimq " << snap_trimq << dendl;
+    if (!snap_trimq.empty() && is_clean())
+      queue_snap_trim();
+>>>>>>> upstream/hammer
   }
 
   // init complete pointer
@@ -1952,6 +1984,44 @@ void PG::queue_op(OpRequestRef& op)
   }
 }
 
+<<<<<<< HEAD
+=======
+void PG::replay_queued_ops()
+{
+  assert(is_replay());
+  assert(is_active() || is_activating());
+  eversion_t c = info.last_update;
+  list<OpRequestRef> replay;
+  dout(10) << "replay_queued_ops" << dendl;
+  state_clear(PG_STATE_REPLAY);
+
+  for (map<eversion_t,OpRequestRef>::iterator p = replay_queue.begin();
+       p != replay_queue.end();
+       ++p) {
+    if (p->first.version != c.version+1) {
+      dout(10) << "activate replay " << p->first
+	       << " skipping " << c.version+1 - p->first.version 
+	       << " ops"
+	       << dendl;      
+      c = p->first;
+    }
+    dout(10) << "activate replay " << p->first << " "
+             << *p->second->get_req() << dendl;
+    replay.push_back(p->second);
+  }
+  replay_queue.clear();
+  if (is_active()) {
+    requeue_ops(replay);
+    requeue_ops(waiting_for_active);
+    assert(waiting_for_peered.empty());
+  } else {
+    waiting_for_active.splice(waiting_for_active.begin(), replay);
+  }
+
+  publish_stats_to_osd();
+}
+
+>>>>>>> upstream/hammer
 void PG::_activate_committed(epoch_t epoch, epoch_t activation_epoch)
 {
   lock();
@@ -2629,6 +2699,7 @@ void PG::_update_calc_stats()
     // values for the summation, not individual stat categories.
     uint64_t num_objects = info.stats.stats.sum.num_objects;
 
+<<<<<<< HEAD
     // Total sum of all missing
     int64_t missing = 0;
     // Objects that have arrived backfilled to up OSDs (not in acting)
@@ -2650,6 +2721,11 @@ void PG::_update_calc_stats()
           pm->second.num_missing();
       }
     }
+=======
+    // a degraded objects has fewer replicas or EC shards than the
+    // pool specifies
+    int64_t degraded = 0;
+>>>>>>> upstream/hammer
 
     assert(!actingbackfill.empty());
     for (set<pg_shard_t>::iterator i = actingbackfill.begin();
@@ -2700,8 +2776,48 @@ void PG::_update_calc_stats()
     // pool specifies.  num_object_copies will never be smaller than target * num_copies.
     int64_t degraded = MAX(0, info.stats.stats.sum.num_object_copies - object_copies);
 
+<<<<<<< HEAD
     info.stats.stats.sum.num_objects_degraded = degraded;
     info.stats.stats.sum.num_objects_unfound = get_num_unfound();
+=======
+      // not yet backfilled
+      int64_t diff = num_objects - peer_info[*i].stats.stats.sum.num_objects;
+      if (diff > 0)
+        degraded += diff;
+    }
+    info.stats.stats.sum.num_objects_degraded = degraded;
+    info.stats.stats.sum.num_objects_unfound = get_num_unfound();
+
+    // a misplaced object is not stored on the correct OSD
+    uint64_t misplaced = 0;
+    unsigned in_place = 0;
+    for (set<pg_shard_t>::const_iterator p = upset.begin();
+	 p != upset.end();
+	 ++p) {
+      const pg_shard_t &s = *p;
+      if (actingset.count(s)) {
+	++in_place;
+      } else {
+	// not where it should be
+	misplaced += num_objects;
+	if (actingbackfill.count(s)) {
+	  // ...but partially backfilled
+	  misplaced -= peer_info[s].stats.stats.sum.num_objects;
+	  dout(20) << __func__ << " osd." << *p << " misplaced "
+		   << num_objects << " but partially backfilled "
+		   << peer_info[s].stats.stats.sum.num_objects
+		   << dendl;
+	} else {
+	  dout(20) << __func__ << " osd." << *p << " misplaced "
+		   << num_objects << " but partially backfilled "
+		   << dendl;
+	}
+      }
+    }
+    // count extra replicas in acting but not in up as misplaced
+    if (in_place < actingset.size())
+      misplaced += (actingset.size() - in_place) * num_objects;
+>>>>>>> upstream/hammer
     info.stats.stats.sum.num_objects_misplaced = misplaced;
   }
 }
@@ -3089,11 +3205,46 @@ int PG::peek_map_epoch(ObjectStore *store,
     // get epoch
     bp = values[epoch_key].begin();
     ::decode(cur_epoch, bp);
+<<<<<<< HEAD
+=======
+  } else if (r == -ENOENT) {
+    // legacy: try v7 or older
+    r = store->collection_getattr(coll, "info", *bl);
+    assert(r > 0);
+    bufferlist::iterator bp = bl->begin();
+    __u8 struct_v = 0;
+    ::decode(struct_v, bp);
+    if (struct_v < 5)
+      return 0;
+    if (struct_v < 6) {
+      ::decode(cur_epoch, bp);
+      *pepoch = cur_epoch;
+      return 0;
+    }
+
+    // get epoch out of leveldb
+    string ek = get_epoch_key(pgid);
+    keys.clear();
+    values.clear();
+    keys.insert(ek);
+    store->omap_get_values(META_COLL, legacy_infos_oid, keys, &values);
+    if (values.size() < 1) {
+      // see #13060: this suggests we failed to upgrade this pg
+      // because it was a zombie and then removed the legacy infos
+      // object.  skip it.
+      return -1;
+    }
+    bufferlist::iterator p = values[ek].begin();
+    ::decode(cur_epoch, p);
+>>>>>>> upstream/hammer
   } else {
     // probably bug 10617; see OSD::load_pgs()
     return -1;
   }
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/hammer
   *pepoch = cur_epoch;
   return 0;
 }
@@ -3620,13 +3771,19 @@ void PG::reg_next_scrub()
 
   utime_t reg_stamp;
   if (scrubber.must_scrub ||
+<<<<<<< HEAD
       (info.stats.stats_invalid && cct->_conf->osd_scrub_invalid_stats)) {
     reg_stamp = ceph_clock_now();
+=======
+      (info.stats.stats_invalid && g_conf->osd_scrub_invalid_stats)) {
+    reg_stamp = ceph_clock_now(cct);
+>>>>>>> upstream/hammer
   } else {
     reg_stamp = info.history.last_scrub_stamp;
   }
   // note down the sched_time, so we can locate this scrub, and remove it
   // later on.
+<<<<<<< HEAD
   double scrub_min_interval = 0, scrub_max_interval = 0;
   pool.info.opts.get(pool_opts_t::SCRUB_MIN_INTERVAL, &scrub_min_interval);
   pool.info.opts.get(pool_opts_t::SCRUB_MAX_INTERVAL, &scrub_max_interval);
@@ -3635,15 +3792,24 @@ void PG::reg_next_scrub()
 					       reg_stamp,
 					       scrub_min_interval,
 					       scrub_max_interval,
+=======
+  scrubber.scrub_reg_stamp = osd->reg_pg_scrub(info.pgid,
+					       reg_stamp,
+>>>>>>> upstream/hammer
 					       scrubber.must_scrub);
 }
 
 void PG::unreg_next_scrub()
 {
+<<<<<<< HEAD
   if (is_primary()) {
     osd->unreg_pg_scrub(info.pgid, scrubber.scrub_reg_stamp);
     scrubber.scrub_reg_stamp = utime_t();
   }
+=======
+  if (is_primary())
+    osd->unreg_pg_scrub(info.pgid, scrubber.scrub_reg_stamp);
+>>>>>>> upstream/hammer
 }
 
 void PG::sub_op_scrub_map(OpRequestRef op)
@@ -4550,8 +4716,16 @@ void PG::scrub_compare_maps()
       maps[*i] = &scrubber.received_maps[*i];
     }
 
+    // can we relate scrub digests to oi digests?
+    bool okseed = (get_min_peer_features() & CEPH_FEATURE_OSD_OBJECT_DIGEST);
+    assert(okseed == (scrubber.seed == 0xffffffff));
+
     get_pgbackend()->be_compare_scrubmaps(
       maps,
+<<<<<<< HEAD
+=======
+      okseed,
+>>>>>>> upstream/hammer
       state_test(PG_STATE_REPAIR),
       scrubber.missing,
       scrubber.inconsistent,
@@ -5696,6 +5870,7 @@ void PG::handle_advance_map(
 	   << dendl;
   update_osdmap_ref(osdmap);
   pool.update(osdmap);
+<<<<<<< HEAD
   if (cct->_conf->osd_debug_verify_cached_snaps) {
     interval_set<snapid_t> actual_removed_snaps;
     const pg_pool_t *pi = osdmap->get_pg_pool(info.pgid.pool());
@@ -5709,14 +5884,21 @@ void PG::handle_advance_map(
     }
     assert(actual_removed_snaps == pool.cached_removed_snaps);
   }
+=======
+>>>>>>> upstream/hammer
   AdvMap evt(
     osdmap, lastmap, newup, up_primary,
     newacting, acting_primary);
   recovery_state.handle_event(evt, rctx);
+<<<<<<< HEAD
   if (pool.info.last_change == osdmap_ref->get_epoch()) {
     on_pool_change();
     update_store_with_options();
   }
+=======
+  if (pool.info.last_change == osdmap_ref->get_epoch())
+    on_pool_change();
+>>>>>>> upstream/hammer
 }
 
 void PG::handle_activate_map(RecoveryCtx *rctx)
@@ -5818,6 +6000,10 @@ boost::statechart::result PG::RecoveryState::Initial::react(const MNotifyRec& no
   PG *pg = context< RecoveryMachine >().pg;
   pg->proc_replica_info(
     notify.from, notify.notify.info, notify.notify.epoch_sent);
+<<<<<<< HEAD
+=======
+  pg->update_heartbeat_peers();
+>>>>>>> upstream/hammer
   pg->set_last_peering_reset();
   return transit< Primary >();
 }
@@ -6931,9 +7117,15 @@ boost::statechart::result PG::RecoveryState::Active::react(const MNotifyRec& not
 		       << ", already purged that peer, ignoring"
 		       << dendl;
   } else {
+<<<<<<< HEAD
     ldout(pg->cct, 10) << "Active: got notify from " << notevt.from
 		       << ", calling proc_replica_info and discover_all_missing"
 		       << dendl;
+=======
+    dout(10) << "Active: got notify from " << notevt.from 
+	     << ", calling proc_replica_info and discover_all_missing"
+	     << dendl;
+>>>>>>> upstream/hammer
     pg->proc_replica_info(
       notevt.from, notevt.notify.info, notevt.notify.epoch_sent);
     if (pg->have_unfound()) {
@@ -8024,8 +8216,12 @@ void PG::RecoveryState::RecoveryMachine::log_exit(const char *state_name, utime_
 #undef dout_prefix
 #define dout_prefix (*_dout << (debug_pg ? debug_pg->gen_prefix() : string()) << " PriorSet: ")
 
+<<<<<<< HEAD
 PG::PriorSet::PriorSet(CephContext* cct,
 		       bool ec_pool,
+=======
+PG::PriorSet::PriorSet(bool ec_pool,
+>>>>>>> upstream/hammer
 		       IsPGRecoverablePredicate *c,
 		       const OSDMap &osdmap,
 		       const map<epoch_t, pg_interval_t> &past_intervals,

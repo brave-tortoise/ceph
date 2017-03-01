@@ -22,6 +22,37 @@
 CLS_VER(1,0)
 CLS_NAME(rgw)
 
+<<<<<<< HEAD
+=======
+cls_handle_t h_class;
+cls_method_handle_t h_rgw_bucket_init_index;
+cls_method_handle_t h_rgw_bucket_set_tag_timeout;
+cls_method_handle_t h_rgw_bucket_list;
+cls_method_handle_t h_rgw_bucket_check_index;
+cls_method_handle_t h_rgw_bucket_rebuild_index;
+cls_method_handle_t h_rgw_bucket_update_stats;
+cls_method_handle_t h_rgw_bucket_prepare_op;
+cls_method_handle_t h_rgw_bucket_complete_op;
+cls_method_handle_t h_rgw_bucket_link_olh;
+cls_method_handle_t h_rgw_bucket_unlink_instance_op;
+cls_method_handle_t h_rgw_bucket_read_olh_log;
+cls_method_handle_t h_rgw_bucket_trim_olh_log;
+cls_method_handle_t h_rgw_bucket_clear_olh;
+cls_method_handle_t h_rgw_obj_remove;
+cls_method_handle_t h_rgw_obj_check_attrs_prefix;
+cls_method_handle_t h_rgw_bi_get_op;
+cls_method_handle_t h_rgw_bi_put_op;
+cls_method_handle_t h_rgw_bi_list_op;
+cls_method_handle_t h_rgw_bi_log_list_op;
+cls_method_handle_t h_rgw_dir_suggest_changes;
+cls_method_handle_t h_rgw_user_usage_log_add;
+cls_method_handle_t h_rgw_user_usage_log_read;
+cls_method_handle_t h_rgw_user_usage_log_trim;
+cls_method_handle_t h_rgw_gc_set_entry;
+cls_method_handle_t h_rgw_gc_list;
+cls_method_handle_t h_rgw_gc_remove;
+
+>>>>>>> upstream/hammer
 
 #define BI_PREFIX_CHAR 0x80
 
@@ -431,7 +462,11 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
       decode_list_index_key(kiter->first, &key, &ver);
 
       start_key = kiter->first;
+<<<<<<< HEAD
       CLS_LOG(20, "start_key=%s len=%zu", start_key.c_str(), start_key.size());
+=======
+      CLS_LOG(20, "start_key=%s len=%d", start_key.c_str(), start_key.size());
+>>>>>>> upstream/hammer
 
       if (!entry.is_valid()) {
         CLS_LOG(20, "entry %s[%s] is not valid\n", key.name.c_str(), key.instance.c_str());
@@ -500,7 +535,10 @@ static int check_index(cls_method_context_t hctx, struct rgw_bucket_dir_header *
       stats.num_entries++;
       stats.total_size += entry.meta.accounted_size;
       stats.total_size_rounded += cls_rgw_get_rounded_size(entry.meta.accounted_size);
+<<<<<<< HEAD
       stats.actual_size += entry.meta.size;
+=======
+>>>>>>> upstream/hammer
 
       start_obj = kiter->first;
     }
@@ -547,7 +585,11 @@ int rgw_bucket_update_stats(cls_method_context_t hctx, bufferlist *in, bufferlis
 {
   // decode request
   rgw_cls_bucket_update_stats_op op;
+<<<<<<< HEAD
   auto iter = in->begin();
+=======
+  bufferlist::iterator iter = in->begin();
+>>>>>>> upstream/hammer
   try {
     ::decode(op, iter);
   } catch (buffer::error& err) {
@@ -562,6 +604,7 @@ int rgw_bucket_update_stats(cls_method_context_t hctx, bufferlist *in, bufferlis
     return rc;
   }
 
+<<<<<<< HEAD
   for (auto& s : op.stats) {
     auto& dest = header.stats[s.first];
     if (op.absolute) {
@@ -570,6 +613,16 @@ int rgw_bucket_update_stats(cls_method_context_t hctx, bufferlist *in, bufferlis
       dest.total_size += s.second.total_size;
       dest.total_size_rounded += s.second.total_size_rounded;
       dest.num_entries += s.second.num_entries;
+=======
+  for (map<uint8_t, rgw_bucket_category_stats>::iterator iter = op.stats.begin(); iter != op.stats.end(); ++iter) {
+    rgw_bucket_category_stats& dest = header.stats[iter->first];
+    if (op.absolute) {
+      dest = iter->second;
+    } else {
+      dest.total_size += iter->second.total_size;
+      dest.total_size_rounded += iter->second.total_size_rounded;
+      dest.num_entries += iter->second.num_entries;
+>>>>>>> upstream/hammer
     }
   }
 
@@ -670,7 +723,11 @@ int rgw_bucket_prepare_op(cls_method_context_t hctx, bufferlist *in, bufferlist 
 
   // fill in proper state
   struct rgw_bucket_pending_info info;
+<<<<<<< HEAD
   info.timestamp = real_clock::now();
+=======
+  info.timestamp = ceph_clock_now(g_ceph_context);
+>>>>>>> upstream/hammer
   info.state = CLS_RGW_STATE_PENDING_MODIFY;
   info.op = op.op;
   entry.pending_map.insert(pair<string, rgw_bucket_pending_info>(op.tag, info));
@@ -705,7 +762,10 @@ static void unaccount_entry(struct rgw_bucket_dir_header& header, struct rgw_buc
   stats.num_entries--;
   stats.total_size -= entry.meta.accounted_size;
   stats.total_size_rounded -= cls_rgw_get_rounded_size(entry.meta.accounted_size);
+<<<<<<< HEAD
   stats.actual_size -= entry.meta.size;
+=======
+>>>>>>> upstream/hammer
 }
 
 static void log_entry(const char *func, const char *str, struct rgw_bucket_dir_entry *entry)
@@ -891,7 +951,10 @@ int rgw_bucket_complete_op(cls_method_context_t hctx, bufferlist *in, bufferlist
       stats.num_entries++;
       stats.total_size += meta.accounted_size;
       stats.total_size_rounded += cls_rgw_get_rounded_size(meta.accounted_size);
+<<<<<<< HEAD
       stats.actual_size += meta.size;
+=======
+>>>>>>> upstream/hammer
       bufferlist new_key_bl;
       ::encode(entry, new_key_bl);
       int ret = cls_cxx_map_set_val(hctx, idx, &new_key_bl);
@@ -1922,7 +1985,10 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
         old_stats.num_entries--;
         old_stats.total_size -= cur_disk.meta.accounted_size;
         old_stats.total_size_rounded -= cls_rgw_get_rounded_size(cur_disk.meta.accounted_size);
+<<<<<<< HEAD
         old_stats.actual_size -= cur_disk.meta.size;
+=======
+>>>>>>> upstream/hammer
         header_changed = true;
       }
       struct rgw_bucket_category_stats& stats =
@@ -1950,7 +2016,10 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx, bufferlist *in, bufferlis
         stats.num_entries++;
         stats.total_size += cur_change.meta.accounted_size;
         stats.total_size_rounded += cls_rgw_get_rounded_size(cur_change.meta.accounted_size);
+<<<<<<< HEAD
         stats.actual_size += cur_change.meta.size;
+=======
+>>>>>>> upstream/hammer
         header_changed = true;
         cur_change.index_ver = header.ver;
         bufferlist cur_state_bl;

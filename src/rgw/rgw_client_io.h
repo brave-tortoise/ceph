@@ -158,8 +158,16 @@ class DecoratedRestfulClient : public RestfulClient {
 
   typedef typename std::remove_pointer<DecorateeT>::type DerefedDecorateeT;
 
+<<<<<<< HEAD
   static_assert(std::is_base_of<RestfulClient, DerefedDecorateeT>::value,
                 "DecorateeT must be a subclass of rgw::io::RestfulClient");
+=======
+  virtual int send_status(int status, const char *status_name) = 0;
+  virtual int send_100_continue() = 0;
+  virtual int complete_header() = 0;
+  virtual int complete_request() = 0;
+  virtual int send_content_length(uint64_t len) = 0;
+>>>>>>> upstream/hammer
 
   DecorateeT decoratee;
 

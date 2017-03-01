@@ -4,7 +4,6 @@ import os
 import textwrap
 import yaml
 
-from cStringIO import StringIO
 from teuthology import contextutil
 from teuthology import misc
 from teuthology import packaging
@@ -114,17 +113,10 @@ def clone_calamari(config, client):
     branch = config.get('calamari_branch', 'master')
     url = config.get('calamari_giturl', 'git://github.com/ceph/calamari')
     try:
-        out = StringIO()
-        # ensure branch is present (clone -b will succeed even if
-        # the branch doesn't exist, falling back to master)
-        client.run(
-            args='git ls-remote %s %s' % (url, branch),
-            stdout=out,
-            label='check for calamari branch %s existence' % branch
+        cmd = 'git clone -b {branch} {giturl}'.format(
+            branch=branch, giturl=url
         )
-        if len(out.getvalue()) == 0:
-            raise RuntimeError("Calamari branch %s doesn't exist" % branch)
-        client.run(args='git clone -b %s %s' % (branch, url))
+        client.run(args=cmd)
         yield
     finally:
         # sudo python setup.py develop may have left some root files around

@@ -79,12 +79,20 @@ void Elector::start()
     bump_epoch(epoch+1);  // odd == election cycle
   } else {
     // do a trivial db write just to ensure it is writeable.
+<<<<<<< HEAD
     auto t(std::make_shared<MonitorDBStore::Transaction>());
+=======
+    MonitorDBStore::TransactionRef t(new MonitorDBStore::Transaction);
+>>>>>>> upstream/hammer
     t->put(Monitor::MONITOR_NAME, "election_writeable_test", rand());
     int r = mon->store->apply_transaction(t);
     assert(r >= 0);
   }
+<<<<<<< HEAD
   start_stamp = ceph_clock_now();
+=======
+  start_stamp = ceph_clock_now(g_ceph_context);
+>>>>>>> upstream/hammer
   electing_me = true;
   acked_me[mon->rank].cluster_features = CEPH_FEATURES_ALL;
   acked_me[mon->rank].mon_features = ceph::features::mon::get_supported();

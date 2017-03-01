@@ -553,8 +553,13 @@ TEST(LibRadosAio, RoundTripSparseReadPP) {
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
+<<<<<<< HEAD
     sem_wait(test_data.m_sem);
     sem_wait(test_data.m_sem);
+=======
+    sem_wait(&test_data.m_sem);
+    sem_wait(&test_data.m_sem);
+>>>>>>> upstream/hammer
   }
   ASSERT_EQ(0, my_completion->get_return_value());
   std::map<uint64_t, uint64_t> extents;
@@ -2836,8 +2841,13 @@ TEST(LibRadosAioEC, RoundTripSparseReadPP) {
 					   bl1, sizeof(buf), 0));
   {
     TestAlarm alarm;
+<<<<<<< HEAD
     sem_wait(test_data.m_sem);
     sem_wait(test_data.m_sem);
+=======
+    sem_wait(&test_data.m_sem);
+    sem_wait(&test_data.m_sem);
+>>>>>>> upstream/hammer
   }
   ASSERT_EQ(0, my_completion->get_return_value());
 

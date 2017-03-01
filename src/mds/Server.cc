@@ -2962,6 +2962,14 @@ void Server::handle_client_open(MDRequestRef& mdr)
       return;
   }
 
+<<<<<<< HEAD
+=======
+  if (mdr->snapid != CEPH_NOSNAP && mdr->client_request->may_write()) {
+    respond_to_request(mdr, -EROFS);
+    return;
+  }
+
+>>>>>>> upstream/hammer
   if (!cur->inode.is_file()) {
     // can only open non-regular inode with mode FILE_MODE_PIN, at least for now.
     cmode = CEPH_FILE_MODE_PIN;
@@ -2981,7 +2989,11 @@ void Server::handle_client_open(MDRequestRef& mdr)
     respond_to_request(mdr, -ENXIO);                 // FIXME what error do we want?
     return;
     }*/
+<<<<<<< HEAD
   if ((flags & O_DIRECTORY) && !cur->inode.is_dir() && !cur->inode.is_symlink()) {
+=======
+  if ((req->head.args.open.flags & O_DIRECTORY) && !cur->inode.is_dir() && !cur->inode.is_symlink()) {
+>>>>>>> upstream/hammer
     dout(7) << "specified O_DIRECTORY on non-directory " << *cur << dendl;
     respond_to_request(mdr, -EINVAL);
     return;
@@ -2990,11 +3002,19 @@ void Server::handle_client_open(MDRequestRef& mdr)
   if ((flags & O_TRUNC) && !cur->inode.is_file()) {
     dout(7) << "specified O_TRUNC on !(file|symlink) " << *cur << dendl;
     // we should return -EISDIR for directory, return -EINVAL for other non-regular
+<<<<<<< HEAD
     respond_to_request(mdr, cur->inode.is_dir() ? -EISDIR : -EINVAL);
     return;
   }
 
   if (cur->inode.inline_data.version != CEPH_INLINE_NONE &&
+=======
+    respond_to_request(mdr, cur->inode.is_dir() ? EISDIR : -EINVAL);
+    return;
+  }
+
+  if (cur->inode.inline_version != CEPH_INLINE_NONE &&
+>>>>>>> upstream/hammer
       !mdr->session->connection->has_feature(CEPH_FEATURE_MDS_INLINE_DATA)) {
     dout(7) << "old client cannot open inline data file " << *cur << dendl;
     respond_to_request(mdr, -EPERM);

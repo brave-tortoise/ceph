@@ -25,10 +25,18 @@ public:
   typedef std::map<std::pair<uint64_t, uint64_t>, bufferlist> NotifyResponses;
 
   struct NotifyHandle {
+<<<<<<< HEAD
     WatcherIDs pending_watcher_ids;
     NotifyResponses notify_responses;
     bufferlist *pbl = nullptr;
     Context *on_notify = nullptr;
+=======
+    NotifyHandle();
+    WatcherIDs pending_watcher_ids;
+    NotifyResponses notify_responses;
+    Mutex lock;
+    Cond cond;
+>>>>>>> upstream/hammer
   };
   typedef boost::shared_ptr<NotifyHandle> SharedNotifyHandle;
   typedef std::map<uint64_t, SharedNotifyHandle> NotifyHandles;
@@ -51,6 +59,7 @@ public:
   TestWatchNotify(CephContext *cct, Finisher *finisher);
   ~TestWatchNotify();
 
+  void flush();
   int list_watchers(const std::string& o,
                     std::list<obj_watch_t> *out_watchers);
 
@@ -80,6 +89,7 @@ private:
   uint64_t m_handle;
   uint64_t m_notify_id;
 
+<<<<<<< HEAD
   Mutex m_lock;
   uint64_t m_pending_notifies;
 
@@ -87,6 +97,18 @@ private:
   FileWatchers	m_file_watchers;
 
   SharedWatcher get_watcher(const std::string& oid);
+=======
+  Mutex m_file_watcher_lock;
+  Cond m_file_watcher_cond;
+  uint64_t m_pending_notifies;
+
+  FileWatchers	m_file_watchers;
+
+  SharedWatcher get_watcher(const std::string& oid);
+  SharedWatcher _get_watcher(const std::string& oid);
+  void execute_notify(const std::string &oid, bufferlist &bl,
+                      uint64_t notify_id);
+>>>>>>> upstream/hammer
 
   void execute_notify(const std::string &oid, bufferlist &bl,
                       uint64_t notify_id);

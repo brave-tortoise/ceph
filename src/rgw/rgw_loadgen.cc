@@ -96,8 +96,12 @@ void RGWLoadGenIO::init_env(CephContext *cct)
   env.set("SERVER_PORT", port_buf);
 }
 
+<<<<<<< HEAD
 size_t RGWLoadGenIO::send_status(const int status,
                                  const char* const status_name)
+=======
+int RGWLoadGenIO::send_status(int status, const char *status_name)
+>>>>>>> upstream/hammer
 {
   return 0;
 }

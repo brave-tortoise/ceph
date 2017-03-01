@@ -705,10 +705,17 @@ struct ObjectOperation {
 	out_attrs(a), out_data(d), out_omap_header(oh),
 	out_omap_data(o), out_snaps(osnaps), out_snap_seq(osnap_seq),
 	out_flags(flags), out_data_digest(dd), out_omap_digest(od),
+<<<<<<< HEAD
 	out_reqids(oreqids),
 	out_truncate_seq(otseq),
 	out_truncate_size(otsize),
 	prval(r) {}
+=======
+        out_reqids(oreqids),
+        out_truncate_seq(otseq),
+        out_truncate_size(otsize),
+        prval(r) {}
+>>>>>>> upstream/hammer
     void finish(int r) {
       // reqids are copied on ENOENT
       if (r < 0 && r != -ENOENT)
@@ -785,9 +792,15 @@ struct ObjectOperation {
       new C_ObjectOperation_copyget(cursor, out_size, out_mtime,
 				    out_attrs, out_data, out_omap_header,
 				    out_omap_data, out_snaps, out_snap_seq,
+<<<<<<< HEAD
 				    out_flags, out_data_digest,
 				    out_omap_digest, out_reqids, truncate_seq,
 				    truncate_size, prval);
+=======
+				    out_flags, out_data_digest, out_omap_digest,
+				    out_reqids, truncate_seq, truncate_size,
+				    prval);
+>>>>>>> upstream/hammer
     out_bl[p] = &h->bl;
     out_handler[p] = h;
   }
@@ -1190,6 +1203,7 @@ public:
     object_t target_oid;
     object_locator_t target_oloc;
 
+<<<<<<< HEAD
     ///< true if we are directed at base_pgid, not base_oid
     bool precalc_pgid = false;
 
@@ -1207,6 +1221,20 @@ public:
     int size = -1; ///< the size of the pool when were were last mapped
     int min_size = -1; ///< the min size of the pool when were were last mapped
     bool sort_bitwise = false; ///< whether the hobject_t sort order is bitwise
+=======
+    bool precalc_pgid;    ///< true if we are directed at base_pgid, not base_oid
+    pg_t base_pgid;       ///< explciti pg target, if any
+
+    pg_t pgid;            ///< last pg we mapped to
+    unsigned pg_num;      ///< last pg_num we mapped to
+    unsigned pg_num_mask; ///< last pg_num_mask we mapped to
+    vector<int> up;       ///< set of up osds for last pg we mapped to
+    vector<int> acting;   ///< set of acting osds for last pg we mapped to
+    int up_primary;       ///< primary for last pg we mapped to based on the up set
+    int acting_primary;   ///< primary for last pg we mapped to based on the acting set
+    int size;             ///< the size of the pool when were were last mapped
+    int min_size;         ///< the min size of the pool when were were last mapped
+>>>>>>> upstream/hammer
 
     bool used_replica = false;
     bool paused = false;
@@ -1218,6 +1246,7 @@ public:
     op_target_t(object_t oid, object_locator_t oloc, int flags)
       : flags(flags),
 	base_oid(oid),
+<<<<<<< HEAD
 	base_oloc(oloc)
       {}
 
@@ -1243,6 +1272,20 @@ public:
       int r = cmp(h, begin);
       return r == 0 || (r > 0 && h < end);
     }
+=======
+	base_oloc(oloc),
+	precalc_pgid(false),
+	pg_num(0),
+        pg_num_mask(0),
+	up_primary(-1),
+	acting_primary(-1),
+	size(-1),
+	min_size(-1),
+	used_replica(false),
+	paused(false),
+	osd(-1)
+    {}
+>>>>>>> upstream/hammer
 
     void dump(Formatter *f) const;
   };
@@ -1294,7 +1337,11 @@ public:
 
     int *data_offset;
 
+<<<<<<< HEAD
     osd_reqid_t reqid; // explicitly setting reqid
+=======
+    epoch_t last_force_resend;
+>>>>>>> upstream/hammer
 
     Op(const object_t& o, const object_locator_t& ol, vector<OSDOp>& op,
        int f, Context *fin, version_t *ov, int *offset = NULL) :
@@ -1315,7 +1362,8 @@ public:
       budgeted(false),
       should_resend(true),
       ctx_budgeted(false),
-      data_offset(offset) {
+      data_offset(offset),
+      last_force_resend(0) {
       ops.swap(op);
 
       /* initialize out_* to match op vector */
@@ -1613,6 +1661,8 @@ public:
     ceph_tid_t ping_tid;
     epoch_t map_dne_bound;
 
+    epoch_t last_force_resend;
+
     void _queued_async() {
       // watch_lock ust be locked unique
       watch_pending_async.push_back(ceph::mono_clock::now());
@@ -1638,7 +1688,8 @@ public:
 		 session(NULL),
 		 register_tid(0),
 		 ping_tid(0),
-		 map_dne_bound(0) {}
+		 map_dne_bound(0),
+		 last_force_resend(0) {}
 
     // no copy!
     const LingerOp &operator=(const LingerOp& r);
@@ -1814,8 +1865,12 @@ public:
   bool _osdmap_has_pool_full() const;
 
   bool target_should_be_paused(op_target_t *op);
+<<<<<<< HEAD
   int _calc_target(op_target_t *t, Connection *con,
 		   bool any_change = false);
+=======
+  int _calc_target(op_target_t *t, epoch_t *last_force_resend=0, bool any_change=false);
+>>>>>>> upstream/hammer
   int _map_session(op_target_t *op, OSDSession **s,
 		   shunique_lock& lc);
 
@@ -1831,8 +1886,13 @@ public:
 				bool dst_session_locked);
   int _recalc_linger_op_target(LingerOp *op, shunique_lock& lc);
 
+<<<<<<< HEAD
   void _linger_submit(LingerOp *info, shunique_lock& sul);
   void _send_linger(LingerOp *info, shunique_lock& sul);
+=======
+  void _linger_submit(LingerOp *info);
+  void _send_linger(LingerOp *info);
+>>>>>>> upstream/hammer
   void _linger_commit(LingerOp *info, int r, bufferlist& outbl);
   void _linger_reconnect(LingerOp *info, int r);
   void _send_linger_ping(LingerOp *info);
@@ -2039,9 +2099,14 @@ private:
 public:
   void op_submit(Op *op, ceph_tid_t *ptid = NULL, int *ctx_budget = NULL);
   bool is_active() {
+<<<<<<< HEAD
     shared_lock l(rwlock);
     return !((!inflight_ops.read()) && linger_ops.empty() &&
 	     poolstat_ops.empty() && statfs_ops.empty());
+=======
+    RWLock::RLocker l(rwlock);
+    return !((!inflight_ops.read()) && linger_ops.empty() && poolstat_ops.empty() && statfs_ops.empty());
+>>>>>>> upstream/hammer
   }
 
   /**

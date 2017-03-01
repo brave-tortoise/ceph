@@ -530,7 +530,11 @@ void Objecter::_send_linger(LingerOp *info,
 
   vector<OSDOp> opv;
   Context *oncommit = NULL;
+<<<<<<< HEAD
   LingerOp::shared_lock watchl(info->watch_lock);
+=======
+  info->watch_lock.get_read(); // just to read registered status
+>>>>>>> upstream/hammer
   bufferlist *poutbl = NULL;
   if (info->registered && info->is_watch) {
     ldout(cct, 15) << "send_linger " << info->linger_id << " reconnect"
@@ -555,7 +559,13 @@ void Objecter::_send_linger(LingerOp *info,
   watchl.unlock();
   Op *o = new Op(info->target.base_oid, info->target.base_oloc,
 		 opv, info->target.flags | CEPH_OSD_FLAG_READ,
+<<<<<<< HEAD
 		 oncommit, info->pobjver);
+=======
+		 NULL, NULL,
+		 info->pobjver);
+  o->oncommit_sync = oncommit;
+>>>>>>> upstream/hammer
   o->outbl = poutbl;
   o->snapid = info->snap;
   o->snapc = info->snapc;
@@ -604,8 +614,12 @@ void Objecter::_linger_commit(LingerOp *info, int r, bufferlist& outbl)
     bufferlist::iterator p = outbl.begin();
     try {
       ::decode(info->notify_id, p);
+<<<<<<< HEAD
       ldout(cct, 10) << "_linger_commit  notify_id=" << info->notify_id
 		     << dendl;
+=======
+      ldout(cct, 10) << "_linger_commit  notify_id=" << info->notify_id << dendl;
+>>>>>>> upstream/hammer
     }
     catch (buffer::error& e) {
     }
@@ -741,8 +755,12 @@ int Objecter::linger_check(LingerOp *info)
   if (info->last_error)
     return info->last_error;
   // return a safe upper bound (we are truncating to ms)
+<<<<<<< HEAD
   return
     1 + std::chrono::duration_cast<std::chrono::milliseconds>(age).count();
+=======
+  return 1 + age.to_msec();
+>>>>>>> upstream/hammer
 }
 
 void Objecter::linger_cancel(LingerOp *info)
@@ -857,7 +875,11 @@ void Objecter::_linger_submit(LingerOp *info, shunique_lock& sul)
 
   // Populate Op::target
   OSDSession *s = NULL;
+<<<<<<< HEAD
   _calc_target(&info->target, nullptr);
+=======
+  _calc_target(&info->target, &info->last_force_resend);
+>>>>>>> upstream/hammer
 
   // Create LingerOp<->OSDSession relation
   int r = _get_session(info->target.osd, &s, sul);
@@ -906,9 +928,14 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
       }
     }
   } else if (!info->is_watch) {
+<<<<<<< HEAD
     // we have CEPH_WATCH_EVENT_NOTIFY_COMPLETE; we can do this inline
     // since we know the only user (librados) is safe to call in
     // fast-dispatch context
+=======
+    // we have CEPH_WATCH_EVENT_NOTIFY_COMPLETE; we can do this inline since
+    // we know the only user (librados) is safe to call in fast-dispatch context
+>>>>>>> upstream/hammer
     if (info->notify_id &&
 	info->notify_id != m->notify_id) {
       ldout(cct, 10) << __func__ << " reply notify " << m->notify_id
@@ -1065,12 +1092,16 @@ void Objecter::_scan_requests(OSDSession *s,
     Op *op = p->second;
     ++p;   // check_op_pool_dne() may touch ops; prevent iterator invalidation
     ldout(cct, 10) << " checking op " << op->tid << dendl;
+<<<<<<< HEAD
     bool force_resend_writes = cluster_full;
     if (pool_full_map)
       force_resend_writes = force_resend_writes ||
 	(*pool_full_map)[op->target.base_oloc.pool];
     int r = _calc_target(&op->target,
 			 op->session ? op->session->con.get() : nullptr);
+=======
+    int r = _calc_target(&op->target, &op->last_force_resend);
+>>>>>>> upstream/hammer
     switch (r) {
     case RECALC_OP_TARGET_NO_ACTION:
       if (!force_resend &&
@@ -1316,7 +1347,11 @@ void Objecter::handle_osd_map(MOSDMap *m)
        p != need_resend_linger.end(); ++p) {
     LingerOp *op = *p;
     if (!op->session) {
+<<<<<<< HEAD
       _calc_target(&op->target, nullptr);
+=======
+      _calc_target(&op->target, &op->last_force_resend);
+>>>>>>> upstream/hammer
       OSDSession *s = NULL;
       int const r = _get_session(op->target.osd, &s, sul);
       assert(r == 0);
@@ -1482,6 +1517,7 @@ void Objecter::_check_op_pool_dne(Op *op, unique_lock *sl)
       }
 
       OSDSession *s = op->session;
+<<<<<<< HEAD
       if (s) {
 	assert(s != NULL);
 	assert(sl->mutex() == &s->lock);
@@ -1495,6 +1531,16 @@ void Objecter::_check_op_pool_dne(Op *op, unique_lock *sl)
 	}
       } else {
 	_finish_op(op, 0);	// no session
+=======
+      assert(s != NULL);
+
+      if (!session_locked) {
+        s->lock.get_write();
+      }
+      _finish_op(op, 0);
+      if (!session_locked) {
+        s->lock.unlock();
+>>>>>>> upstream/hammer
       }
     }
   } else {
@@ -2066,6 +2112,7 @@ void Objecter::tick()
 
 
   // look for laggy requests
+<<<<<<< HEAD
   auto cutoff = ceph::mono_clock::now();
   cutoff -= ceph::make_timespan(cct->_conf->objecter_timeout);  // timeout
 
@@ -2075,6 +2122,16 @@ void Objecter::tick()
        siter != osd_sessions.end(); ++siter) {
     OSDSession *s = siter->second;
     OSDSession::lock_guard l(s->lock);
+=======
+  utime_t cutoff = ceph_clock_now(cct);
+  cutoff -= cct->_conf->objecter_timeout;  // timeout
+
+  unsigned laggy_ops = 0;
+
+  for (map<int,OSDSession*>::iterator siter = osd_sessions.begin(); siter != osd_sessions.end(); ++siter) {
+    OSDSession *s = siter->second;
+    RWLock::RLocker l(s->lock);
+>>>>>>> upstream/hammer
     bool found = false;
     for (map<ceph_tid_t,Op*>::iterator p = s->ops.begin();
 	p != s->ops.end();
@@ -2082,8 +2139,12 @@ void Objecter::tick()
       Op *op = p->second;
       assert(op->session);
       if (op->stamp < cutoff) {
+<<<<<<< HEAD
 	ldout(cct, 2) << " tid " << p->first << " on osd." << op->session->osd
 		      << " is laggy" << dendl;
+=======
+	ldout(cct, 2) << " tid " << p->first << " on osd." << op->session->osd << " is laggy" << dendl;
+>>>>>>> upstream/hammer
 	found = true;
 	++laggy_ops;
       }
@@ -2092,10 +2153,16 @@ void Objecter::tick()
 	p != s->linger_ops.end();
 	++p) {
       LingerOp *op = p->second;
+<<<<<<< HEAD
       LingerOp::unique_lock wl(op->watch_lock);
       assert(op->session);
       ldout(cct, 10) << " pinging osd that serves lingering tid " << p->first
 		     << " (osd." << op->session->osd << ")" << dendl;
+=======
+      RWLock::WLocker wl(op->watch_lock);
+      assert(op->session);
+      ldout(cct, 10) << " pinging osd that serves lingering tid " << p->first << " (osd." << op->session->osd << ")" << dendl;
+>>>>>>> upstream/hammer
       found = true;
       if (op->is_watch && op->registered && !op->last_error)
 	_send_linger_ping(op);
@@ -2105,8 +2172,12 @@ void Objecter::tick()
 	++p) {
       CommandOp *op = p->second;
       assert(op->session);
+<<<<<<< HEAD
       ldout(cct, 10) << " pinging osd that serves command tid " << p->first
 		     << " (osd." << op->session->osd << ")" << dendl;
+=======
+      ldout(cct, 10) << " pinging osd that serves command tid " << p->first << " (osd." << op->session->osd << ")" << dendl;
+>>>>>>> upstream/hammer
       found = true;
     }
     if (found)
@@ -2189,7 +2260,22 @@ void Objecter::resend_mon_ops()
 
 // read | write ---------------------------
 
+<<<<<<< HEAD
 void Objecter::op_submit(Op *op, ceph_tid_t *ptid, int *ctx_budget)
+=======
+class C_CancelOp : public Context
+{
+  ceph_tid_t tid;
+  Objecter *objecter;
+public:
+  C_CancelOp(ceph_tid_t tid, Objecter *objecter) : tid(tid), objecter(objecter) {}
+  void finish(int r) {
+    objecter->op_cancel(tid, -ETIMEDOUT);
+  }
+};
+
+ceph_tid_t Objecter::op_submit(Op *op, int *ctx_budget)
+>>>>>>> upstream/hammer
 {
   shunique_lock rl(rwlock, ceph::acquire_shared);
   ceph_tid_t tid = 0;
@@ -2219,6 +2305,7 @@ void Objecter::_op_submit_with_budget(Op *op, shunique_lock& sul,
     }
   }
 
+<<<<<<< HEAD
   if (osd_timeout > timespan(0)) {
     if (op->tid == 0)
       op->tid = last_tid.inc();
@@ -2229,6 +2316,17 @@ void Objecter::_op_submit_with_budget(Op *op, shunique_lock& sul,
   }
 
   _op_submit(op, sul, ptid);
+=======
+  if (osd_timeout > 0) {
+    if (op->tid == 0)
+      op->tid = last_tid.inc();
+    op->ontimeout = new C_CancelOp(op->tid, this);
+    Mutex::Locker l(timer_lock);
+    timer.add_event_after(osd_timeout, op->ontimeout);
+  }
+
+  return _op_submit(op, lc);
+>>>>>>> upstream/hammer
 }
 
 void Objecter::_send_op_account(Op *op)
@@ -2314,8 +2412,12 @@ void Objecter::_op_submit(Op *op, shunique_lock& sul, ceph_tid_t *ptid)
   assert(op->session == NULL);
   OSDSession *s = NULL;
 
+<<<<<<< HEAD
   bool check_for_latest_map = _calc_target(&op->target, nullptr)
     == RECALC_OP_TARGET_POOL_DNE;
+=======
+  bool const check_for_latest_map = _calc_target(&op->target, &op->last_force_resend) == RECALC_OP_TARGET_POOL_DNE;
+>>>>>>> upstream/hammer
 
   // Try to get a session, including a retry if we need to take write lock
   int r = _get_session(op->target.osd, &s, sul);
@@ -2441,6 +2543,7 @@ int Objecter::op_cancel(OSDSession *s, ceph_tid_t tid, int r)
   ldout(cct, 10) << __func__ << " tid " << tid << " in session " << s->osd
 		 << dendl;
   Op *op = p->second;
+<<<<<<< HEAD
   if (op->onfinish) {
     num_in_flight.dec();
     op->onfinish->complete(r);
@@ -2449,6 +2552,26 @@ int Objecter::op_cancel(OSDSession *s, ceph_tid_t tid, int r)
   _op_cancel_map_check(op);
   _finish_op(op, r);
   sl.unlock();
+=======
+  if (op->onack) {
+    op->onack->complete(r);
+    op->onack = NULL;
+    num_unacked.dec();
+  }
+  if (op->oncommit || op->oncommit_sync)
+    num_uncommitted.dec();
+  if (op->oncommit) {
+    op->oncommit->complete(r);
+    op->oncommit = NULL;
+  }
+  if (op->oncommit_sync) {
+    op->oncommit_sync->complete(r);
+    op->oncommit_sync = NULL;
+  }
+  _op_cancel_map_check(op);
+  _finish_op(op, r);
+  s->lock.unlock();
+>>>>>>> upstream/hammer
 
   return 0;
 }
@@ -2530,6 +2653,7 @@ epoch_t Objecter::op_cancel_writes(int r, int64_t pool)
 	to_cancel.push_back(op_i->first);
       }
     }
+<<<<<<< HEAD
     sl.unlock();
 
     for (std::vector<ceph_tid_t>::iterator titer = to_cancel.begin();
@@ -2538,6 +2662,13 @@ epoch_t Objecter::op_cancel_writes(int r, int64_t pool)
       int cancel_result = op_cancel(s, *titer, r);
       // We hold rwlock across search and cancellation, so cancels
       // should always succeed
+=======
+    s->lock.unlock();
+
+    for (std::vector<ceph_tid_t>::iterator titer = to_cancel.begin(); titer != to_cancel.end(); ++titer) {
+      int cancel_result = op_cancel(s, *titer, r);
+      // We hold rwlock across search and cancellation, so cancels should always succeed
+>>>>>>> upstream/hammer
       assert(cancel_result == 0);
     }
     if (!found && to_cancel.size())
@@ -2677,7 +2808,11 @@ int64_t Objecter::get_object_pg_hash_position(int64_t pool, const string& key,
   return p->raw_hash_to_pg(p->hash_key(key, ns));
 }
 
+<<<<<<< HEAD
 int Objecter::_calc_target(op_target_t *t, Connection *con, bool any_change)
+=======
+int Objecter::_calc_target(op_target_t *t, epoch_t *last_force_resend,  bool any_change)
+>>>>>>> upstream/hammer
 {
   // rwlock is locked
   bool is_read = t->flags & CEPH_OSD_FLAG_READ;
@@ -2701,12 +2836,28 @@ int Objecter::_calc_target(op_target_t *t, Connection *con, bool any_change)
 
   bool force_resend = false;
   if (osdmap->get_epoch() == pi->last_force_op_resend) {
+<<<<<<< HEAD
     if (t->last_force_resend < pi->last_force_op_resend) {
       t->last_force_resend = pi->last_force_op_resend;
       force_resend = true;
     } else if (t->last_force_resend == 0) {
       force_resend = true;
     }
+=======
+    if (last_force_resend && *last_force_resend < pi->last_force_op_resend) {
+      *last_force_resend = pi->last_force_op_resend;
+      force_resend = true;
+    } else if (last_force_resend == 0)
+      force_resend = true;
+  }
+  if (t->target_oid.name.empty() || force_resend) {
+    t->target_oid = t->base_oid;
+    need_check_tiering = true;
+  }
+  if (t->target_oloc.empty() || force_resend) {
+    t->target_oloc = t->base_oloc;
+    need_check_tiering = true;
+>>>>>>> upstream/hammer
   }
 
   // apply tiering
@@ -2750,6 +2901,7 @@ int Objecter::_calc_target(op_target_t *t, Connection *con, bool any_change)
   vector<int> up, acting;
   osdmap->pg_to_up_acting_osds(pgid, &up, &up_primary,
 			       &acting, &acting_primary);
+<<<<<<< HEAD
   bool sort_bitwise = osdmap->test_flag(CEPH_OSDMAP_SORTBITWISE);
   unsigned prev_seed = ceph_stable_mod(pgid.ps(), t->pg_num, t->pg_num_mask);
   pg_t prev_pgid(prev_seed, pgid.pool());
@@ -2771,6 +2923,25 @@ int Objecter::_calc_target(op_target_t *t, Connection *con, bool any_change)
 	t->sort_bitwise,
 	sort_bitwise,
 	prev_pgid)) {
+=======
+  unsigned prev_seed = ceph_stable_mod(pgid.ps(), t->pg_num, t->pg_num_mask);
+  if (any_change && pg_interval_t::is_new_interval(
+          t->acting_primary,
+	  acting_primary,
+	  t->acting,
+	  acting,
+	  t->up_primary,
+	  up_primary,
+	  t->up,
+	  up,
+	  t->size,
+	  size,
+	  t->min_size,
+	  min_size,
+	  t->pg_num,
+	  pg_num,
+	  pg_t(prev_seed, pgid.pool(), pgid.preferred()))) {
+>>>>>>> upstream/hammer
     force_resend = true;
   }
 
@@ -2800,10 +2971,13 @@ int Objecter::_calc_target(op_target_t *t, Connection *con, bool any_change)
     t->min_size = min_size;
     t->pg_num = pg_num;
     t->pg_num_mask = pi->get_pg_num_mask();
+<<<<<<< HEAD
     osdmap->get_primary_shard(
       pg_t(ceph_stable_mod(pgid.ps(), t->pg_num, t->pg_num_mask), pgid.pool()),
       &t->actual_pgid);
     t->sort_bitwise = sort_bitwise;
+=======
+>>>>>>> upstream/hammer
     ldout(cct, 10) << __func__ << " "
 		   << " raw pgid " << pgid << " -> actual " << t->actual_pgid
 		   << " acting " << acting
@@ -2863,8 +3037,13 @@ int Objecter::_calc_target(op_target_t *t, Connection *con, bool any_change)
 int Objecter::_map_session(op_target_t *target, OSDSession **s,
 			   shunique_lock& sul)
 {
+<<<<<<< HEAD
   _calc_target(target, nullptr);
   return _get_session(target->osd, s, sul);
+=======
+  _calc_target(target);
+  return _get_session(target->osd, s, lc);
+>>>>>>> upstream/hammer
 }
 
 void Objecter::_session_op_assign(OSDSession *to, Op *op)
@@ -2972,7 +3151,11 @@ int Objecter::_recalc_linger_op_target(LingerOp *linger_op,
 {
   // rwlock is locked unique
 
+<<<<<<< HEAD
   int r = _calc_target(&linger_op->target, nullptr, true);
+=======
+  int r = _calc_target(&linger_op->target, &linger_op->last_force_resend, true);
+>>>>>>> upstream/hammer
   if (r == RECALC_OP_TARGET_NEED_RESEND) {
     ldout(cct, 10) << "recalc_linger_op_target tid " << linger_op->linger_id
 		   << " pgid " << linger_op->target.pgid
@@ -3003,9 +3186,20 @@ void Objecter::_cancel_linger_op(Op *op)
   ldout(cct, 15) << "cancel_op " << op->tid << dendl;
 
   assert(!op->should_resend);
+<<<<<<< HEAD
   if (op->onfinish) {
     delete op->onfinish;
     num_in_flight.dec();
+=======
+  if (op->onack) {
+    delete op->onack;
+    num_unacked.dec();
+  }
+  if (op->oncommit || op->oncommit_sync) {
+    delete op->oncommit;
+    delete op->oncommit_sync;
+    num_uncommitted.dec();
+>>>>>>> upstream/hammer
   }
 
   _finish_op(op, 0);
@@ -3020,7 +3214,12 @@ void Objecter::_finish_op(Op *op, int r)
   if (!op->ctx_budgeted && op->budgeted)
     put_op_budget(op);
 
+<<<<<<< HEAD
   if (op->ontimeout && r != -ETIMEDOUT)
+=======
+  if (op->ontimeout && r != -ETIMEDOUT) {
+    Mutex::Locker l(timer_lock);
+>>>>>>> upstream/hammer
     timer.cancel_event(op->ontimeout);
 
   if (op->session) {
@@ -3408,8 +3607,16 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
   /* get it before we call _finish_op() */
   auto completion_lock = s->get_lock(op->target.base_oid);
 
+<<<<<<< HEAD
   ldout(cct, 15) << "handle_osd_op_reply completed tid " << tid << dendl;
   _finish_op(op, 0);
+=======
+  // done with this tid?
+  if (!op->onack && !op->oncommit && !op->oncommit_sync) {
+    ldout(cct, 15) << "handle_osd_op_reply completed tid " << tid << dendl;
+    _finish_op(op, 0);
+  }
+>>>>>>> upstream/hammer
 
   ldout(cct, 5) << num_in_flight.read() << " in flight" << dendl;
 
@@ -3941,25 +4148,44 @@ void Objecter::handle_pool_op_reply(MPoolOpReply *m)
     if (m->version > last_seen_osdmap_version)
       last_seen_osdmap_version = m->version;
     if (osdmap->get_epoch() < m->epoch) {
+<<<<<<< HEAD
       sul.unlock();
       sul.lock();
+=======
+      rwlock.unlock();
+      rwlock.get_write();
+>>>>>>> upstream/hammer
       // recheck op existence since we have let go of rwlock
       // (for promotion) above.
       iter = pool_ops.find(tid);
       if (iter == pool_ops.end())
+<<<<<<< HEAD
 	goto done; // op is gone.
       if (osdmap->get_epoch() < m->epoch) {
 	ldout(cct, 20) << "waiting for client to reach epoch " << m->epoch
 		       << " before calling back" << dendl;
 	_wait_for_new_map(op->onfinish, m->epoch, m->replyCode);
+=======
+        goto done; // op is gone.
+      if (osdmap->get_epoch() < m->epoch) {
+        ldout(cct, 20) << "waiting for client to reach epoch " << m->epoch << " before calling back" << dendl;
+        _wait_for_new_map(op->onfinish, m->epoch, m->replyCode);
+>>>>>>> upstream/hammer
       } else {
 	// map epoch changed, probably because a MOSDMap message
 	// sneaked in. Do caller-specified callback now or else
 	// we lose it forever.
 	assert(op->onfinish);
+<<<<<<< HEAD
 	op->onfinish->complete(m->replyCode);
       }
     } else {
+=======
+	op->onfinish->complete(m->replyCode);	
+      }
+    }
+    else {
+>>>>>>> upstream/hammer
       assert(op->onfinish);
       op->onfinish->complete(m->replyCode);
     }
@@ -3977,8 +4203,12 @@ void Objecter::handle_pool_op_reply(MPoolOpReply *m)
   }
 
 done:
+<<<<<<< HEAD
   // Not strictly necessary, since we'll release it on return.
   sul.unlock();
+=======
+  rwlock.unlock();
+>>>>>>> upstream/hammer
 
   ldout(cct, 10) << "done" << dendl;
   m->put();
@@ -4013,6 +4243,10 @@ void Objecter::_finish_pool_op(PoolOp *op, int r)
   logger->set(l_osdc_poolop_active, pool_ops.size());
 
   if (op->ontimeout && r != -ETIMEDOUT) {
+<<<<<<< HEAD
+=======
+    Mutex::Locker l(timer_lock);
+>>>>>>> upstream/hammer
     timer.cancel_event(op->ontimeout);
   }
 
@@ -4117,7 +4351,12 @@ void Objecter::_finish_pool_stat_op(PoolStatOp *op, int r)
   poolstat_ops.erase(op->tid);
   logger->set(l_osdc_poolstat_active, poolstat_ops.size());
 
+<<<<<<< HEAD
   if (op->ontimeout && r != -ETIMEDOUT)
+=======
+  if (op->ontimeout && r != -ETIMEDOUT) {
+    Mutex::Locker l(timer_lock);
+>>>>>>> upstream/hammer
     timer.cancel_event(op->ontimeout);
 
   delete op;
@@ -4213,7 +4452,12 @@ void Objecter::_finish_statfs_op(StatfsOp *op, int r)
   statfs_ops.erase(op->tid);
   logger->set(l_osdc_statfs_active, statfs_ops.size());
 
+<<<<<<< HEAD
   if (op->ontimeout && r != -ETIMEDOUT)
+=======
+  if (op->ontimeout && r != -ETIMEDOUT) {
+    Mutex::Locker l(timer_lock);
+>>>>>>> upstream/hammer
     timer.cancel_event(op->ontimeout);
 
   delete op;
@@ -4801,7 +5045,12 @@ void Objecter::_finish_command(CommandOp *c, int r, string rs)
   if (c->onfinish)
     c->onfinish->complete(r);
 
+<<<<<<< HEAD
   if (c->ontimeout && r != -ETIMEDOUT)
+=======
+  if (c->ontimeout && r != -ETIMEDOUT) {
+    Mutex::Locker l(timer_lock);
+>>>>>>> upstream/hammer
     timer.cancel_event(c->ontimeout);
 
   OSDSession *s = c->session;

@@ -28,7 +28,11 @@ MDSUtility::MDSUtility() :
 {
   monc = new MonClient(g_ceph_context);
   messenger = Messenger::create_client_messenger(g_ceph_context, "mds");
+<<<<<<< HEAD
   fsmap = new FSMap();
+=======
+  mdsmap = new MDSMap();
+>>>>>>> upstream/hammer
   objecter = new Objecter(g_ceph_context, messenger, monc, NULL, 0, 0);
 }
 

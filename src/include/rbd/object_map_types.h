@@ -8,6 +8,9 @@
 static const uint8_t OBJECT_NONEXISTENT  = 0;
 static const uint8_t OBJECT_EXISTS       = 1;
 static const uint8_t OBJECT_PENDING      = 2;
+<<<<<<< HEAD
 static const uint8_t OBJECT_EXISTS_CLEAN = 3;
+=======
+>>>>>>> upstream/hammer
 
 #endif // CEPH_RBD_OBJECT_MAP_TYPES_H

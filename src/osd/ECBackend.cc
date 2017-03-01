@@ -401,8 +401,22 @@ void ECBackend::handle_recovery_read_complete(
     from[i->first.shard].claim(i->second);
   }
   dout(10) << __func__ << ": " << from << dendl;
+<<<<<<< HEAD
   int r = ECUtil::decode(sinfo, ec_impl, from, target);
   assert(r == 0);
+=======
+  if (ECUtil::decode(sinfo, ec_impl, from, target) != 0) {
+    derr << __func__ << ": inconsistent shard sizes " << hoid << " "
+	 << " the offending shard must be manually removed "
+	 << " after verifying there are enough shards to recover "
+	 << "(" << to_read.get<0>()
+	 << ", " << to_read.get<1>()
+	 << ", " << to_read.get<2>()
+	 << ")"
+	 << dendl;
+    assert(0);
+  }
+>>>>>>> upstream/hammer
   if (attrs) {
     op.xattrs.swap(*attrs);
 
@@ -416,12 +430,16 @@ void ECBackend::handle_recovery_read_complete(
            ++it) {
         it->second.rebuild();
       }
+<<<<<<< HEAD
       // Need to remove ECUtil::get_hinfo_key() since it should not leak out
       // of the backend (see bug #12983)
       map<string, bufferlist> sanitized_attrs(op.xattrs);
       sanitized_attrs.erase(ECUtil::get_hinfo_key());
       op.obc = get_parent()->get_obc(hoid, sanitized_attrs);
       assert(op.obc);
+=======
+      op.obc = get_parent()->get_obc(hoid, op.xattrs);
+>>>>>>> upstream/hammer
       op.recovery_info.size = op.obc->obs.oi.size;
       op.recovery_info.oi = op.obc->obs.oi;
     }
@@ -2270,9 +2288,17 @@ int ECBackend::send_all_remaining_reads(
 	false,
 	c)));
 
+<<<<<<< HEAD
   rop.to_read.swap(for_read_op);
   do_read_op(rop);
   return 0;
+=======
+  start_read_op(
+    CEPH_MSG_PRIO_DEFAULT,
+    for_read_op,
+    OpRequestRef());
+  return;
+>>>>>>> upstream/hammer
 }
 
 int ECBackend::objects_get_attrs(

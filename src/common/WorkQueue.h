@@ -346,6 +346,13 @@ public:
   template<typename T>
   class PointerWQ : public WorkQueue_ {
   public:
+<<<<<<< HEAD
+=======
+    PointerWQ(string n, time_t ti, time_t sti, ThreadPool* p)
+      : WorkQueue_(n, ti, sti), m_pool(p), m_processing(0) {
+      m_pool->add_work_queue(this);
+    }
+>>>>>>> upstream/hammer
     ~PointerWQ() {
       m_pool->remove_work_queue(this);
       assert(m_processing == 0);
@@ -371,9 +378,12 @@ public:
       return _empty();
     }
   protected:
+<<<<<<< HEAD
     PointerWQ(string n, time_t ti, time_t sti, ThreadPool* p)
       : WorkQueue_(std::move(n), ti, sti), m_pool(p), m_processing(0) {
     }
+=======
+>>>>>>> upstream/hammer
     virtual void _clear() {
       assert(m_pool->_lock.is_locked());
       m_items.clear();
@@ -403,10 +413,13 @@ public:
     }
 
     virtual void process(T *item) = 0;
+<<<<<<< HEAD
     void process_finish() {
       Mutex::Locker locker(m_pool->_lock);
       _void_process_finish(nullptr);
     }
+=======
+>>>>>>> upstream/hammer
 
     T *front() {
       assert(m_pool->_lock.is_locked());
@@ -415,18 +428,24 @@ public:
       }
       return m_items.front();
     }
+<<<<<<< HEAD
     void requeue(T *item) {
       Mutex::Locker pool_locker(m_pool->_lock);
       _void_process_finish(nullptr);
       m_items.push_front(item);
     }
+=======
+>>>>>>> upstream/hammer
     void signal() {
       Mutex::Locker pool_locker(m_pool->_lock);
       m_pool->_cond.SignalOne();
     }
+<<<<<<< HEAD
     Mutex &get_pool_lock() {
       return m_pool->_lock;
     }
+=======
+>>>>>>> upstream/hammer
   private:
     ThreadPool *m_pool;
     std::list<T *> m_items;
@@ -457,7 +476,11 @@ private:
   void worker(WorkThread *wt);
 
 public:
+<<<<<<< HEAD
   ThreadPool(CephContext *cct_, string nm, string tn, int n, const char *option = NULL);
+=======
+  ThreadPool(CephContext *cct_, string nm, int n, const char *option = NULL);
+>>>>>>> upstream/hammer
   virtual ~ThreadPool();
 
   /// return number of threads currently running
@@ -577,7 +600,10 @@ public:
   ContextWQ(const string &name, time_t ti, ThreadPool *tp)
     : ThreadPool::PointerWQ<Context>(name, ti, 0, tp),
       m_lock("ContextWQ::m_lock") {
+<<<<<<< HEAD
     tp->add_work_queue(this);
+=======
+>>>>>>> upstream/hammer
   }
 
   void queue(Context *ctx, int result = 0) {

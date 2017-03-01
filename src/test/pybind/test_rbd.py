@@ -1257,6 +1257,7 @@ class TestExclusiveLock(object):
             for offset in [0, IMG_SIZE // 2]:
                 read = image2.read(offset, 256)
                 eq(data, read)
+<<<<<<< HEAD
     def test_acquire_release_lock(self):
         with Image(ioctx, image_name) as image:
             image.lock_acquire(RBD_LOCK_MODE_EXCLUSIVE)
@@ -1425,3 +1426,98 @@ class TestMirroring(object):
         eq(N + 1, len(images))
         for i in range(N):
             self.rbd.remove(ioctx, image_name + str(i))
+=======
+
+
+class TestCloneRollback(object):
+
+    @require_features([RBD_FEATURE_LAYERING])
+    def setUp(self):
+        self.rbd = RBD()
+        create_image()
+        self.clone_name = image_name + '_cloned'
+        with Image(ioctx, image_name) as image1:
+            image1.write('FOOBAR', 0)
+            image1.create_snap('FOOBAR')
+            image1.protect_snap('FOOBAR')
+        RBD().clone(ioctx, image_name, 'FOOBAR',
+                    ioctx, self.clone_name,
+                    features=RBD_FEATURE_LAYERING)
+        with Image(ioctx, self.clone_name) as clone:
+            clone.write('OOPS', IMG_SIZE / 2)
+            clone.create_snap('OOPS')
+
+    def tearDown(self):
+        global ioctx
+        with Image(ioctx, self.clone_name) as clone:
+            clone.remove_snap('OOPS')
+            try:
+                clone.remove_snap('FLATTENED')
+            except:
+                pass
+        RBD().remove(ioctx, self.clone_name)
+        with Image(ioctx, image_name) as image1:
+            image1.unprotect_snap('FOOBAR')
+            image1.remove_snap('FOOBAR')
+        remove_image()
+
+    def test_rollback_flattened_to_parented(self):
+        # target snapshot has a parent, and head does not
+        expected_head, expected_tail = 'FOOBAR', 'OOPS'
+        with Image(ioctx, self.clone_name) as clone:
+            clone.write('HEHE', IMG_SIZE / 2)
+            clone.flatten()
+            clone.rollback_to_snap('OOPS')
+            head = clone.read(0, len(expected_head))
+            tail = clone.read(IMG_SIZE / 2, len(expected_tail))
+            eq(head, expected_head)
+            eq(tail, expected_tail)
+            _, image, snap = clone.parent_info()
+            eq(image, image_name)
+            eq(snap, 'FOOBAR')
+
+    def test_rollback_parented_to_flattened(self):
+        expected_head, expected_tail = 'FOOBAR', 'HEHE'
+        with Image(ioctx, self.clone_name) as clone:
+            clone.write(expected_tail, IMG_SIZE / 2)
+            clone.flatten()
+            clone.create_snap('FLATTENED')
+            clone.rollback_to_snap('OOPS')
+            # head has a parent, and the target snapshot does not
+            _, image, snap = clone.parent_info()
+            eq(image, image_name)
+            eq(snap, 'FOOBAR')
+            clone.rollback_to_snap('FLATTENED')
+            head = clone.read(0, len(expected_head))
+            tail = clone.read(IMG_SIZE / 2, len(expected_tail))
+            assert_raises(ImageNotFound, clone.parent_info)
+            eq(head, expected_head)
+            eq(tail, expected_tail)
+
+    def test_rollback_same_parent(self):
+        expected_head, expected_tail = 'FOOBAR', 'OOPS'
+        with Image(ioctx, self.clone_name) as clone:
+            clone.write('HEHE', IMG_SIZE / 2)
+            clone.rollback_to_snap('OOPS')
+            head = clone.read(0, len(expected_head))
+            tail = clone.read(IMG_SIZE / 2, len(expected_tail))
+            _, image, snap = clone.parent_info()
+            eq(head, expected_head)
+            eq(tail, expected_tail)
+            eq(image, image_name)
+            eq(snap, 'FOOBAR')
+
+    def test_rollback_same_parent_shrinked(self):
+        expected_head, expected_tail = 'FOOBAR', 'OOPS'
+        with Image(ioctx, self.clone_name) as clone:
+            clone.resize(IMG_SIZE / 2)
+            clone.write('HEHE', 0)
+            clone.rollback_to_snap('OOPS')
+            _, image, snap = clone.parent_info()
+            head = clone.read(0, len(expected_head))
+            tail = clone.read(IMG_SIZE / 2, len(expected_tail))
+            eq(image, image_name)
+            eq(snap, 'FOOBAR')
+            eq(head, expected_head)
+            eq(tail, expected_tail)
+>>>>>>> upstream/hammer

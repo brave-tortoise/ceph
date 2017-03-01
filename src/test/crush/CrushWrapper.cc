@@ -709,7 +709,11 @@ TEST(CrushWrapper, insert_item) {
 }
 
 TEST(CrushWrapper, remove_item) {
+<<<<<<< HEAD
   auto *c = new CrushWrapper;
+=======
+  CrushWrapper *c = new CrushWrapper;
+>>>>>>> upstream/hammer
 
   const int ROOT_TYPE = 2;
   c->set_type_name(ROOT_TYPE, "root");
@@ -734,12 +738,22 @@ TEST(CrushWrapper, remove_item) {
 
   const int num_osd = 12;
   {
+<<<<<<< HEAD
     map<string, string> loc = {{"root", "root0"},
 			       {"host", "host0"}};
     string name{"osd."};
     for (int item = 0; item < num_osd; item++) {
       ASSERT_EQ(0, c->insert_item(g_ceph_context, item, 1.0,
 				  name + to_string(item), loc));
+=======
+    map<string, string> loc;
+    loc["root"] = "root0";
+    loc["host"] = "host0";
+
+    for (int item = 0; item < num_osd; item++) {
+      ASSERT_EQ(0, c->insert_item(g_ceph_context, item, 1.0,
+				  "osd." + stringify(item), loc));
+>>>>>>> upstream/hammer
     }
   }
   const int item_to_remove = num_osd / 2;

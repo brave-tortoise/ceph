@@ -173,7 +173,11 @@ public:
     cur_ofs = 0;
  }
 
+<<<<<<< HEAD
   bool prefetch_data();
+=======
+  virtual bool prefetch_data() { return get_data; }
+>>>>>>> upstream/hammer
 
   void set_get_data(bool get_data) {
     this->get_data = get_data;
@@ -983,8 +987,13 @@ protected:
   string dest_tenant_name, dest_bucket_name;
   rgw_bucket dest_bucket;
   string dest_object;
+<<<<<<< HEAD
   ceph::real_time src_mtime;
   ceph::real_time mtime;
+=======
+  time_t src_mtime;
+  time_t mtime;
+>>>>>>> upstream/hammer
   RGWRados::AttrsMod attrs_mod;
   RGWBucketInfo src_bucket_info;
   RGWBucketInfo dest_bucket_info;
@@ -998,7 +1007,10 @@ protected:
   string version_id;
   uint64_t olh_epoch;
 
+<<<<<<< HEAD
   ceph::real_time delete_at;
+=======
+>>>>>>> upstream/hammer
   bool copy_if_newer;
 
   int init_common();
@@ -1014,6 +1026,12 @@ public:
     end = -1;
     mod_ptr = NULL;
     unmod_ptr = NULL;
+<<<<<<< HEAD
+=======
+    ret = 0;
+    src_mtime = 0;
+    mtime = 0;
+>>>>>>> upstream/hammer
     attrs_mod = RGWRados::ATTRSMOD_NONE;
     last_ofs = 0;
     olh_epoch = 0;

@@ -1,6 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 #include "librbd/AsyncRequest.h"
+#include "common/WorkQueue.h"
 #include "librbd/ImageCtx.h"
 #include "librbd/Utils.h"
 #include "common/WorkQueue.h"
@@ -25,9 +26,19 @@ void AsyncRequest<T>::async_complete(int r) {
   m_image_ctx.op_work_queue->queue(create_callback_context(), r);
 }
 
+<<<<<<< HEAD
 template <typename T>
 librados::AioCompletion *AsyncRequest<T>::create_callback_completion() {
   return util::create_rados_safe_callback(this);
+=======
+void AsyncRequest::async_complete(int r) {
+  m_image_ctx.op_work_queue->queue(create_callback_context(), r);
+}
+
+librados::AioCompletion *AsyncRequest::create_callback_completion() {
+  return librados::Rados::aio_create_completion(create_callback_context(),
+						NULL, rados_ctx_cb);
+>>>>>>> upstream/hammer
 }
 
 template <typename T>
@@ -62,6 +73,11 @@ void AsyncRequest<T>::finish_request() {
   for (auto ctx : waiters) {
     ctx->complete(0);
   }
+}
+
+Context *AsyncRequest::create_async_callback_context() {
+  return new FunctionContext(boost::bind(&AsyncRequest::async_complete, this,
+                                         _1));;
 }
 
 } // namespace librbd

@@ -91,8 +91,11 @@ def get_key(cluster, mon_id):
     pathdir = os.path.dirname(path)
     if not os.path.exists(pathdir):
         os.makedirs(pathdir)
+<<<<<<< HEAD
         os.chmod(pathdir, 0770)
         os.chown(pathdir, get_ceph_uid(), get_ceph_gid())
+=======
+>>>>>>> upstream/hammer
     wait_count = 600  # 10 minutes
     while wait_count > 0:
         try:

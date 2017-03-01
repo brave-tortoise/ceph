@@ -549,7 +549,11 @@ int Pipe::accept()
 	  existing->cond.Wait(existing->pipe_lock);
 	existing->pipe_lock.Unlock();
 	existing->put();
+<<<<<<< HEAD
 	existing = nullptr;
+=======
+	existing = 0;
+>>>>>>> upstream/hammer
 	goto retry_existing_lookup;
       }
 

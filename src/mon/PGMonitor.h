@@ -102,6 +102,17 @@ private:
 			  int threshold,
 			  vector<string>& args) const;
 
+<<<<<<< HEAD
+=======
+  static void dump_object_stat_sum(TextTable &tbl, Formatter *f,
+			    object_stat_sum_t &sum,
+			    uint64_t avail,
+			    float raw_used_rate,
+			    bool verbose);
+
+  int64_t get_rule_avail(OSDMap& osdmap, int ruleno);
+
+>>>>>>> upstream/hammer
 public:
   PGMonitor(Monitor *mn, Paxos *p, const string& service_name)
     : PaxosService(mn, p, service_name),

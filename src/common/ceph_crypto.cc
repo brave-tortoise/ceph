@@ -45,6 +45,12 @@ ceph::crypto::HMACSHA256::~HMACSHA256()
 // for SECMOD_RestartModules()
 #include <secmod.h>
 
+<<<<<<< HEAD
+=======
+// for SECMOD_RestartModules()
+#include <secmod.h>
+
+>>>>>>> upstream/hammer
 static pthread_mutex_t crypto_init_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint32_t crypto_refs = 0;
 static NSSInitContext *crypto_context = NULL;

@@ -9,7 +9,10 @@
 #include "common/errno.h"
 #include "common/perf_counters.h"
 #include "common/WorkQueue.h"
+<<<<<<< HEAD
 #include "common/Timer.h"
+=======
+>>>>>>> upstream/hammer
 
 #include "librbd/AsyncOperation.h"
 #include "librbd/AsyncRequest.h"
@@ -54,16 +57,26 @@ namespace {
 
 class ThreadPoolSingleton : public ThreadPool {
 public:
+<<<<<<< HEAD
   explicit ThreadPoolSingleton(CephContext *cct)
     : ThreadPool(cct, "librbd::thread_pool", "tp_librbd", 1,
                  "rbd_op_threads") {
     start();
   }
   ~ThreadPoolSingleton() override {
+=======
+  ThreadPoolSingleton(CephContext *cct)
+    : ThreadPool(cct, "librbd::thread_pool", cct->_conf->rbd_op_threads,
+                 "rbd_op_threads") {
+    start();
+  }
+  virtual ~ThreadPoolSingleton() {
+>>>>>>> upstream/hammer
     stop();
   }
 };
 
+<<<<<<< HEAD
 class SafeTimerSingleton : public SafeTimer {
 public:
   Mutex lock;
@@ -79,6 +92,8 @@ public:
   }
 };
 
+=======
+>>>>>>> upstream/hammer
 struct C_FlushCache : public Context {
   ImageCtx *image_ctx;
   Context *on_safe;
@@ -86,12 +101,19 @@ struct C_FlushCache : public Context {
   C_FlushCache(ImageCtx *_image_ctx, Context *_on_safe)
     : image_ctx(_image_ctx), on_safe(_on_safe) {
   }
+<<<<<<< HEAD
   void finish(int r) override {
     // successful cache flush indicates all IO is now safe
+=======
+  virtual void finish(int r) {
+    // successful cache flush indicates all IO is now safe
+    RWLock::RLocker owner_locker(image_ctx->owner_lock);
+>>>>>>> upstream/hammer
     image_ctx->flush_cache(on_safe);
   }
 };
 
+<<<<<<< HEAD
 struct C_ShutDownCache : public Context {
   ImageCtx *image_ctx;
   Context *on_finish;
@@ -105,6 +127,8 @@ struct C_ShutDownCache : public Context {
   }
 };
 
+=======
+>>>>>>> upstream/hammer
 struct C_InvalidateCache : public Context {
   ImageCtx *image_ctx;
   bool purge_on_error;
@@ -116,7 +140,11 @@ struct C_InvalidateCache : public Context {
     : image_ctx(_image_ctx), purge_on_error(_purge_on_error),
       reentrant_safe(_reentrant_safe), on_finish(_on_finish) {
   }
+<<<<<<< HEAD
   void finish(int r) override {
+=======
+  virtual void finish(int r) {
+>>>>>>> upstream/hammer
     assert(image_ctx->cache_lock.is_locked());
     CephContext *cct = image_ctx->cct;
 
@@ -138,9 +166,13 @@ struct C_InvalidateCache : public Context {
     } else {
       lderr(cct) << "could not release all objects from cache: "
                  << unclean << " bytes remain" << dendl;
+<<<<<<< HEAD
       if (r == 0) {
         r = -EBUSY;
       }
+=======
+      r = -EBUSY;
+>>>>>>> upstream/hammer
     }
 
     if (reentrant_safe) {
@@ -152,9 +184,37 @@ struct C_InvalidateCache : public Context {
 
 };
 
+<<<<<<< HEAD
 } // anonymous namespace
 
   const string ImageCtx::METADATA_CONF_PREFIX = "conf_";
+=======
+struct C_AsyncCallback : public Context {
+  ImageCtx *image_ctx;
+  Context *on_finish;
+  C_AsyncCallback(ImageCtx *image_ctx, Context *on_finish)
+    : image_ctx(image_ctx), on_finish(on_finish) {
+  }
+  virtual void finish(int r) {
+    image_ctx->op_work_queue->queue(on_finish, r);
+  }
+};
+
+void _flush_async_operations(ImageCtx *ictx, Context *on_finish) {
+  {
+    Mutex::Locker async_ops_locker(ictx->async_ops_lock);
+    if (!ictx->async_ops.empty()) {
+      ldout(ictx->cct, 20) << "flush async operations: " << on_finish << " "
+                           << "count=" << ictx->async_ops.size() << dendl;
+      ictx->async_ops.front()->add_flush_context(on_finish);
+      return;
+    }
+  }
+  on_finish->complete(0);
+}
+
+} // anonymous namespace
+>>>>>>> upstream/hammer
 
   ImageCtx::ImageCtx(const string &image_name, const string &image_id,
 		     const char *snap, IoCtx& p, bool ro)
@@ -167,6 +227,7 @@ struct C_InvalidateCache : public Context {
       exclusive_locked(false),
       name(image_name),
       image_watcher(NULL),
+<<<<<<< HEAD
       journal(NULL),
       owner_lock(util::unique_lock_name("librbd::ImageCtx::owner_lock", this)),
       md_lock(util::unique_lock_name("librbd::ImageCtx::md_lock", this)),
@@ -177,6 +238,19 @@ struct C_InvalidateCache : public Context {
       async_ops_lock(util::unique_lock_name("librbd::ImageCtx::async_ops_lock", this)),
       copyup_list_lock(util::unique_lock_name("librbd::ImageCtx::copyup_list_lock", this)),
       completed_reqs_lock(util::unique_lock_name("librbd::ImageCtx::completed_reqs_lock", this)),
+=======
+      refresh_seq(0),
+      last_refresh(0),
+      owner_lock(unique_lock_name("librbd::ImageCtx::owner_lock", this)),
+      md_lock(unique_lock_name("librbd::ImageCtx::md_lock", this)),
+      cache_lock(unique_lock_name("librbd::ImageCtx::cache_lock", this)),
+      snap_lock(unique_lock_name("librbd::ImageCtx::snap_lock", this)),
+      parent_lock(unique_lock_name("librbd::ImageCtx::parent_lock", this)),
+      refresh_lock(unique_lock_name("librbd::ImageCtx::refresh_lock", this)),
+      object_map_lock(unique_lock_name("librbd::ImageCtx::object_map_lock", this)),
+      async_ops_lock(unique_lock_name("librbd::ImageCtx::async_ops_lock", this)),
+      copyup_list_lock(unique_lock_name("librbd::ImageCtx::copyup_list_lock", this)),
+>>>>>>> upstream/hammer
       extra_read_flags(0),
       old_format(true),
       order(0), size(0), features(0),
@@ -185,12 +259,17 @@ struct C_InvalidateCache : public Context {
       stripe_unit(0), stripe_count(0), flags(0),
       object_cacher(NULL), writeback_handler(NULL), object_set(NULL),
       readahead(),
+<<<<<<< HEAD
       total_bytes_read(0),
       state(new ImageState<>(this)),
       operations(new Operations<>(*this)),
       exclusive_lock(nullptr), object_map(nullptr),
       io_work_queue(nullptr), op_work_queue(nullptr),
       asok_hook(nullptr)
+=======
+      total_bytes_read(0), copyup_finisher(NULL),
+      object_map(*this), aio_work_queue(NULL), op_work_queue(NULL)
+>>>>>>> upstream/hammer
   {
     md_ctx.dup(p);
     data_ctx.dup(p);
@@ -212,7 +291,20 @@ struct C_InvalidateCache : public Context {
     } else {
       exclusive_lock_policy = new exclusive_lock::StandardPolicy(this);
     }
+<<<<<<< HEAD
     journal_policy = new journal::StandardPolicy<ImageCtx>(this);
+=======
+
+    ThreadPoolSingleton *thread_pool_singleton;
+    cct->lookup_or_create_singleton_object<ThreadPoolSingleton>(
+      thread_pool_singleton, "librbd::thread_pool");
+    aio_work_queue = new ContextWQ("librbd::aio_work_queue",
+                                   cct->_conf->rbd_op_thread_timeout,
+                                   thread_pool_singleton);
+    op_work_queue = new ContextWQ("librbd::op_work_queue",
+                                  cct->_conf->rbd_op_thread_timeout,
+                                  thread_pool_singleton);
+>>>>>>> upstream/hammer
   }
 
   ImageCtx::~ImageCtx() {
@@ -242,6 +334,7 @@ struct C_InvalidateCache : public Context {
     md_ctx.aio_flush();
     data_ctx.aio_flush();
     op_work_queue->drain();
+<<<<<<< HEAD
     io_work_queue->drain();
 
     delete journal_policy;
@@ -250,6 +343,12 @@ struct C_InvalidateCache : public Context {
     delete io_work_queue;
     delete operations;
     delete state;
+=======
+    aio_work_queue->drain();
+
+    delete op_work_queue;
+    delete aio_work_queue;
+>>>>>>> upstream/hammer
   }
 
   void ImageCtx::init() {
@@ -346,6 +445,20 @@ struct C_InvalidateCache : public Context {
       snprintf(format_string, len, "%s.%%016llx", object_prefix.c_str());
     }
 
+<<<<<<< HEAD
+=======
+    // size object cache appropriately
+    if (object_cacher) {
+      uint64_t obj = cct->_conf->rbd_cache_max_dirty_object;
+      if (!obj) {
+        obj = MIN(2000, MAX(10, cct->_conf->rbd_cache_size / 100 / sizeof(ObjectCacher::Object)));
+      }
+      ldout(cct, 10) << " cache bytes " << cct->_conf->rbd_cache_size
+		     << " -> about " << obj << " objects" << dendl;
+      object_cacher->set_max_objects(obj);
+    }
+
+>>>>>>> upstream/hammer
     ldout(cct, 10) << "init_layout stripe_unit " << stripe_unit
 		   << " stripe_count " << stripe_count
 		   << " object_size " << layout.object_size
@@ -757,24 +870,43 @@ struct C_InvalidateCache : public Context {
     }
   }
 
+<<<<<<< HEAD
   void ImageCtx::flush_cache(Context *onfinish) {
+=======
+  int ImageCtx::flush_cache() {
+    C_SaferCond cond_ctx;
+    flush_cache(&cond_ctx);
+
+    ldout(cct, 20) << "waiting for cache to be flushed" << dendl;
+    int r = cond_ctx.wait();
+    ldout(cct, 20) << "finished flushing cache" << dendl;
+
+    return r;
+  }
+
+  void ImageCtx::flush_cache(Context *onfinish) {
+    assert(owner_lock.is_locked());
+>>>>>>> upstream/hammer
     cache_lock.Lock();
     object_cacher->flush_set(object_set, onfinish);
     cache_lock.Unlock();
   }
 
+<<<<<<< HEAD
   void ImageCtx::shut_down_cache(Context *on_finish) {
     if (object_cacher == NULL) {
       on_finish->complete(0);
       return;
     }
 
-    cache_lock.Lock();
-    object_cacher->release_set(object_set);
-    cache_lock.Unlock();
+=======
+  int ImageCtx::shutdown_cache() {
+    flush_async_operations();
 
-    C_ShutDownCache *shut_down = new C_ShutDownCache(this, on_finish);
-    flush_cache(new C_InvalidateCache(this, true, false, shut_down));
+    RWLock::RLocker owner_locker(owner_lock);
+    int r = invalidate_cache(true);
+    object_cacher->stop();
+    return r;
   }
 
   int ImageCtx::invalidate_cache(bool purge_on_error) {
@@ -783,10 +915,39 @@ struct C_InvalidateCache : public Context {
       return 0;
     }
 
+>>>>>>> upstream/hammer
     cache_lock.Lock();
     object_cacher->release_set(object_set);
     cache_lock.Unlock();
 
+<<<<<<< HEAD
+    C_ShutDownCache *shut_down = new C_ShutDownCache(this, on_finish);
+    flush_cache(new C_InvalidateCache(this, true, false, shut_down));
+=======
+    C_SaferCond ctx;
+    flush_cache(new C_InvalidateCache(this, purge_on_error, true, &ctx));
+
+    int result = ctx.wait();
+    return result;
+>>>>>>> upstream/hammer
+  }
+
+  int ImageCtx::invalidate_cache(bool purge_on_error) {
+    flush_async_operations();
+    if (object_cacher == NULL) {
+<<<<<<< HEAD
+      return 0;
+=======
+      op_work_queue->queue(on_finish, 0);
+      return;
+>>>>>>> upstream/hammer
+    }
+
+    cache_lock.Lock();
+    object_cacher->release_set(object_set);
+    cache_lock.Unlock();
+
+<<<<<<< HEAD
     C_SaferCond ctx;
     flush_cache(new C_InvalidateCache(this, purge_on_error, true, &ctx));
 
@@ -805,6 +966,9 @@ struct C_InvalidateCache : public Context {
     cache_lock.Unlock();
 
     flush_cache(new C_InvalidateCache(this, purge_on_error, false, on_finish));
+=======
+    flush_cache(new C_InvalidateCache(this, false, false, on_finish));
+>>>>>>> upstream/hammer
   }
 
   void ImageCtx::clear_nonexistence_cache() {
@@ -812,6 +976,15 @@ struct C_InvalidateCache : public Context {
     if (!object_cacher)
       return;
     object_cacher->clear_nonexistence(object_set);
+<<<<<<< HEAD
+=======
+  }
+
+  int ImageCtx::register_watch() {
+    assert(image_watcher == NULL);
+    image_watcher = new ImageWatcher(*this);
+    return image_watcher->register_watch();
+>>>>>>> upstream/hammer
   }
 
   bool ImageCtx::is_cache_empty() {
@@ -849,11 +1022,12 @@ struct C_InvalidateCache : public Context {
 
   void ImageCtx::flush_async_operations() {
     C_SaferCond ctx;
-    flush_async_operations(&ctx);
+    _flush_async_operations(this, &ctx);
     ctx.wait();
   }
 
   void ImageCtx::flush_async_operations(Context *on_finish) {
+<<<<<<< HEAD
     {
       Mutex::Locker l(async_ops_lock);
       if (!async_ops.empty()) {
@@ -876,6 +1050,27 @@ struct C_InvalidateCache : public Context {
     // ensure no locks are held when flush is complete
     on_safe = util::create_async_context_callback(*this, on_safe);
 
+=======
+    // complete context in clean thread context
+    _flush_async_operations(this, new C_AsyncCallback(this, on_finish));
+  }
+
+  int ImageCtx::flush() {
+    assert(owner_lock.is_locked());
+
+    flush_async_operations();
+    if (object_cacher != NULL) {
+      int r = flush_cache();
+      if (r < 0) {
+        return r;
+      }
+    }
+    return 0;
+  }
+
+  void ImageCtx::flush(Context *on_safe) {
+    assert(owner_lock.is_locked());
+>>>>>>> upstream/hammer
     if (object_cacher != NULL) {
       // flush cache after completing all in-flight AIO ops
       on_safe = new C_FlushCache(this, on_safe);

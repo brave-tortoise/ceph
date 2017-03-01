@@ -466,13 +466,21 @@ std::ostream &operator<<(std::ostream &out,
 }
 
 std::ostream &operator<<(std::ostream &out,
+<<<<<<< HEAD
                          const librbd::watch_notify::ClientId &client_id) {
+=======
+                         const librbd::WatchNotify::ClientId &client_id) {
+>>>>>>> upstream/hammer
   out << "[" << client_id.gid << "," << client_id.handle << "]";
   return out;
 }
 
 std::ostream &operator<<(std::ostream &out,
+<<<<<<< HEAD
                          const librbd::watch_notify::AsyncRequestId &request) {
+=======
+                         const librbd::WatchNotify::AsyncRequestId &request) {
+>>>>>>> upstream/hammer
   out << "[" << request.client_id.gid << "," << request.client_id.handle << ","
       << request.request_id << "]";
   return out;

@@ -36,7 +36,10 @@
 // logging is not functional when it is called. cerr output is lost
 // when the caller is daemonized but it will show if not (-f)
 //
+<<<<<<< HEAD
 #define dout_context g_ceph_context
+=======
+>>>>>>> upstream/hammer
 #define dout_prefix *_dout
 #define dout_subsys ceph_subsys_
 
@@ -68,7 +71,11 @@ struct pidfh {
   int write();
 };
 
+<<<<<<< HEAD
 static pidfh *pfh = nullptr;
+=======
+static pidfh *pfh = NULL;
+>>>>>>> upstream/hammer
 
 int pidfh::verify() {
   // check that the file we opened still is the same
@@ -131,6 +138,7 @@ int pidfh::remove()
   reset();
   return 0;
 }
+<<<<<<< HEAD
 
 int pidfh::open(const md_config_t *conf)
 {
@@ -169,6 +177,41 @@ int pidfh::open(const md_config_t *conf)
     .l_start = 0,
     .l_len = 0
   };
+=======
+
+int pidfh::open(const md_config_t *conf)
+{
+  int len = snprintf(pf_path, sizeof(pf_path),
+		    "%s", conf->pid_file.c_str());
+
+  if (len >= (int)sizeof(pf_path))
+    return -ENAMETOOLONG;
+
+  int fd;
+  fd = ::open(pf_path, O_CREAT|O_RDWR, 0644);
+  if (fd < 0) {
+    int err = errno;
+    derr << __func__ << ": failed to open pid file '"
+	 << pf_path << "': " << cpp_strerror(err) << dendl;
+    reset();
+    return -err;
+  }
+  struct stat st;
+  if (fstat(fd, &st) == -1) {
+    int err = errno;
+    derr << __func__ << ": failed to fstat pid file '"
+	 << pf_path << "': " << cpp_strerror(err) << dendl;
+    ::close(fd);
+    reset();
+    return -err;
+  }
+
+  pf_fd = fd;
+  pf_dev = st.st_dev;
+  pf_ino = st.st_ino;
+
+  struct flock l = { F_WRLCK, SEEK_SET, 0, 0, 0 };
+>>>>>>> upstream/hammer
   int r = ::fcntl(pf_fd, F_SETLK, &l);
   if (r < 0) {
     derr << __func__ << ": failed to lock pidfile "
@@ -191,7 +234,11 @@ int pidfh::write()
     int err = errno;
     derr << __func__ << ": failed to ftruncate the pid file '"
 	 << pf_path << "': " << cpp_strerror(err) << dendl;
+<<<<<<< HEAD
     return -err;
+=======
+    return err;
+>>>>>>> upstream/hammer
   }
   ssize_t res = safe_write(pf_fd, buf, len);
   if (res < 0) {
@@ -204,19 +251,31 @@ int pidfh::write()
 
 void pidfile_remove()
 {
+<<<<<<< HEAD
   if (pfh != nullptr)
     delete pfh;
   pfh = nullptr;
+=======
+  delete pfh;
+  pfh = NULL;
+>>>>>>> upstream/hammer
 }
 
 int pidfile_write(const md_config_t *conf)
 {
+<<<<<<< HEAD
   if (conf->pid_file.empty()) {
     dout(0) << __func__ << ": ignore empty --pid-file" << dendl;
     return 0;
   }
 
   assert(pfh == nullptr);
+=======
+  if (conf->pid_file.empty())
+    return 0;
+
+  assert(!pfh);
+>>>>>>> upstream/hammer
 
   pfh = new pidfh();
   if (atexit(pidfile_remove)) {

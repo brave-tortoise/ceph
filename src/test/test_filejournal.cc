@@ -120,8 +120,13 @@ TEST(TestFileJournal, Create) {
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
+<<<<<<< HEAD
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
   }
 }
@@ -134,6 +139,7 @@ TEST(TestFileJournal, WriteSmall) {
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
+<<<<<<< HEAD
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
     ASSERT_EQ(0, j.create());
@@ -145,6 +151,16 @@ TEST(TestFileJournal, WriteSmall) {
     int orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(1, bl, orig_len, new C_SafeCond(&wait_lock, &cond, &done));
+=======
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+    ASSERT_EQ(0, j.create());
+    j.make_writeable();
+
+    bufferlist bl;
+    bl.append("small");
+    j.submit_entry(1, bl, 0, new C_SafeCond(&wait_lock, &cond, &done));
+>>>>>>> upstream/hammer
     wait();
 
     j.close();
@@ -159,6 +175,7 @@ TEST(TestFileJournal, WriteBig) {
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
+<<<<<<< HEAD
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
     ASSERT_EQ(0, j.create());
@@ -175,6 +192,22 @@ TEST(TestFileJournal, WriteBig) {
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(1, bl, orig_len, new C_SafeCond(&wait_lock, &cond, &done));
     wait();
+=======
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+    ASSERT_EQ(0, j.create());
+    j.make_writeable();
+
+    bufferlist bl;
+    while (bl.length() < size_mb*1000/2) {
+      char foo[1024*1024];
+      memset(foo, 1, sizeof(foo));
+      bl.append(foo, sizeof(foo));
+    }
+    j.submit_entry(1, bl, 0, new C_SafeCond(&wait_lock, &cond, &done));
+    wait();
+
+>>>>>>> upstream/hammer
     j.close();
   }
 }
@@ -187,12 +220,18 @@ TEST(TestFileJournal, WriteMany) {
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
+<<<<<<< HEAD
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
     C_GatherBuilder gb(g_ceph_context, new C_SafeCond(&wait_lock, &cond, &done));
+<<<<<<< HEAD
 
     vector<ObjectStore::Transaction> tls;
     bufferlist bl;
@@ -204,6 +243,17 @@ TEST(TestFileJournal, WriteMany) {
       j.reserve_throttle_and_backoff(bl.length());
       j.submit_entry(seq++, bl, orig_len, gb.new_sub());
     }
+=======
+
+    bufferlist bl;
+    bl.append("small");
+    uint64_t seq = 1;
+    for (int i=0; i<100; i++) {
+      bl.append("small");
+      j.submit_entry(seq++, bl, 0, gb.new_sub());
+    }
+
+>>>>>>> upstream/hammer
     gb.activate();
 
     wait();
@@ -220,8 +270,13 @@ TEST(TestFileJournal, WriteManyVecs) {
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
+<<<<<<< HEAD
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -229,10 +284,14 @@ TEST(TestFileJournal, WriteManyVecs) {
 
     bufferlist first;
     first.append("small");
+<<<<<<< HEAD
     vector<ObjectStore::Transaction> tls;
     int orig_len = j.prepare_entry(tls, &first);
     j.reserve_throttle_and_backoff(first.length());
     j.submit_entry(1, first, orig_len, gb.new_sub());
+=======
+    j.submit_entry(1, first, 0, gb.new_sub());
+>>>>>>> upstream/hammer
 
     bufferlist bl;
     for (int i=0; i<IOV_MAX * 2; i++) {
@@ -241,9 +300,13 @@ TEST(TestFileJournal, WriteManyVecs) {
       bl.append(bp);
     }
     bufferlist origbl = bl;
+<<<<<<< HEAD
     orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(2, bl, orig_len, gb.new_sub());
+=======
+    j.submit_entry(2, bl, 0, gb.new_sub());
+>>>>>>> upstream/hammer
     gb.activate();
     wait();
 
@@ -267,6 +330,7 @@ TEST(TestFileJournal, ReplaySmall) {
   g_ceph_context->_conf->set_val("journal_write_header_frequency", "0");
   g_ceph_context->_conf->apply_changes(NULL);
 
+<<<<<<< HEAD
   vector<ObjectStore::Transaction> tls;
 
   for (unsigned i = 0 ; i < 3; ++i) {
@@ -274,6 +338,13 @@ TEST(TestFileJournal, ReplaySmall) {
     fsid.generate_random();
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+  for (unsigned i = 0 ; i < 3; ++i) {
+    SCOPED_TRACE(subtests[i].description);
+    fsid.generate_random();
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -281,6 +352,7 @@ TEST(TestFileJournal, ReplaySmall) {
 
     bufferlist bl;
     bl.append("small");
+<<<<<<< HEAD
     int orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(1, bl, orig_len, gb.new_sub());
@@ -292,6 +364,13 @@ TEST(TestFileJournal, ReplaySmall) {
     orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(3, bl, orig_len, gb.new_sub());
+=======
+    j.submit_entry(1, bl, 0, gb.new_sub());
+    bl.append("small");
+    j.submit_entry(2, bl, 0, gb.new_sub());
+    bl.append("small");
+    j.submit_entry(3, bl, 0, gb.new_sub());
+>>>>>>> upstream/hammer
     gb.activate();
     wait();
 
@@ -328,12 +407,20 @@ TEST(TestFileJournal, ReplayCorrupt) {
   g_ceph_context->_conf->set_val("journal_write_header_frequency", "0");
   g_ceph_context->_conf->apply_changes(NULL);
 
+<<<<<<< HEAD
   vector<ObjectStore::Transaction> tls;
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+  for (unsigned i = 0 ; i < 3; ++i) {
+    SCOPED_TRACE(subtests[i].description);
+    fsid.generate_random();
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -343,6 +430,7 @@ TEST(TestFileJournal, ReplayCorrupt) {
     const char *newneedle = "in a haystack";
     bufferlist bl;
     bl.append(needle);
+<<<<<<< HEAD
     int orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(1, bl, orig_len, gb.new_sub());
@@ -358,6 +446,15 @@ TEST(TestFileJournal, ReplayCorrupt) {
     orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(4, bl, orig_len, gb.new_sub());
+=======
+    j.submit_entry(1, bl, 0, gb.new_sub());
+    bl.append(needle);
+    j.submit_entry(2, bl, 0, gb.new_sub());
+    bl.append(needle);
+    j.submit_entry(3, bl, 0, gb.new_sub());
+    bl.append(needle);
+    j.submit_entry(4, bl, 0, gb.new_sub());
+>>>>>>> upstream/hammer
     gb.activate();
     wait();
 
@@ -373,10 +470,17 @@ TEST(TestFileJournal, ReplayCorrupt) {
     for (unsigned o=0; o < sizeof(buf) - strlen(needle); o++) {
       if (memcmp(buf+o, needle, strlen(needle)) == 0) {
         if (n >= 2) {
+<<<<<<< HEAD
 	  cout << "replacing at offset " << o << std::endl;
 	  memcpy(buf+o, newneedle, strlen(newneedle));
         } else {
 	  cout << "leaving at offset " << o << std::endl;
+=======
+	cout << "replacing at offset " << o << std::endl;
+	memcpy(buf+o, newneedle, strlen(newneedle));
+        } else {
+	cout << "leaving at offset " << o << std::endl;
+>>>>>>> upstream/hammer
         }
         n++;
       }
@@ -417,8 +521,13 @@ TEST(TestFileJournal, WriteTrim) {
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
+<<<<<<< HEAD
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -427,6 +536,7 @@ TEST(TestFileJournal, WriteTrim) {
     bufferlist bl;
     char foo[1024*1024];
     memset(foo, 1, sizeof(foo));
+<<<<<<< HEAD
 
     uint64_t seq = 1, committed = 0;
     vector<ObjectStore::Transaction> tls;
@@ -440,6 +550,18 @@ TEST(TestFileJournal, WriteTrim) {
       j.reserve_throttle_and_backoff(bl.length());
       j.submit_entry(seq++, bl, orig_len, ls.back()->c);
 
+=======
+
+    uint64_t seq = 1, committed = 0;
+
+    for (unsigned i=0; i<size_mb*2; i++) {
+      bl.clear();
+      bl.push_back(buffer::copy(foo, sizeof(foo)));
+      bl.zero();
+      ls.push_back(new C_Sync);
+      j.submit_entry(seq++, bl, 0, ls.back()->c);
+
+>>>>>>> upstream/hammer
       while (ls.size() > size_mb/2) {
         delete ls.front();
         ls.pop_front();
@@ -464,13 +586,21 @@ TEST(TestFileJournal, WriteTrimSmall) {
   g_ceph_context->_conf->set_val("journal_ignore_corruption", "false");
   g_ceph_context->_conf->set_val("journal_write_header_frequency", "0");
   g_ceph_context->_conf->apply_changes(NULL);
+<<<<<<< HEAD
   vector<ObjectStore::Transaction> tls;
+=======
+>>>>>>> upstream/hammer
 
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
+<<<<<<< HEAD
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -488,9 +618,13 @@ TEST(TestFileJournal, WriteTrimSmall) {
         bl.push_back(buffer::copy(foo, sizeof(foo) / 128));
       bl.zero();
       ls.push_back(new C_Sync);
+<<<<<<< HEAD
       int orig_len = j.prepare_entry(tls, &bl);
       j.reserve_throttle_and_backoff(bl.length());
       j.submit_entry(seq++, bl, orig_len, ls.back()->c);
+=======
+      j.submit_entry(seq++, bl, 0, ls.back()->c);
+>>>>>>> upstream/hammer
 
       while (ls.size() > size_mb/2) {
         delete ls.front();
@@ -515,12 +649,20 @@ TEST(TestFileJournal, ReplayDetectCorruptFooterMagic) {
   g_ceph_context->_conf->set_val("journal_write_header_frequency", "1");
   g_ceph_context->_conf->apply_changes(NULL);
 
+<<<<<<< HEAD
   vector<ObjectStore::Transaction> tls;
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+  for (unsigned i = 0 ; i < 3; ++i) {
+    SCOPED_TRACE(subtests[i].description);
+    fsid.generate_random();
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -530,18 +672,26 @@ TEST(TestFileJournal, ReplayDetectCorruptFooterMagic) {
     for (unsigned i = 1; i <= 4; ++i) {
       bufferlist bl;
       bl.append(needle);
+<<<<<<< HEAD
       int orig_len = j.prepare_entry(tls, &bl);
       j.reserve_throttle_and_backoff(bl.length());
       j.submit_entry(i, bl, orig_len, gb.new_sub());
+=======
+      j.submit_entry(i, bl, 0, gb.new_sub());
+>>>>>>> upstream/hammer
     }
     gb.activate();
     wait();
 
     bufferlist bl;
     bl.append("needle");
+<<<<<<< HEAD
     int orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(5, bl, orig_len, new C_SafeCond(&wait_lock, &cond, &done));
+=======
+    j.submit_entry(5, bl, 0, new C_SafeCond(&wait_lock, &cond, &done));
+>>>>>>> upstream/hammer
     wait();
 
     j.close();
@@ -574,12 +724,20 @@ TEST(TestFileJournal, ReplayDetectCorruptPayload) {
   g_ceph_context->_conf->set_val("journal_write_header_frequency", "1");
   g_ceph_context->_conf->apply_changes(NULL);
 
+<<<<<<< HEAD
   vector<ObjectStore::Transaction> tls;
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+  for (unsigned i = 0 ; i < 3; ++i) {
+    SCOPED_TRACE(subtests[i].description);
+    fsid.generate_random();
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -589,18 +747,26 @@ TEST(TestFileJournal, ReplayDetectCorruptPayload) {
     for (unsigned i = 1; i <= 4; ++i) {
       bufferlist bl;
       bl.append(needle);
+<<<<<<< HEAD
       int orig_len = j.prepare_entry(tls, &bl);
       j.reserve_throttle_and_backoff(bl.length());
       j.submit_entry(i, bl, orig_len, gb.new_sub());
+=======
+      j.submit_entry(i, bl, 0, gb.new_sub());
+>>>>>>> upstream/hammer
     }
     gb.activate();
     wait();
 
     bufferlist bl;
     bl.append("needle");
+<<<<<<< HEAD
     int orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(5, bl, orig_len, new C_SafeCond(&wait_lock, &cond, &done));
+=======
+    j.submit_entry(5, bl, 0, new C_SafeCond(&wait_lock, &cond, &done));
+>>>>>>> upstream/hammer
     wait();
 
     j.close();
@@ -633,12 +799,20 @@ TEST(TestFileJournal, ReplayDetectCorruptHeader) {
   g_ceph_context->_conf->set_val("journal_write_header_frequency", "1");
   g_ceph_context->_conf->apply_changes(NULL);
 
+<<<<<<< HEAD
   vector<ObjectStore::Transaction> tls;
   for (unsigned i = 0 ; i < 3; ++i) {
     SCOPED_TRACE(subtests[i].description);
     fsid.generate_random();
     FileJournal j(g_ceph_context, fsid, finisher, &sync_cond, path,
 		  subtests[i].directio, subtests[i].aio, subtests[i].faio);
+=======
+  for (unsigned i = 0 ; i < 3; ++i) {
+    SCOPED_TRACE(subtests[i].description);
+    fsid.generate_random();
+    FileJournal j(fsid, finisher, &sync_cond, path, subtests[i].directio,
+		  subtests[i].aio, subtests[i].faio);
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, j.create());
     j.make_writeable();
 
@@ -648,18 +822,26 @@ TEST(TestFileJournal, ReplayDetectCorruptHeader) {
     for (unsigned i = 1; i <= 4; ++i) {
       bufferlist bl;
       bl.append(needle);
+<<<<<<< HEAD
       int orig_len = j.prepare_entry(tls, &bl);
       j.reserve_throttle_and_backoff(bl.length());
       j.submit_entry(i, bl, orig_len, gb.new_sub());
+=======
+      j.submit_entry(i, bl, 0, gb.new_sub());
+>>>>>>> upstream/hammer
     }
     gb.activate();
     wait();
 
     bufferlist bl;
     bl.append("needle");
+<<<<<<< HEAD
     int orig_len = j.prepare_entry(tls, &bl);
     j.reserve_throttle_and_backoff(bl.length());
     j.submit_entry(5, bl, orig_len, new C_SafeCond(&wait_lock, &cond, &done));
+=======
+    j.submit_entry(5, bl, 0, new C_SafeCond(&wait_lock, &cond, &done));
+>>>>>>> upstream/hammer
     wait();
 
     j.close();

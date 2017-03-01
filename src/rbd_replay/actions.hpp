@@ -117,6 +117,7 @@ public:
   virtual const action::Dependencies& predecessors() const = 0;
 
   virtual std::ostream& dump(std::ostream& o) const = 0;
+<<<<<<< HEAD
 
   static ptr construct(const action::ActionEntry &action_entry);
 };
@@ -140,6 +141,31 @@ public:
   }
 
   std::ostream& dump(std::ostream& o) const override {
+=======
+
+  static ptr construct(const action::ActionEntry &action_entry);
+};
+
+template <typename ActionType>
+class TypedAction : public Action {
+public:
+  TypedAction(const ActionType &action) : m_action(action) {
+  }
+
+  virtual action_id_t id() const {
+    return m_action.id;
+  }
+
+  virtual thread_id_t thread_id() const {
+    return m_action.thread_id;
+  }
+
+  virtual const action::Dependencies& predecessors() const {
+    return m_action.dependencies;
+  }
+
+  virtual std::ostream& dump(std::ostream& o) const {
+>>>>>>> upstream/hammer
     o << get_action_name() << ": ";
     ceph::JSONFormatter formatter(false);
     formatter.open_object_section("");
@@ -165,6 +191,7 @@ public:
     : TypedAction<action::StartThreadAction>(action) {
   }
 
+<<<<<<< HEAD
   bool is_start_thread() override {
     return true;
   }
@@ -186,10 +213,20 @@ public:
 
 protected:
   const char *get_action_name() const override {
+=======
+  virtual bool is_start_thread() {
+    return true;
+  }
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+>>>>>>> upstream/hammer
     return "StartThreadAction";
   }
 };
 
+<<<<<<< HEAD
 
 class AioReadAction : public TypedAction<action::AioReadAction> {
 public:
@@ -202,10 +239,24 @@ public:
 protected:
   const char *get_action_name() const override {
     return "AioReadAction";
+=======
+class StopThreadAction : public TypedAction<action::StopThreadAction> {
+public:
+  explicit StopThreadAction(const action::StopThreadAction &action)
+    : TypedAction<action::StopThreadAction>(action) {
+  }
+
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+    return "StartThreadAction";
+>>>>>>> upstream/hammer
   }
 };
 
 
+<<<<<<< HEAD
 class ReadAction : public TypedAction<action::ReadAction> {
 public:
   explicit ReadAction(const action::ReadAction &action)
@@ -217,10 +268,24 @@ public:
 protected:
   const char *get_action_name() const override {
     return "ReadAction";
+=======
+class AioReadAction : public TypedAction<action::AioReadAction> {
+public:
+  AioReadAction(const action::AioReadAction &action)
+    : TypedAction<action::AioReadAction>(action) {
+  }
+
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+    return "AioReadAction";
+>>>>>>> upstream/hammer
   }
 };
 
 
+<<<<<<< HEAD
 class AioWriteAction : public TypedAction<action::AioWriteAction> {
 public:
   explicit AioWriteAction(const action::AioWriteAction &action)
@@ -232,10 +297,24 @@ public:
 protected:
   const char *get_action_name() const override {
     return "AioWriteAction";
+=======
+class ReadAction : public TypedAction<action::ReadAction> {
+public:
+  ReadAction(const action::ReadAction &action)
+    : TypedAction<action::ReadAction>(action) {
+  }
+
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+    return "ReadAction";
+>>>>>>> upstream/hammer
   }
 };
 
 
+<<<<<<< HEAD
 class WriteAction : public TypedAction<action::WriteAction> {
 public:
   explicit WriteAction(const action::WriteAction &action)
@@ -262,10 +341,24 @@ public:
 protected:
   const char *get_action_name() const override {
     return "AioDiscardAction";
+=======
+class AioWriteAction : public TypedAction<action::AioWriteAction> {
+public:
+  AioWriteAction(const action::AioWriteAction &action)
+    : TypedAction<action::AioWriteAction>(action) {
+  }
+
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+    return "AioWriteAction";
+>>>>>>> upstream/hammer
   }
 };
 
 
+<<<<<<< HEAD
 class DiscardAction : public TypedAction<action::DiscardAction> {
 public:
   explicit DiscardAction(const action::DiscardAction &action)
@@ -292,10 +385,24 @@ public:
 protected:
   const char *get_action_name() const override {
     return "OpenImageAction";
+=======
+class WriteAction : public TypedAction<action::WriteAction> {
+public:
+  WriteAction(const action::WriteAction &action)
+    : TypedAction<action::WriteAction>(action) {
+  }
+
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+    return "WriteAction";
+>>>>>>> upstream/hammer
   }
 };
 
 
+<<<<<<< HEAD
 class CloseImageAction : public TypedAction<action::CloseImageAction> {
 public:
   explicit CloseImageAction(const action::CloseImageAction &action)
@@ -321,10 +428,24 @@ public:
 protected:
   const char *get_action_name() const override {
     return "AioOpenImageAction";
+=======
+class OpenImageAction : public TypedAction<action::OpenImageAction> {
+public:
+  OpenImageAction(const action::OpenImageAction &action)
+    : TypedAction<action::OpenImageAction>(action) {
+  }
+
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+    return "OpenImageAction";
+>>>>>>> upstream/hammer
   }
 };
 
 
+<<<<<<< HEAD
 class AioCloseImageAction : public TypedAction<action::AioCloseImageAction> {
 public:
   explicit AioCloseImageAction(const action::AioCloseImageAction &action)
@@ -336,6 +457,19 @@ public:
 protected:
   const char *get_action_name() const override {
     return "AioCloseImageAction";
+=======
+class CloseImageAction : public TypedAction<action::CloseImageAction> {
+public:
+  CloseImageAction(const action::CloseImageAction &action)
+    : TypedAction<action::CloseImageAction>(action) {
+  }
+
+  virtual void perform(ActionCtx &ctx);
+
+protected:
+  virtual const char *get_action_name() const {
+    return "CloseImageAction";
+>>>>>>> upstream/hammer
   }
 };
 

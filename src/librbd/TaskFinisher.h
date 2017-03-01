@@ -32,6 +32,10 @@ struct TaskFinisherSingleton {
       m_safe_timer->shutdown();
       delete m_safe_timer;
     }
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/hammer
     m_finisher->wait_for_empty();
     m_finisher->stop();
     delete m_finisher;

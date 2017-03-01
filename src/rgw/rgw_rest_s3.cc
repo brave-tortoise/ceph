@@ -274,7 +274,11 @@ done:
     dump_header(s, riter->first, riter->second);
   }
 
+<<<<<<< HEAD
   if (op_ret == -ERR_NOT_MODIFIED) {
+=======
+  if (ret == -ERR_NOT_MODIFIED) {
+>>>>>>> upstream/hammer
       end_header(s, this);
   } else {
       if (!content_type)
@@ -474,6 +478,7 @@ int RGWListBucket_ObjStore_S3::get_params()
   }
   delimiter = s->info.args.get("delimiter");
   encoding_type = s->info.args.get("encoding-type");
+<<<<<<< HEAD
   if (s->system_request) {
     s->info.args.get_bool("objs-container", &objs_container, false);
     const char *shard_id_str = s->info.env->get("HTTP_RGWX_SHARD_ID");
@@ -488,6 +493,8 @@ int RGWListBucket_ObjStore_S3::get_params()
       shard_id = s->bucket_instance_shard_id;
     }
   }
+=======
+>>>>>>> upstream/hammer
   return 0;
 }
 
@@ -519,6 +526,7 @@ void RGWListBucket_ObjStore_S3::send_versioned_response()
       s->formatter->open_array_section("Entries");
     }
 
+<<<<<<< HEAD
     vector<RGWObjEnt>::iterator iter;
     for (iter = objs.begin(); iter != objs.end(); ++iter) {
       const char *section_name = (iter->is_delete_marker() ? "DeleteMarker"
@@ -533,6 +541,26 @@ void RGWListBucket_ObjStore_S3::send_versioned_response()
 	s->formatter->dump_string("Key", key_name);
       } else {
 	s->formatter->dump_string("Key", iter->key.name);
+=======
+  bool encode_key = false;
+  if (strcasecmp(encoding_type.c_str(), "url") == 0) {
+    s->formatter->dump_string("EncodingType", "url");
+    encode_key = true;
+  }
+
+  if (ret >= 0) {
+    vector<RGWObjEnt>::iterator iter;
+    for (iter = objs.begin(); iter != objs.end(); ++iter) {
+      time_t mtime = iter->mtime.sec();
+      const char *section_name = (iter->is_delete_marker() ? "DeleteMarker" : "Version");
+      s->formatter->open_array_section(section_name);
+      if (encode_key) {
+        string key_name;
+        url_encode(iter->key.name, key_name);
+        s->formatter->dump_string("Key", key_name);
+      } else {
+        s->formatter->dump_string("Key", iter->key.name);
+>>>>>>> upstream/hammer
       }
       string version_id = iter->key.instance;
       if (version_id.empty()) {
@@ -612,11 +640,16 @@ void RGWListBucket_ObjStore_S3::send_response()
     encode_key = true;
   }
 
+<<<<<<< HEAD
   if (op_ret >= 0) {
+=======
+  if (ret >= 0) {
+>>>>>>> upstream/hammer
     vector<RGWObjEnt>::iterator iter;
     for (iter = objs.begin(); iter != objs.end(); ++iter) {
       s->formatter->open_array_section("Contents");
       if (encode_key) {
+<<<<<<< HEAD
 	string key_name;
 	url_encode(iter->key.name, key_name);
 	s->formatter->dump_string("Key", key_name);
@@ -624,6 +657,16 @@ void RGWListBucket_ObjStore_S3::send_response()
 	s->formatter->dump_string("Key", iter->key.name);
       }
       dump_time(s, "LastModified", &iter->mtime);
+=======
+        string key_name;
+        url_encode(iter->key.name, key_name);
+        s->formatter->dump_string("Key", key_name);
+      } else {
+        s->formatter->dump_string("Key", iter->key.name);
+      }
+      time_t mtime = iter->mtime.sec();
+      dump_time(s, "LastModified", &mtime);
+>>>>>>> upstream/hammer
       s->formatter->dump_format("ETag", "\"%s\"", iter->etag.c_str());
       s->formatter->dump_int("Size", iter->accounted_size);
       s->formatter->dump_string("StorageClass", "STANDARD");
@@ -664,6 +707,7 @@ void RGWGetBucketLocation_ObjStore_S3::send_response()
   end_header(s, this);
   dump_start(s);
 
+<<<<<<< HEAD
   RGWZoneGroup zonegroup;
   string api_name;
 
@@ -678,6 +722,23 @@ void RGWGetBucketLocation_ObjStore_S3::send_response()
 
   s->formatter->dump_format_ns("LocationConstraint", XMLNS_AWS_S3,
 			       "%s", api_name.c_str());
+=======
+  string region = s->bucket_info.region;
+  string api_name;
+
+  map<string, RGWRegion>::iterator iter = store->region_map.regions.find(region);
+  if (iter != store->region_map.regions.end()) {
+    api_name = iter->second.api_name;
+  } else  {
+    if (region != "default") {
+      api_name = region;
+    }
+  }
+
+  s->formatter->dump_format_ns("LocationConstraint",
+			       "http://doc.s3.amazonaws.com/doc/2006-03-01/",
+			       "%s",api_name.c_str());
+>>>>>>> upstream/hammer
   rgw_flush_formatter_and_reset(s, s->formatter);
 }
 
@@ -2226,7 +2287,11 @@ int RGWCopyObj_ObjStore_S3::get_params()
     } else if (strcasecmp(md_directive, "REPLACE") == 0) {
       attrs_mod = RGWRados::ATTRSMOD_REPLACE;
     } else if (!source_zone.empty()) {
+<<<<<<< HEAD
       attrs_mod = RGWRados::ATTRSMOD_NONE; // default for intra-zone_group copy
+=======
+      attrs_mod = RGWRados::ATTRSMOD_NONE; // default for intra-region copy
+>>>>>>> upstream/hammer
     } else {
       ldout(s->cct, 0) << "invalid metadata directive" << dendl;
       return -EINVAL;
@@ -2715,7 +2780,12 @@ void RGWListMultipart_ObjStore_S3::send_response()
 
   if (op_ret == 0) {
     dump_start(s);
+<<<<<<< HEAD
     s->formatter->open_object_section_in_ns("ListPartsResult", XMLNS_AWS_S3);
+=======
+    s->formatter->open_object_section_in_ns("ListPartsResult",
+		    "http://s3.amazonaws.com/doc/2006-03-01/");
+>>>>>>> upstream/hammer
     map<uint32_t, RGWUploadPartInfo>::iterator iter;
     map<uint32_t, RGWUploadPartInfo>::reverse_iterator test_iter;
     int cur_max = 0;
@@ -2748,7 +2818,11 @@ void RGWListMultipart_ObjStore_S3::send_response()
 
       s->formatter->dump_unsigned("PartNumber", info.num);
       s->formatter->dump_format("ETag", "\"%s\"", info.etag.c_str());
+<<<<<<< HEAD
       s->formatter->dump_unsigned("Size", info.accounted_size);
+=======
+      s->formatter->dump_unsigned("Size", info.size);
+>>>>>>> upstream/hammer
       s->formatter->close_section();
     }
     s->formatter->close_section();

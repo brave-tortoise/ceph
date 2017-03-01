@@ -164,7 +164,10 @@ class PGRecoveryStats {
 };
 
 struct PGPool {
+<<<<<<< HEAD
   CephContext* cct;
+=======
+>>>>>>> upstream/hammer
   epoch_t cached_epoch;
   int64_t id;
   string name;
@@ -176,9 +179,14 @@ struct PGPool {
   interval_set<snapid_t> cached_removed_snaps;      // current removed_snaps set
   interval_set<snapid_t> newly_removed_snaps;  // newly removed in the last epoch
 
+<<<<<<< HEAD
   PGPool(CephContext* cct, OSDMapRef map, int64_t i)
     : cct(cct),
       cached_epoch(map->get_epoch()),
+=======
+  PGPool(OSDMapRef map, int64_t i)
+    : cached_epoch(map->get_epoch()),
+>>>>>>> upstream/hammer
       id(i),
       name(map->get_pool_name(id)),
       auid(map->get_pg_pool(id)->auid) {
@@ -337,7 +345,11 @@ public:
   public:
     boost::scoped_ptr<IsPGReadablePredicate> is_readable;
     boost::scoped_ptr<IsPGRecoverablePredicate> is_recoverable;
+<<<<<<< HEAD
     explicit MissingLoc(PG *pg)
+=======
+    MissingLoc(PG *pg)
+>>>>>>> upstream/hammer
       : pg(pg) {}
     void set_backend_predicates(
       IsPGReadablePredicate *_is_readable,
@@ -377,6 +389,7 @@ public:
       return ret;
     }
 
+<<<<<<< HEAD
     bool have_unfound() const {
       for (map<hobject_t, pg_missing_item>::const_iterator i =
 	     needs_recovery_map.begin();
@@ -387,6 +400,8 @@ public:
       }
       return false;
     }
+=======
+>>>>>>> upstream/hammer
     void clear() {
       needs_recovery_map.clear();
       missing_loc.clear();
@@ -574,8 +589,12 @@ public:
 
     bool pg_down;   /// some down osds are included in @a cur; the DOWN pg state bit should be set.
     boost::scoped_ptr<IsPGRecoverablePredicate> pcontdec;
+<<<<<<< HEAD
     PriorSet(CephContext* cct,
 	     bool ec_pool,
+=======
+    PriorSet(bool ec_pool,
+>>>>>>> upstream/hammer
 	     IsPGRecoverablePredicate *c,
 	     const OSDMap &osdmap,
 	     const map<epoch_t, pg_interval_t> &past_intervals,
@@ -931,6 +950,24 @@ public:
 		       pg_missing_t& omissing, pg_shard_t from);
   bool proc_replica_info(
     pg_shard_t from, const pg_info_t &info, epoch_t send_epoch);
+<<<<<<< HEAD
+=======
+
+
+  struct LogEntryTrimmer : public ObjectModDesc::Visitor {
+    const hobject_t &soid;
+    PG *pg;
+    ObjectStore::Transaction *t;
+    LogEntryTrimmer(const hobject_t &soid, PG *pg, ObjectStore::Transaction *t)
+      : soid(soid), pg(pg), t(t) {}
+    void rmobject(version_t old_version) {
+      pg->get_pgbackend()->trim_stashed_object(
+	soid,
+	old_version,
+	t);
+    }
+  };
+>>>>>>> upstream/hammer
 
   struct PGLogEntryHandler : public PGLog::LogEntryHandler {
     PG *pg;

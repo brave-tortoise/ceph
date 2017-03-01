@@ -36,7 +36,11 @@ public:
     }
 
     inline bool is_enabled() const {
+<<<<<<< HEAD
       return tracepoint_provider->m_handle != nullptr;
+=======
+      return tracepoint_provider->m_enabled;
+>>>>>>> upstream/hammer
     }
   private:
     TracepointProvider *tracepoint_provider;
@@ -45,7 +49,11 @@ public:
   template <const Traits &traits>
   class TypedSingleton : public Singleton {
   public:
+<<<<<<< HEAD
     explicit TypedSingleton(CephContext *cct)
+=======
+    TypedSingleton(CephContext *cct)
+>>>>>>> upstream/hammer
       : Singleton(cct, traits.library, traits.config_key) {
     }
   };
@@ -56,7 +64,11 @@ public:
 
   template <const Traits &traits>
   static void initialize(CephContext *cct) {
+<<<<<<< HEAD
 #ifdef WITH_LTTNG
+=======
+#if WITH_LTTNG
+>>>>>>> upstream/hammer
     TypedSingleton<traits> *singleton;
     cct->lookup_or_create_singleton_object(singleton, traits.library);
 #endif
@@ -75,7 +87,11 @@ private:
   mutable const char* m_config_keys[2];
 
   Mutex m_lock;
+<<<<<<< HEAD
   void* m_handle = nullptr;
+=======
+  bool m_enabled;
+>>>>>>> upstream/hammer
 
   void verify_config(const struct md_config_t *conf);
 };

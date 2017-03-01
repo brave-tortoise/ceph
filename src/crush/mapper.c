@@ -302,9 +302,15 @@ static __u64 crush_ln(unsigned int xin)
 static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 				int x, int r)
 {
+<<<<<<< HEAD
 	unsigned int i, high = 0;
 	unsigned int u;
 	unsigned int w;
+=======
+	unsigned i, high = 0;
+	unsigned u;
+	unsigned w;
+>>>>>>> upstream/hammer
 	__s64 ln, draw, high_draw = 0;
 
 	for (i = 0; i < bucket->h.size; i++) {
@@ -332,9 +338,15 @@ static int bucket_straw2_choose(const struct crush_bucket_straw2 *bucket,
 			 * weight means a larger (less negative) value
 			 * for draw.
 			 */
+<<<<<<< HEAD
 			draw = div64_s64(ln, w);
 		} else {
 			draw = S64_MIN;
+=======
+			draw = ln / w;
+		} else {
+			draw = INT64_MIN;
+>>>>>>> upstream/hammer
 		}
 
 		if (i == 0 || draw > high_draw) {
@@ -994,7 +1006,10 @@ int crush_do_rule(const struct crush_map *map,
 						recurse_tries = choose_tries;
 					osize += crush_choose_firstn(
 						map,
+<<<<<<< HEAD
 						cw,
+=======
+>>>>>>> upstream/hammer
 						map->buckets[bno],
 						weight, weight_max,
 						x, numrep,
@@ -1015,7 +1030,10 @@ int crush_do_rule(const struct crush_map *map,
 						    numrep : (result_max-osize));
 					crush_choose_indep(
 						map,
+<<<<<<< HEAD
 						cw,
+=======
+>>>>>>> upstream/hammer
 						map->buckets[bno],
 						weight, weight_max,
 						x, out_size, numrep,

@@ -41,6 +41,7 @@ enum RGWBILogFlags {
   RGW_BILOG_FLAG_VERSIONED_OP = 0x1,
 };
 
+<<<<<<< HEAD
 enum RGWCheckMTimeType {
   CLS_RGW_CHECK_TIME_MTIME_EQ = 0,
   CLS_RGW_CHECK_TIME_MTIME_LT = 1,
@@ -49,6 +50,8 @@ enum RGWCheckMTimeType {
   CLS_RGW_CHECK_TIME_MTIME_GE = 4,
 };
 
+=======
+>>>>>>> upstream/hammer
 #define ROUND_BLOCK_SIZE 4096
 
 static inline uint64_t cls_rgw_get_rounded_size(uint64_t size)

@@ -346,7 +346,11 @@ public:
   void release_message_throttle() {
     if (msg_throttler)
       msg_throttler->put();
+<<<<<<< HEAD
     msg_throttler = nullptr;
+=======
+    msg_throttler = 0; // nullptr
+>>>>>>> upstream/hammer
   }
 
   bool empty_payload() const { return payload.length() == 0; }

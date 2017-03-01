@@ -87,7 +87,10 @@ function main() {
         echo "cmake check: successful run on $(git rev-parse HEAD)"
         return 0
     else
+<<<<<<< HEAD
         rm -fr ${CEPH_BUILD_VIRTUALENV:-/tmp}/*virtualenv*
+=======
+>>>>>>> upstream/hammer
         return 1
     fi
 }

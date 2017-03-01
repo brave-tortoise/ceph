@@ -52,12 +52,22 @@ static lockdep_stopper_t lockdep_stopper;
 static ceph::unordered_map<std::string, int> lock_ids;
 static map<int, std::string> lock_names;
 static map<int, int> lock_refs;
+<<<<<<< HEAD
 static char free_ids[MAX_LOCKS/8]; // bit set = free
+=======
+static list<int> free_ids;
+>>>>>>> upstream/hammer
 static ceph::unordered_map<pthread_t, map<int,BackTrace*> > held;
 static char follows[MAX_LOCKS][MAX_LOCKS/8]; // follows[a][b] means b taken after a
 static BackTrace *follows_bt[MAX_LOCKS][MAX_LOCKS];
 unsigned current_maxid;
 int last_freed_id;
+
+static bool lockdep_force_backtrace()
+{
+  return (g_lockdep_ceph_ctx != NULL &&
+          g_lockdep_ceph_ctx->_conf->lockdep_force_backtrace);
+}
 
 static bool lockdep_force_backtrace()
 {
@@ -72,6 +82,7 @@ void lockdep_register_ceph_context(CephContext *cct)
     "lockdep's MAX_LOCKS needs to be divisible by 8 to operate correctly.");
   pthread_mutex_lock(&lockdep_mutex);
   if (g_lockdep_ceph_ctx == NULL) {
+<<<<<<< HEAD
     ANNOTATE_BENIGN_RACE_SIZED(&g_lockdep_ceph_ctx, sizeof(g_lockdep_ceph_ctx),
                                "lockdep cct");
     ANNOTATE_BENIGN_RACE_SIZED(&g_lockdep, sizeof(g_lockdep),
@@ -83,6 +94,15 @@ void lockdep_register_ceph_context(CephContext *cct)
 	last_freed_id = -1;
 
     memset((void*) &free_ids[0], 255, sizeof(free_ids));
+=======
+    g_lockdep = true;
+    g_lockdep_ceph_ctx = cct;
+    lockdep_dout(0) << "lockdep start" << dendl;
+
+    for (int i=0; i<MAX_LOCKS; ++i) {
+      free_ids.push_back(i);
+    }
+>>>>>>> upstream/hammer
   }
   pthread_mutex_unlock(&lockdep_mutex);
 }
@@ -107,11 +127,15 @@ void lockdep_unregister_ceph_context(CephContext *cct)
     lock_names.clear();
     lock_ids.clear();
     lock_refs.clear();
+<<<<<<< HEAD
     memset((void*)&free_ids[0], 0, sizeof(free_ids));
     memset((void*)&follows[0][0], 0, current_maxid * MAX_LOCKS/8);
     memset((void*)&follows_bt[0][0], 0, sizeof(BackTrace*) * current_maxid * MAX_LOCKS);
     current_maxid = 0;
     last_freed_id = -1;
+=======
+    free_ids.clear();
+>>>>>>> upstream/hammer
   }
   pthread_mutex_unlock(&lockdep_mutex);
 }
@@ -176,6 +200,7 @@ int lockdep_register(const char *name)
   pthread_mutex_lock(&lockdep_mutex);
   ceph::unordered_map<std::string, int>::iterator p = lock_ids.find(name);
   if (p == lock_ids.end()) {
+<<<<<<< HEAD
     id = lockdep_get_free_id();
     if (id < 0) {
       lockdep_dout(0) << "ERROR OUT OF IDS .. have 0"
@@ -188,6 +213,12 @@ int lockdep_register(const char *name)
     if (current_maxid <= (unsigned)id) {
         current_maxid = (unsigned)id + 1;
     }
+=======
+    assert(!free_ids.empty());
+    id = free_ids.front();
+    free_ids.pop_front();
+
+>>>>>>> upstream/hammer
     lock_ids[name] = id;
     lock_names[id] = name;
     lockdep_dout(10) << "registered '" << name << "' as " << id << dendl;
@@ -216,6 +247,7 @@ void lockdep_unregister(int id)
   int &refs = lock_refs[id];
   if (--refs == 0) {
     // reset dependency ordering
+<<<<<<< HEAD
     memset((void*)&follows[id][0], 0, MAX_LOCKS/8);
     for (unsigned i=0; i<current_maxid; ++i) {
       delete follows_bt[id][i];
@@ -224,6 +256,14 @@ void lockdep_unregister(int id)
       delete follows_bt[i][id];
       follows_bt[i][id] = NULL;
       follows[i][id / 8] &= 255 - (1 << (id % 8));
+=======
+    for (int i=0; i<MAX_LOCKS; ++i) {
+      delete follows[id][i];
+      follows[id][i] = NULL;
+
+      delete follows[i][id];
+      follows[i][id] = NULL;
+>>>>>>> upstream/hammer
     }
 
     lockdep_dout(10) << "unregistered '" << p->second << "' from " << id
@@ -231,8 +271,12 @@ void lockdep_unregister(int id)
     lock_ids.erase(p->second);
     lock_names.erase(id);
     lock_refs.erase(id);
+<<<<<<< HEAD
     free_ids[id/8] |= (1 << (id % 8));
 	last_freed_id = id;
+=======
+    free_ids.push_back(id);
+>>>>>>> upstream/hammer
   } else {
     lockdep_dout(20) << "have " << refs << " of '" << p->second << "' "
                      << "from " << id << dendl;
@@ -333,8 +377,12 @@ int lockdep_will_lock(const char *name, int id, bool force_backtrace)
         if (force_backtrace || lockdep_force_backtrace()) {
           bt = new BackTrace(BACKTRACE_SKIP);
         }
+<<<<<<< HEAD
         follows[p->first][id/8] |= 1 << (id % 8);
         follows_bt[p->first][id] = bt;
+=======
+	follows[p->first][id] = bt;
+>>>>>>> upstream/hammer
 	lockdep_dout(10) << lock_names[p->first] << " -> " << name << " at" << dendl;
 	//bt->print(*_dout);
       }

@@ -11,7 +11,12 @@
 #include "include/atomic.h"
 #include "mds/mdstypes.h"
 #include "InodeRef.h"
+<<<<<<< HEAD
 #include "UserPerm.h"
+=======
+
+#include "common/Mutex.h"
+>>>>>>> upstream/hammer
 
 #include "messages/MClientRequest.h"
 
@@ -55,7 +60,19 @@ public:
   bool success;
   
   // readdir result
+<<<<<<< HEAD
   dir_result_t *dirp;
+=======
+  frag_t readdir_frag;
+  string readdir_start;  // starting _after_ this name
+  uint64_t readdir_offset;
+
+  frag_t readdir_reply_frag;
+  vector<pair<string,InodeRef> > readdir_result;
+  bool readdir_end;
+  int readdir_num;
+  string readdir_last_name;
+>>>>>>> upstream/hammer
 
   //possible responses
   bool got_unsafe;
@@ -70,10 +87,16 @@ public:
   list<Cond*> waitfor_safe;
 
   InodeRef target;
+<<<<<<< HEAD
   UserPerm perms;
 
   explicit MetaRequest(int op) :
     _dentry(NULL), _old_dentry(NULL), abort_rc(0),
+=======
+
+  MetaRequest(int op) :
+    _dentry(NULL), _old_dentry(NULL),
+>>>>>>> upstream/hammer
     tid(0),
     inode_drop(0), inode_unless(0),
     old_inode_drop(0), old_inode_unless(0),
@@ -86,13 +109,20 @@ public:
     ref(1), reply(0), 
     kick(false), success(false),
     got_unsafe(false), item(this), unsafe_item(this),
+<<<<<<< HEAD
     unsafe_dir_item(this), unsafe_target_item(this),
     caller_cond(0), dispatch_cond(0) {
     memset(&head, 0, sizeof(head));
+=======
+    lock("MetaRequest lock"),
+    caller_cond(0), dispatch_cond(0) {
+    memset(&head, 0, sizeof(ceph_mds_request_head));
+>>>>>>> upstream/hammer
     head.op = op;
   }
   ~MetaRequest();
 
+<<<<<<< HEAD
   /**
    * Prematurely terminate the request, such that callers
    * to make_request will receive `rc` as their result.
@@ -120,6 +150,8 @@ public:
     return abort_rc;
   }
 
+=======
+>>>>>>> upstream/hammer
   void set_inode(Inode *in) {
     _inode = in;
   }
@@ -139,7 +171,11 @@ public:
     out->swap(_old_inode);
   }
   void set_other_inode(Inode *in) {
+<<<<<<< HEAD
     _other_inode = in;
+=======
+    _old_inode = in;
+>>>>>>> upstream/hammer
   }
   Inode *other_inode() {
     return _other_inode.get();

@@ -24,6 +24,14 @@ except ImportError:
 import filecmp
 import os
 import subprocess
+<<<<<<< HEAD
+=======
+try:
+    from subprocess import DEVNULL
+except ImportError:
+    subprocess.DEVNULL = open(os.devnull, "w")
+
+>>>>>>> upstream/hammer
 import math
 import time
 import sys
@@ -31,12 +39,15 @@ import re
 import logging
 import json
 import tempfile
+<<<<<<< HEAD
 import platform
 
 try:
     from subprocess import DEVNULL
 except ImportError:
     DEVNULL = open(os.devnull, "wb")
+=======
+>>>>>>> upstream/hammer
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.WARNING)
 
@@ -54,6 +65,7 @@ else:
 
 
 def wait_for_health():
+<<<<<<< HEAD
     print("Wait for health_ok...", end="")
     tries = 0
     while call("{path}/ceph health 2> /dev/null | grep -v 'HEALTH_OK\|HEALTH_WARN' > /dev/null".format(path=CEPH_BIN), shell=True) == 0:
@@ -62,6 +74,15 @@ def wait_for_health():
             raise Exception("Time exceeded to go to health")
         time.sleep(1)
     print("DONE")
+=======
+    print "Wait for health_ok...",
+    tries = 0
+    while call("./ceph health 2> /dev/null | grep -v 'HEALTH_OK\|HEALTH_WARN' > /dev/null", shell=True) == 0:
+        if ++tries == 30:
+            raise Exception("Time exceeded to go to health")
+        time.sleep(5)
+    print "DONE"
+>>>>>>> upstream/hammer
 
 
 def get_pool_id(name, nullfd):
@@ -150,17 +171,29 @@ def cat_file(level, filename):
 
 
 def vstart(new, opt=""):
+<<<<<<< HEAD
     print("vstarting....", end="")
     NEW = new and "-n" or "-N"
     call("MON=1 OSD=4 CEPH_PORT=7400 {path}/src/vstart.sh --short -l {new} -d mon osd {opt} > /dev/null 2>&1".format(new=NEW, opt=opt, path=CEPH_ROOT), shell=True)
     print("DONE")
+=======
+    print "vstarting....",
+    NEW = new and "-n" or ""
+    call("MON=1 OSD=4 CEPH_PORT=7400 ./vstart.sh -l {new} -d mon osd {opt} > /dev/null 2>&1".format(new=NEW, opt=opt), shell=True)
+    print "DONE"
+>>>>>>> upstream/hammer
 
 
 def test_failure(cmd, errmsg, tty=False):
     if tty:
         try:
+<<<<<<< HEAD
             ttyfd = open("/dev/tty", "rwb")
         except Exception as e:
+=======
+            ttyfd = open("/dev/tty", "rw")
+        except Exception, e:
+>>>>>>> upstream/hammer
             logging.info(str(e))
             logging.info("SKIP " + cmd)
             return 0
@@ -184,9 +217,13 @@ def test_failure(cmd, errmsg, tty=False):
         logging.info("Correctly failed with message \"" + matched[0] + "\"")
         return 0
     else:
+<<<<<<< HEAD
         logging.error("Command: " + cmd )
         logging.error("Bad messages to stderr \"" + str(lines) + "\"")
         logging.error("Expected \"" + errmsg + "\"")
+=======
+        logging.error("Bad messages to stderr \"" + str(lines) + "\"")
+>>>>>>> upstream/hammer
         return 1
 
 
@@ -225,19 +262,32 @@ def verify(DATADIR, POOL, NAME_PREFIX, db):
             os.unlink(TMPFILE)
         except:
             pass
+<<<<<<< HEAD
         for key, val in db[nspace][file]["xattr"].items():
             cmd = "{path}/rados -p {pool} -N '{nspace}' getxattr {name} {key}".format(pool=POOL, name=file, key=key, nspace=nspace, path=CEPH_BIN)
             logging.debug(cmd)
             getval = check_output(cmd, shell=True, stderr=DEVNULL)
+=======
+        for key, val in db[nspace][file]["xattr"].iteritems():
+            cmd = "./rados -p {pool} -N '{nspace}' getxattr {name} {key}".format(pool=POOL, name=file, key=key, nspace=nspace)
+            logging.debug(cmd)
+            getval = check_output(cmd, shell=True, stderr=nullfd)
+>>>>>>> upstream/hammer
             logging.debug("getxattr {key} {val}".format(key=key, val=getval))
             if getval != val:
                 logging.error("getxattr of key {key} returned wrong val: {get} instead of {orig}".format(key=key, get=getval, orig=val))
                 ERRORS += 1
                 continue
         hdr = db[nspace][file].get("omapheader", "")
+<<<<<<< HEAD
         cmd = "{path}/rados -p {pool} -N '{nspace}' getomapheader {name} {file}".format(pool=POOL, name=file, nspace=nspace, file=TMPFILE, path=CEPH_BIN)
         logging.debug(cmd)
         ret = call(cmd, shell=True, stderr=DEVNULL)
+=======
+        cmd = "./rados -p {pool} -N '{nspace}' getomapheader {name} {file}".format(pool=POOL, name=file, nspace=nspace, file=TMPFILE)
+        logging.debug(cmd)
+        ret = call(cmd, shell=True, stderr=nullfd)
+>>>>>>> upstream/hammer
         if ret != 0:
             logging.error("rados getomapheader returned {ret}".format(ret=ret))
             ERRORS += 1
@@ -252,10 +302,17 @@ def verify(DATADIR, POOL, NAME_PREFIX, db):
             if gethdr != hdr:
                 logging.error("getomapheader returned wrong val: {get} instead of {orig}".format(get=gethdr, orig=hdr))
                 ERRORS += 1
+<<<<<<< HEAD
         for key, val in db[nspace][file]["omap"].items():
             cmd = "{path}/rados -p {pool} -N '{nspace}' getomapval {name} {key} {file}".format(pool=POOL, name=file, key=key, nspace=nspace, file=TMPFILE, path=CEPH_BIN)
             logging.debug(cmd)
             ret = call(cmd, shell=True, stderr=DEVNULL)
+=======
+        for key, val in db[nspace][file]["omap"].iteritems():
+            cmd = "./rados -p {pool} -N '{nspace}' getomapval {name} {key} {file}".format(pool=POOL, name=file, key=key, nspace=nspace, file=TMPFILE)
+            logging.debug(cmd)
+            ret = call(cmd, shell=True, stderr=nullfd)
+>>>>>>> upstream/hammer
             if ret != 0:
                 logging.error("getomapval returned {ret}".format(ret=ret))
                 ERRORS += 1
@@ -274,6 +331,7 @@ def verify(DATADIR, POOL, NAME_PREFIX, db):
             os.unlink(TMPFILE)
         except:
             pass
+<<<<<<< HEAD
     return ERRORS
 
 
@@ -396,7 +454,119 @@ if not CEPH_BUILD_DIR:
     os.putenv('CEPH_LIB', CEPH_LIB)
 
 CEPH_DIR = CEPH_BUILD_DIR + "/cot_dir"
+=======
+    return ERRORS
+
+
+def check_journal(jsondict):
+    errors = 0
+    if 'header' not in jsondict:
+        logging.error("Key 'header' not in dump-journal")
+        errors += 1
+    elif 'max_size' not in jsondict['header']:
+        logging.error("Key 'max_size' not in dump-journal header")
+        errors += 1
+    else:
+        print "\tJournal max_size = {size}".format(size=jsondict['header']['max_size'])
+    if 'entries' not in jsondict:
+        logging.error("Key 'entries' not in dump-journal output")
+        errors += 1
+    elif len(jsondict['entries']) == 0:
+        logging.info("No entries in journal found")
+    else:
+        errors += check_journal_entries(jsondict['entries'])
+    return errors
+
+
+def check_journal_entries(entries):
+    errors = 0
+    for enum in range(len(entries)):
+        if 'offset' not in entries[enum]:
+            logging.error("No 'offset' key in entry {e}".format(e=enum))
+            errors += 1
+        if 'seq' not in entries[enum]:
+            logging.error("No 'seq' key in entry {e}".format(e=enum))
+            errors += 1
+        if 'transactions' not in entries[enum]:
+            logging.error("No 'transactions' key in entry {e}".format(e=enum))
+            errors += 1
+        elif len(entries[enum]['transactions']) == 0:
+            logging.error("No transactions found in entry {e}".format(e=enum))
+            errors += 1
+        else:
+            errors += check_entry_transactions(entries[enum], enum)
+    return errors
+
+
+def check_entry_transactions(entry, enum):
+    errors = 0
+    for tnum in range(len(entry['transactions'])):
+        if 'trans_num' not in entry['transactions'][tnum]:
+            logging.error("Key 'trans_num' missing from entry {e} trans {t}".format(e=enum, t=tnum))
+            errors += 1
+        elif entry['transactions'][tnum]['trans_num'] != tnum:
+            ft = entry['transactions'][tnum]['trans_num']
+            logging.error("Bad trans_num ({ft}) entry {e} trans {t}".format(ft=ft, e=enum, t=tnum))
+            errors += 1
+        if 'ops' not in entry['transactions'][tnum]:
+            logging.error("Key 'ops' missing from entry {e} trans {t}".format(e=enum, t=tnum))
+            errors += 1
+        else:
+            errors += check_transaction_ops(entry['transactions'][tnum]['ops'], enum, tnum)
+    return errors
+
+
+def check_transaction_ops(ops, enum, tnum):
+    if len(ops) is 0:
+        logging.warning("No ops found in entry {e} trans {t}".format(e=enum, t=tnum))
+    errors = 0
+    for onum in range(len(ops)):
+        if 'op_num' not in ops[onum]:
+            logging.error("Key 'op_num' missing from entry {e} trans {t} op {o}".format(e=enum, t=tnum, o=onum))
+            errors += 1
+        elif ops[onum]['op_num'] != onum:
+            fo = ops[onum]['op_num']
+            logging.error("Bad op_num ({fo}) from entry {e} trans {t} op {o}".format(fo=fo, e=enum, t=tnum, o=onum))
+            errors += 1
+        if 'op_name' not in ops[onum]:
+            logging.error("Key 'op_name' missing from entry {e} trans {t} op {o}".format(e=enum, t=tnum, o=onum))
+            errors += 1
+    return errors
+
+
+def test_dump_journal(CFSD_PREFIX, osds):
+    ERRORS = 0
+    pid = os.getpid()
+    TMPFILE = r"/tmp/tmp.{pid}".format(pid=pid)
+
+    for osd in osds:
+        # Test --op dump-journal by loading json
+        cmd = (CFSD_PREFIX + "--op dump-journal --format json").format(osd=osd)
+        logging.debug(cmd)
+        tmpfd = open(TMPFILE, "w")
+        ret = call(cmd, shell=True, stdout=tmpfd)
+        if ret != 0:
+            logging.error("Bad exit status {ret} from {cmd}".format(ret=ret, cmd=cmd))
+            ERRORS += 1
+            continue
+        tmpfd.close()
+        tmpfd = open(TMPFILE, "r")
+        jsondict = json.load(tmpfd)
+        tmpfd.close()
+        os.unlink(TMPFILE)
+
+        journal_errors = check_journal(jsondict)
+        if journal_errors is not 0:
+            logging.error(jsondict)
+        ERRORS += journal_errors
+
+    return ERRORS
+
+
+CEPH_DIR = "ceph_objectstore_tool_dir"
+>>>>>>> upstream/hammer
 CEPH_CONF = os.path.join(CEPH_DIR, 'ceph.conf')
+
 
 def kill_daemons():
     call("{path}/init-ceph -c {conf} stop osd mon > /dev/null 2>&1".format(conf=CEPH_CONF, path=CEPH_BIN), shell=True)
@@ -414,7 +584,11 @@ def check_data(DATADIR, TMPFILE, OSDDIR, SPLIT_NAME):
         if clone != "head":
             continue
         path = os.path.join(DATADIR, rawnsfile)
+<<<<<<< HEAD
         tmpfd = open(TMPFILE, "wb")
+=======
+        tmpfd = open(TMPFILE, "w")
+>>>>>>> upstream/hammer
         cmd = "find {dir} -name '{file}_*_{nspace}_*'".format(dir=OSDDIR, file=file, nspace=nspace)
         logging.debug(cmd)
         ret = call(cmd, shell=True, stdout=tmpfd)
@@ -427,9 +601,12 @@ def check_data(DATADIR, TMPFILE, OSDDIR, SPLIT_NAME):
             logging.error("Can't find imported object {name}".format(name=file))
             ERRORS += 1
         for obj_loc in obj_locs:
+<<<<<<< HEAD
             # For btrfs skip snap_* dirs
             if re.search("/snap_[0-9]*/", obj_loc) is not None:
                 continue
+=======
+>>>>>>> upstream/hammer
             repcount += 1
             cmd = "diff -q {src} {obj_loc}".format(src=path, obj_loc=obj_loc)
             logging.debug(cmd)
@@ -442,11 +619,16 @@ def check_data(DATADIR, TMPFILE, OSDDIR, SPLIT_NAME):
 
 def set_osd_weight(CFSD_PREFIX, osd_ids, osd_path, weight):
     # change the weight of osd.0 to math.pi in the newest osdmap of given osd
+<<<<<<< HEAD
     osdmap_file = tempfile.NamedTemporaryFile(delete=True)
+=======
+    osdmap_file = tempfile.NamedTemporaryFile()
+>>>>>>> upstream/hammer
     cmd = (CFSD_PREFIX + "--op get-osdmap --file {osdmap_file}").format(osd=osd_path,
                                                                         osdmap_file=osdmap_file.name)
     output = check_output(cmd, shell=True)
     epoch = int(re.findall('#(\d+)', output)[0])
+<<<<<<< HEAD
 
     new_crush_file = tempfile.NamedTemporaryFile(delete=True)
     old_crush_file = tempfile.NamedTemporaryFile(delete=True)
@@ -454,15 +636,32 @@ def set_osd_weight(CFSD_PREFIX, osd_ids, osd_path, weight):
                                                                           crush_file=old_crush_file.name, path=CEPH_BIN),
                stdout=DEVNULL,
                stderr=DEVNULL,
+=======
+    
+    new_crush_file = tempfile.NamedTemporaryFile(delete=False)
+    old_crush_file = tempfile.NamedTemporaryFile(delete=False)
+    ret = call("./osdmaptool --export-crush {crush_file} {osdmap_file}".format(osdmap_file=osdmap_file.name,
+                                                                          crush_file=old_crush_file.name),
+               stdout=subprocess.DEVNULL,
+               stderr=subprocess.DEVNULL,
+>>>>>>> upstream/hammer
                shell=True)
     assert(ret == 0)
 
     for osd_id in osd_ids:
+<<<<<<< HEAD
         cmd = "{path}/crushtool -i {crush_file} --reweight-item osd.{osd} {weight} -o {new_crush_file}".format(osd=osd_id,
                                                                                                           crush_file=old_crush_file.name,
                                                                                                           weight=weight,
                                                                                                           new_crush_file=new_crush_file.name, path=CEPH_BIN)
         ret = call(cmd, stdout=DEVNULL, shell=True)
+=======
+        cmd = "./crushtool -i {crush_file} --reweight-item osd.{osd} {weight} -o {new_crush_file}".format(osd=osd_id,
+                                                                                                          crush_file=old_crush_file.name,
+                                                                                                          weight=weight,
+                                                                                                          new_crush_file=new_crush_file.name)
+        ret = call(cmd, stdout=subprocess.DEVNULL, shell=True)
+>>>>>>> upstream/hammer
         assert(ret == 0)
         old_crush_file, new_crush_file = new_crush_file, old_crush_file
 
@@ -470,23 +669,35 @@ def set_osd_weight(CFSD_PREFIX, osd_ids, osd_path, weight):
     old_crush_file, new_crush_file = new_crush_file, old_crush_file
     old_crush_file.close()
 
+<<<<<<< HEAD
     ret = call("{path}/osdmaptool --import-crush {crush_file} {osdmap_file}".format(osdmap_file=osdmap_file.name,
                                                                                crush_file=new_crush_file.name, path=CEPH_BIN),
                stdout=DEVNULL,
                stderr=DEVNULL,
+=======
+    ret = call("./osdmaptool --import-crush {crush_file} {osdmap_file}".format(osdmap_file=osdmap_file.name,
+                                                                               crush_file=new_crush_file.name),
+               stdout=subprocess.DEVNULL,
+               stderr=subprocess.DEVNULL,
+>>>>>>> upstream/hammer
                shell=True)
     assert(ret == 0)
 
     # Minimum test of --dry-run by using it, but not checking anything
     cmd = CFSD_PREFIX + "--op set-osdmap --file {osdmap_file} --epoch {epoch} --force --dry-run"
     cmd = cmd.format(osd=osd_path, osdmap_file=osdmap_file.name, epoch=epoch)
+<<<<<<< HEAD
     ret = call(cmd, stdout=DEVNULL, shell=True)
+=======
+    ret = call(cmd, stdout=subprocess.DEVNULL, shell=True)
+>>>>>>> upstream/hammer
     assert(ret == 0)
 
     # osdmaptool increases the epoch of the changed osdmap, so we need to force the tool
     # to use use a different epoch than the one in osdmap
     cmd = CFSD_PREFIX + "--op set-osdmap --file {osdmap_file} --epoch {epoch} --force"
     cmd = cmd.format(osd=osd_path, osdmap_file=osdmap_file.name, epoch=epoch)
+<<<<<<< HEAD
     ret = call(cmd, stdout=DEVNULL, shell=True)
 
     return ret == 0
@@ -496,11 +707,22 @@ def get_osd_weights(CFSD_PREFIX, osd_ids, osd_path):
     cmd = (CFSD_PREFIX + "--op get-osdmap --file {osdmap_file}").format(osd=osd_path,
                                                                         osdmap_file=osdmap_file.name)
     ret = call(cmd, stdout=DEVNULL, shell=True)
+=======
+    ret = call(cmd, stdout=subprocess.DEVNULL, shell=True)
+    return ret == 0
+
+def get_osd_weights(CFSD_PREFIX, osd_ids, osd_path):
+    osdmap_file = tempfile.NamedTemporaryFile()
+    cmd = (CFSD_PREFIX + "--op get-osdmap --file {osdmap_file}").format(osd=osd_path,
+                                                                        osdmap_file=osdmap_file.name)
+    ret = call(cmd, stdout=subprocess.DEVNULL, shell=True)
+>>>>>>> upstream/hammer
     if ret != 0:
         return None
     # we have to read the weights from the crush map, even we can query the weights using
     # osdmaptool, but please keep in mind, they are different:
     #    item weights in crush map versus weight associated with each osd in osdmap
+<<<<<<< HEAD
     crush_file = tempfile.NamedTemporaryFile(delete=True)
     ret = call("{path}/osdmaptool --export-crush {crush_file} {osdmap_file}".format(osdmap_file=osdmap_file.name,
                                                                                crush_file=crush_file.name, path=CEPH_BIN),
@@ -510,17 +732,35 @@ def get_osd_weights(CFSD_PREFIX, osd_ids, osd_path):
     output = check_output("{path}/crushtool --tree -i {crush_file} | tail -n {num_osd}".format(crush_file=crush_file.name,
                                                                                           num_osd=len(osd_ids), path=CEPH_BIN),
                           stderr=DEVNULL,
+=======
+    crush_file = tempfile.NamedTemporaryFile(delete=False)
+    ret = call("./osdmaptool --export-crush {crush_file} {osdmap_file}".format(osdmap_file=osdmap_file.name,
+                                                                               crush_file=crush_file.name),
+               stdout=subprocess.DEVNULL,
+               shell=True)
+    assert(ret == 0)
+    output = check_output("./crushtool --tree -i {crush_file} | tail -n {num_osd}".format(crush_file=crush_file.name,
+                                                                                          num_osd=len(osd_ids)),
+                          stderr=subprocess.DEVNULL,
+>>>>>>> upstream/hammer
                           shell=True)
     weights = []
     for line in output.strip().split('\n'):
         osd_id, weight, osd_name = re.split('\s+', line)
         weights.append(float(weight))
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/hammer
     return weights
 
 
 def test_get_set_osdmap(CFSD_PREFIX, osd_ids, osd_paths):
+<<<<<<< HEAD
     print("Testing get-osdmap and set-osdmap")
+=======
+    print "Testing get-osdmap and set-osdmap"
+>>>>>>> upstream/hammer
     errors = 0
     kill_daemons()
     weight = 1 / math.e           # just some magic number in [0, 1]
@@ -549,14 +789,22 @@ def test_get_set_inc_osdmap(CFSD_PREFIX, osd_path):
     # OSD's peers, so an obvious way to test it is simply overwrite an epoch
     # with a different copy, and read it back to see if it matches.
     kill_daemons()
+<<<<<<< HEAD
     file_e2 = tempfile.NamedTemporaryFile(delete=True)
+=======
+    file_e2 = tempfile.NamedTemporaryFile()
+>>>>>>> upstream/hammer
     cmd = (CFSD_PREFIX + "--op get-inc-osdmap --file {file}").format(osd=osd_path,
                                                                      file=file_e2.name)
     output = check_output(cmd, shell=True)
     epoch = int(re.findall('#(\d+)', output)[0])
     # backup e1 incremental before overwriting it
     epoch -= 1
+<<<<<<< HEAD
     file_e1_backup = tempfile.NamedTemporaryFile(delete=True)
+=======
+    file_e1_backup = tempfile.NamedTemporaryFile()
+>>>>>>> upstream/hammer
     cmd = CFSD_PREFIX + "--op get-inc-osdmap --epoch {epoch} --file {file}"
     ret = call(cmd.format(osd=osd_path, epoch=epoch, file=file_e1_backup.name), shell=True)
     if ret: return 1
@@ -569,7 +817,11 @@ def test_get_set_inc_osdmap(CFSD_PREFIX, osd_path):
     ret = call(cmd.format(osd=osd_path, epoch=epoch, file=file_e1_backup.name), shell=True)
     if ret: return 1
     # read from e1
+<<<<<<< HEAD
     file_e1_read = tempfile.NamedTemporaryFile(delete=True)
+=======
+    file_e1_read = tempfile.NamedTemporaryFile(delete=False)
+>>>>>>> upstream/hammer
     cmd = CFSD_PREFIX + "--op get-inc-osdmap --epoch {epoch} --file {file}"
     ret = call(cmd.format(osd=osd_path, epoch=epoch, file=file_e1_read.name), shell=True)
     if ret: return 1
@@ -585,6 +837,7 @@ def test_get_set_inc_osdmap(CFSD_PREFIX, osd_path):
         if ret:
             logging.error("Failed to revert the changed inc-osdmap")
             errors += 1
+<<<<<<< HEAD
 
     return errors
 
@@ -668,6 +921,18 @@ def main(argv):
     else:
         nullfd = DEVNULL
 
+=======
+    return errors
+
+
+def main(argv):
+    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+    if len(argv) > 1 and argv[1] == "debug":
+        nullfd = sys.stdout
+    else:
+        nullfd = open(os.devnull, "w")
+
+>>>>>>> upstream/hammer
     call("rm -fr {dir}; mkdir {dir}".format(dir=CEPH_DIR), shell=True)
     os.environ["CEPH_DIR"] = CEPH_DIR
     OSDDIR = os.path.join(CEPH_DIR, "dev")
@@ -812,11 +1077,19 @@ def main(argv):
                 db[nspace][NAME]["omap"][mykey] = myval
 
     # Create some clones
+<<<<<<< HEAD
     cmd = "{path}/rados -p {pool} mksnap snap1".format(pool=REP_POOL, path=CEPH_BIN)
     logging.debug(cmd)
     call(cmd, shell=True)
 
     objects = range(1, NUM_CLONED_REP_OBJECTS + 1)
+=======
+    cmd = "./rados -p {pool} mksnap snap1".format(pool=REP_POOL)
+    logging.debug(cmd)
+    call(cmd, shell=True)
+
+    objects = range(1, NUM_REP_OBJECTS + 1)
+>>>>>>> upstream/hammer
     nspaces = range(NUM_NSPACES)
     for n in nspaces:
         nspace = get_nspace(n)
@@ -843,14 +1116,22 @@ def main(argv):
                 fd.write(data)
             fd.close()
 
+<<<<<<< HEAD
             cmd = "{path}/rados -p {pool} -N '{nspace}' put {name} {ddname}".format(pool=REP_POOL, name=NAME, ddname=DDNAME, nspace=nspace, path=CEPH_BIN)
+=======
+            cmd = "./rados -p {pool} -N '{nspace}' put {name} {ddname}".format(pool=REP_POOL, name=NAME, ddname=DDNAME, nspace=nspace)
+>>>>>>> upstream/hammer
             logging.debug(cmd)
             ret = call(cmd, shell=True, stderr=nullfd)
             if ret != 0:
                 logging.critical("Rados put command failed with {ret}".format(ret=ret))
                 return 1
 
+<<<<<<< HEAD
     print("Creating {objs} objects in erasure coded pool".format(objs=(NUM_EC_OBJECTS*NUM_NSPACES)))
+=======
+    print "Creating {objs} objects in erasure coded pool".format(objs=(NUM_EC_OBJECTS*NUM_NSPACES))
+>>>>>>> upstream/hammer
 
     objects = range(1, NUM_EC_OBJECTS + 1)
     nspaces = range(NUM_NSPACES)
@@ -939,6 +1220,7 @@ def main(argv):
     # On export can't use stdout to a terminal
     cmd = (CFSD_PREFIX + "--op export --pgid {pg} --file -").format(osd=ONEOSD, pg=ONEPG)
     ERRORS += test_failure(cmd, "stdout is a tty and no --file filename specified", tty=True)
+<<<<<<< HEAD
 
     # Prep a valid ec export file for import failure tests
     ONEECPG = ALLECPGS[0]
@@ -966,6 +1248,35 @@ def main(argv):
     cmd = (CFSD_PREFIX + "--op import --pgid {pg} --file {file}").format(osd=ONEOSD, pg="10.0", file=OTHERFILE)
     ERRORS += test_failure(cmd, "Can't specify a different pgid pool, must be")
 
+=======
+
+    # Prep a valid ec export file for import failure tests
+    ONEECPG = ALLECPGS[0]
+    osds = get_osds(ONEECPG, OSDDIR)
+    ONEECOSD = osds[0]
+    OTHERFILE = "/tmp/foo.{pid}".format(pid=pid)
+    cmd = (CFSD_PREFIX + "--op export --pgid {pg} --file {file}").format(osd=ONEECOSD, pg=ONEECPG, file=OTHERFILE)
+    logging.debug(cmd)
+    call(cmd, shell=True, stdout=nullfd, stderr=nullfd)
+
+    # On import can't specify a different shard
+    BADPG = ONEECPG.split('s')[0] + "s10"
+    cmd = (CFSD_PREFIX + "--op import --pgid {pg} --file {file}").format(osd=ONEECOSD, pg=BADPG, file=OTHERFILE)
+    ERRORS += test_failure(cmd, "Can't specify a different shard, must be")
+
+    os.unlink(OTHERFILE)
+
+    # Prep a valid export file for import failure tests
+    OTHERFILE = "/tmp/foo.{pid}".format(pid=pid)
+    cmd = (CFSD_PREFIX + "--op export --pgid {pg} --file {file}").format(osd=ONEOSD, pg=ONEPG, file=OTHERFILE)
+    logging.debug(cmd)
+    call(cmd, shell=True, stdout=nullfd, stderr=nullfd)
+
+    # On import can't specify a PG with a non-existent pool
+    cmd = (CFSD_PREFIX + "--op import --pgid {pg} --file {file}").format(osd=ONEOSD, pg="10.0", file=OTHERFILE)
+    ERRORS += test_failure(cmd, "Can't specify a different pgid pool, must be")
+
+>>>>>>> upstream/hammer
     # On import can't specify shard for a replicated export
     cmd = (CFSD_PREFIX + "--op import --pgid {pg}s0 --file {file}").format(osd=ONEOSD, pg=ONEPG, file=OTHERFILE)
     ERRORS += test_failure(cmd, "Can't specify a sharded pgid with a non-sharded export")
@@ -979,10 +1290,17 @@ def main(argv):
     cmd = (CFSD_PREFIX + "--op import --file {FOO}").format(osd=ONEOSD, FOO=OTHERFILE)
     ERRORS += test_failure(cmd, "file: {FOO}: No such file or directory".format(FOO=OTHERFILE))
 
+<<<<<<< HEAD
     cmd = "{path}/ceph-objectstore-tool --data-path BAD_DATA_PATH --op list".format(osd=ONEOSD, path=CEPH_BIN)
     ERRORS += test_failure(cmd, "data-path: BAD_DATA_PATH: No such file or directory")
 
     cmd = "{path}/ceph-objectstore-tool --journal-path BAD_JOURNAL_PATH --op dump-journal".format(path=CEPH_BIN)
+=======
+    cmd = "./ceph-objectstore-tool --data-path BAD_DATA_PATH --journal-path " + OSDDIR + "/{osd}.journal --op list".format(osd=ONEOSD)
+    ERRORS += test_failure(cmd, "data-path: BAD_DATA_PATH: No such file or directory")
+
+    cmd = "./ceph-objectstore-tool --journal-path BAD_JOURNAL_PATH --op dump-journal"
+>>>>>>> upstream/hammer
     ERRORS += test_failure(cmd, "journal-path: BAD_JOURNAL_PATH: (2) No such file or directory")
 
     # On import can't use stdin from a terminal
@@ -1046,11 +1364,59 @@ def main(argv):
     cmd = (CFSD_PREFIX + "'[\"1.3\",{{\"snapid\":\"not an int\"}}]' list-omap").format(osd=ONEOSD, pg=ONEPG)
     ERRORS += test_failure(cmd, "Decode object JSON error: value type is 2 not 4")
 
+<<<<<<< HEAD
+=======
+    cmd = (CFSD_PREFIX + "--op remove").format(osd=ONEOSD)
+    ERRORS += test_failure(cmd, "Must provide pgid")
+
+    # Don't secify a --op nor object command
+    cmd = CFSD_PREFIX.format(osd=ONEOSD)
+    ERRORS += test_failure(cmd, "Must provide --op or object command...")
+
+    # Specify a bad --op command
+    cmd = (CFSD_PREFIX + "--op oops").format(osd=ONEOSD)
+    ERRORS += test_failure(cmd, "Must provide --op (info, log, remove, export, import, list, fix-lost, list-pgs, rm-past-intervals, set-allow-sharded-objects, dump-journal, dump-super, meta-list, get-osdmap, set-osdmap, get-inc-osdmap, set-inc-osdmap, mark-complete)")
+
+    # Provide just the object param not a command
+    cmd = (CFSD_PREFIX + "object").format(osd=ONEOSD)
+    ERRORS += test_failure(cmd, "Invalid syntax, missing command")
+
+    # Provide an object name that doesn't exist
+    cmd = (CFSD_PREFIX + "NON_OBJECT get-bytes").format(osd=ONEOSD)
+    ERRORS += test_failure(cmd, "No object id 'NON_OBJECT' found")
+
+    # Provide an invalid object command
+    cmd = (CFSD_PREFIX + "--pgid {pg} '' notacommand").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "Unknown object command 'notacommand'")
+
+    cmd = (CFSD_PREFIX + "foo list-omap").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "No object id 'foo' found or invalid JSON specified")
+
+    cmd = (CFSD_PREFIX + "'{{\"oid\":\"obj4\",\"key\":\"\",\"snapid\":-1,\"hash\":2826278768,\"max\":0,\"pool\":1,\"namespace\":\"\"}}' list-omap").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "Without --pgid the object '{\"oid\":\"obj4\",\"key\":\"\",\"snapid\":-1,\"hash\":2826278768,\"max\":0,\"pool\":1,\"namespace\":\"\"}' must be a JSON array")
+
+    cmd = (CFSD_PREFIX + "'[]' list-omap").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "Object '[]' must be a JSON array with 2 elements")
+
+    cmd = (CFSD_PREFIX + "'[\"1.0\"]' list-omap").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "Object '[\"1.0\"]' must be a JSON array with 2 elements")
+
+    cmd = (CFSD_PREFIX + "'[\"1.0\", 5, 8, 9]' list-omap").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "Object '[\"1.0\", 5, 8, 9]' must be a JSON array with 2 elements")
+
+    cmd = (CFSD_PREFIX + "'[1, 2]' list-omap").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "Object '[1, 2]' must be a JSON array with the first element a string")
+
+    cmd = (CFSD_PREFIX + "'[\"1.3\",{{\"snapid\":\"not an int\"}}]' list-omap").format(osd=ONEOSD, pg=ONEPG)
+    ERRORS += test_failure(cmd, "Decode object JSON error: value type is 2 not 4")
+
+>>>>>>> upstream/hammer
     TMPFILE = r"/tmp/tmp.{pid}".format(pid=pid)
     ALLPGS = OBJREPPGS + OBJECPGS
     OSDS = get_osds(ALLPGS[0], OSDDIR)
     osd = OSDS[0]
 
+<<<<<<< HEAD
     print("Test all --op dump-journal")
     ALLOSDS = [f for f in os.listdir(OSDDIR) if os.path.isdir(os.path.join(OSDDIR, f)) and f.find("osd") == 0]
     ERRORS += test_dump_journal(CFSD_PREFIX, ALLOSDS)
@@ -1060,6 +1426,17 @@ def main(argv):
 
     # retrieve all objects from all PGs
     tmpfd = open(TMPFILE, "wb")
+=======
+    print "Test all --op dump-journal"
+    ALLOSDS = [f for f in os.listdir(OSDDIR) if os.path.isdir(os.path.join(OSDDIR, f)) and string.find(f, "osd") == 0]
+    ERRORS += test_dump_journal(CFSD_PREFIX, ALLOSDS)
+
+    # Test --op list and generate json for all objects
+    print "Test --op list variants"
+
+    # retrieve all objects from all PGs
+    tmpfd = open(TMPFILE, "w")
+>>>>>>> upstream/hammer
     cmd = (CFSD_PREFIX + "--op list --format json").format(osd=osd)
     logging.debug(cmd)
     ret = call(cmd, shell=True, stdout=tmpfd)
@@ -1072,7 +1449,11 @@ def main(argv):
     (pgid, coll, jsondict) = json.loads(JSONOBJ[0])[0]
 
     # retrieve all objects in a given PG
+<<<<<<< HEAD
     tmpfd = open(OTHERFILE, "ab")
+=======
+    tmpfd = open(OTHERFILE, "a")
+>>>>>>> upstream/hammer
     cmd = (CFSD_PREFIX + "--op list --pgid {pg} --format json").format(osd=osd, pg=pgid)
     logging.debug(cmd)
     ret = call(cmd, shell=True, stdout=tmpfd)
@@ -1090,7 +1471,11 @@ def main(argv):
         ERRORS += 1
 
     # retrieve all objects with a given name in a given PG
+<<<<<<< HEAD
     tmpfd = open(OTHERFILE, "wb")
+=======
+    tmpfd = open(OTHERFILE, "w")
+>>>>>>> upstream/hammer
     cmd = (CFSD_PREFIX + "--op list --pgid {pg} {object} --format json").format(osd=osd, pg=pgid, object=jsondict['oid'])
     logging.debug(cmd)
     ret = call(cmd, shell=True, stdout=tmpfd)
@@ -1111,7 +1496,11 @@ def main(argv):
     for pg in ALLPGS:
         OSDS = get_osds(pg, OSDDIR)
         for osd in OSDS:
+<<<<<<< HEAD
             tmpfd = open(TMPFILE, "ab")
+=======
+            tmpfd = open(TMPFILE, "a")
+>>>>>>> upstream/hammer
             cmd = (CFSD_PREFIX + "--op list --pgid {pg}").format(osd=osd, pg=pg)
             logging.debug(cmd)
             ret = call(cmd, shell=True, stdout=tmpfd)
@@ -1257,7 +1646,11 @@ def main(argv):
         pass
 
     # Test get-attr, set-attr, rm-attr, get-omaphdr, set-omaphdr, get-omap, set-omap, rm-omap
+<<<<<<< HEAD
     print("Test get-attr, set-attr, rm-attr, get-omaphdr, set-omaphdr, get-omap, set-omap, rm-omap")
+=======
+    print "Test get-attr, set-attr, rm-attr, get-omaphdr, set-omaphdr, get-omap, set-omap, rm-omap"
+>>>>>>> upstream/hammer
     for nspace in db.keys():
         for basename in db[nspace].keys():
             file = os.path.join(DATADIR, nspace + "-" + basename + "__head")
@@ -1270,7 +1663,11 @@ def main(argv):
                               and f.split("_")[0] == basename and f.split("_")[4] == nspace]
                     if not fnames:
                         continue
+<<<<<<< HEAD
                     for key, val in db[nspace][basename]["xattr"].items():
+=======
+                    for key, val in db[nspace][basename]["xattr"].iteritems():
+>>>>>>> upstream/hammer
                         attrkey = "_" + key
                         cmd = (CFSD_PREFIX + " '{json}' get-attr {key}").format(osd=osd, json=JSON, key=attrkey)
                         logging.debug(cmd)
@@ -1383,7 +1780,11 @@ def main(argv):
                         ERRORS += 1
                         continue
 
+<<<<<<< HEAD
                     for omapkey, val in db[nspace][basename]["omap"].items():
+=======
+                    for omapkey, val in db[nspace][basename]["omap"].iteritems():
+>>>>>>> upstream/hammer
                         cmd = (CFSD_PREFIX + " '{json}' get-omap {key}").format(osd=osd, json=JSON, key=omapkey)
                         logging.debug(cmd)
                         getval = check_output(cmd, shell=True)
@@ -1449,7 +1850,11 @@ def main(argv):
                             continue
 
     # Test dump
+<<<<<<< HEAD
     print("Test dump")
+=======
+    print "Test dump"
+>>>>>>> upstream/hammer
     for nspace in db.keys():
         for basename in db[nspace].keys():
             file = os.path.join(DATADIR, nspace + "-" + basename + "__head")
@@ -1463,8 +1868,11 @@ def main(argv):
                               and f.split("_")[0] == basename and f.split("_")[4] == nspace]
                     if not fnames:
                         continue
+<<<<<<< HEAD
                     if int(basename.split(REP_NAME)[1]) > int(NUM_CLONED_REP_OBJECTS):
                         continue
+=======
+>>>>>>> upstream/hammer
                     cmd = (CFSD_PREFIX + " '{json}' dump | grep '\"snap\": 1,' > /dev/null").format(osd=osd, json=JSON)
                     logging.debug(cmd)
                     ret = call(cmd, shell=True)
@@ -1472,7 +1880,11 @@ def main(argv):
                         logging.error("Invalid dump for {json}".format(json=JSON))
                         ERRORS += 1
 
+<<<<<<< HEAD
     print("Test list-attrs get-attr")
+=======
+    print "Test list-attrs get-attr"
+>>>>>>> upstream/hammer
     ATTRFILE = r"/tmp/attrs.{pid}".format(pid=pid)
     VALFILE = r"/tmp/val.{pid}".format(pid=pid)
     for nspace in db.keys():
@@ -1590,6 +2002,42 @@ def main(argv):
             logging.error("Bad exit status {ret}".format(ret=ret))
             ERRORS += 1
 
+<<<<<<< HEAD
+=======
+    print "Test --op meta-list"
+    tmpfd = open(TMPFILE, "w")
+    cmd = (CFSD_PREFIX + "--op meta-list").format(osd=ONEOSD)
+    logging.debug(cmd)
+    ret = call(cmd, shell=True, stdout=tmpfd)
+    if ret != 0:
+        logging.error("Bad exit status {ret} from --op meta-list request".format(ret=ret))
+        ERRORS += 1
+
+    print "Test get-bytes on meta"
+    tmpfd.close()
+    lines = get_lines(TMPFILE)
+    JSONOBJ = sorted(set(lines))
+    for JSON in JSONOBJ:
+        (pgid, jsondict) = json.loads(JSON)
+        if pgid != "meta":
+            logging.error("pgid incorrect for --op meta-list {pgid}".format(pgid=pgid))
+            ERRORS += 1
+        if jsondict['namespace'] != "":
+            logging.error("namespace non null --op meta-list {ns}".format(ns=jsondict['namespace']))
+            ERRORS += 1
+        logging.info(JSON)
+        try:
+            os.unlink(GETNAME)
+        except:
+            pass
+        cmd = (CFSD_PREFIX + "'{json}' get-bytes {fname}").format(osd=ONEOSD, json=JSON, fname=GETNAME)
+        logging.debug(cmd)
+        ret = call(cmd, shell=True)
+        if ret != 0:
+            logging.error("Bad exit status {ret}".format(ret=ret))
+            ERRORS += 1
+
+>>>>>>> upstream/hammer
     try:
         os.unlink(GETNAME)
     except:
@@ -1599,7 +2047,11 @@ def main(argv):
     except:
         pass
 
+<<<<<<< HEAD
     print("Test pg info")
+=======
+    print "Test pg info"
+>>>>>>> upstream/hammer
     for pg in ALLREPPGS + ALLECPGS:
         for osd in get_osds(pg, OSDDIR):
             cmd = (CFSD_PREFIX + "--op info --pgid {pg} | grep '\"pgid\": \"{pg}\"'").format(osd=osd, pg=pg)
@@ -1758,24 +2210,40 @@ def main(argv):
     logging.debug(cmd)
 
     if EXP_ERRORS == 0 and RM_ERRORS == 0 and IMP_ERRORS == 0:
+<<<<<<< HEAD
         print("Verify replicated import data")
+=======
+        print "Verify replicated import data"
+>>>>>>> upstream/hammer
         data_errors, _ = check_data(DATADIR, TMPFILE, OSDDIR, REP_NAME)
         ERRORS += data_errors
     else:
         logging.warning("SKIPPING CHECKING IMPORT DATA DUE TO PREVIOUS FAILURES")
 
+<<<<<<< HEAD
     print("Test all --op dump-journal again")
     ALLOSDS = [f for f in os.listdir(OSDDIR) if os.path.isdir(os.path.join(OSDDIR, f)) and f.find("osd") == 0]
+=======
+    print "Test all --op dump-journal again"
+    ALLOSDS = [f for f in os.listdir(OSDDIR) if os.path.isdir(os.path.join(OSDDIR, f)) and string.find(f, "osd") == 0]
+>>>>>>> upstream/hammer
     ERRORS += test_dump_journal(CFSD_PREFIX, ALLOSDS)
 
     vstart(new=False)
     wait_for_health()
 
     if EXP_ERRORS == 0 and RM_ERRORS == 0 and IMP_ERRORS == 0:
+<<<<<<< HEAD
         print("Verify erasure coded import data")
         ERRORS += verify(DATADIR, EC_POOL, EC_NAME, db)
         # Check replicated data/xattr/omap using rados
         print("Verify replicated import data using rados")
+=======
+        print "Verify erasure coded import data"
+        ERRORS += verify(DATADIR, EC_POOL, EC_NAME, db)
+        # Check replicated data/xattr/omap using rados
+        print "Verify replicated import data using rados"
+>>>>>>> upstream/hammer
         ERRORS += verify(DATADIR, REP_POOL, REP_NAME, db)
 
     if EXP_ERRORS == 0:
@@ -1832,17 +2300,29 @@ def main(argv):
     os.mkdir(DATADIR)
 
     # Cause SPLIT_POOL to split and test import with object/log filtering
+<<<<<<< HEAD
     print("Testing import all objects after a split")
+=======
+    print "Testing import all objects after a split"
+>>>>>>> upstream/hammer
     SPLIT_POOL = "split_pool"
     PG_COUNT = 1
     SPLIT_OBJ_COUNT = 5
     SPLIT_NSPACE_COUNT = 2
     SPLIT_NAME = "split"
+<<<<<<< HEAD
     cmd = "{path}/ceph osd pool create {pool} {pg} {pg} replicated".format(pool=SPLIT_POOL, pg=PG_COUNT, path=CEPH_BIN)
     logging.debug(cmd)
     call(cmd, shell=True, stdout=nullfd, stderr=nullfd)
     SPLITID = get_pool_id(SPLIT_POOL, nullfd)
     pool_size = int(check_output("{path}/ceph osd pool get {pool} size".format(pool=SPLIT_POOL, path=CEPH_BIN), shell=True, stderr=nullfd).split(" ")[1])
+=======
+    cmd = "./ceph osd pool create {pool} {pg} {pg} replicated".format(pool=SPLIT_POOL, pg=PG_COUNT)
+    logging.debug(cmd)
+    call(cmd, shell=True, stdout=nullfd, stderr=nullfd)
+    SPLITID = get_pool_id(SPLIT_POOL, nullfd)
+    pool_size = int(check_output("./ceph osd pool get {pool} size".format(pool=SPLIT_POOL), shell=True, stderr=nullfd).split(" ")[1])
+>>>>>>> upstream/hammer
     EXP_ERRORS = 0
     RM_ERRORS = 0
     IMP_ERRORS = 0
@@ -1872,7 +2352,11 @@ def main(argv):
                 fd.write(data)
             fd.close()
 
+<<<<<<< HEAD
             cmd = "{path}/rados -p {pool} -N '{nspace}' put {name} {ddname}".format(pool=SPLIT_POOL, name=NAME, ddname=DDNAME, nspace=nspace, path=CEPH_BIN)
+=======
+            cmd = "./rados -p {pool} -N '{nspace}' put {name} {ddname}".format(pool=SPLIT_POOL, name=NAME, ddname=DDNAME, nspace=nspace)
+>>>>>>> upstream/hammer
             logging.debug(cmd)
             ret = call(cmd, shell=True, stderr=nullfd)
             if ret != 0:
@@ -1882,7 +2366,11 @@ def main(argv):
     wait_for_health()
     kill_daemons()
 
+<<<<<<< HEAD
     for osd in [f for f in os.listdir(OSDDIR) if os.path.isdir(os.path.join(OSDDIR, f)) and f.find("osd") == 0]:
+=======
+    for osd in [f for f in os.listdir(OSDDIR) if os.path.isdir(os.path.join(OSDDIR, f)) and string.find(f, "osd") == 0]:
+>>>>>>> upstream/hammer
         os.mkdir(os.path.join(TESTDIR, osd))
 
     pg = "{pool}.0".format(pool=SPLITID)
@@ -1905,12 +2393,23 @@ def main(argv):
         vstart(new=False)
         wait_for_health()
 
+<<<<<<< HEAD
         cmd = "{path}/ceph osd pool set {pool} pg_num 2".format(pool=SPLIT_POOL, path=CEPH_BIN)
+=======
+        time.sleep(20)
+
+        cmd = "./ceph osd pool set {pool} pg_num 2".format(pool=SPLIT_POOL)
+>>>>>>> upstream/hammer
         logging.debug(cmd)
         ret = call(cmd, shell=True, stdout=nullfd, stderr=nullfd)
         time.sleep(5)
         wait_for_health()
 
+<<<<<<< HEAD
+=======
+        time.sleep(15)
+
+>>>>>>> upstream/hammer
         kill_daemons()
 
         # Now 2 PGs, poolid.0 and poolid.1
@@ -1940,7 +2439,11 @@ def main(argv):
 
         # Start up again to make sure imports didn't corrupt anything
         if IMP_ERRORS == 0:
+<<<<<<< HEAD
             print("Verify split import data")
+=======
+            print "Verify split import data"
+>>>>>>> upstream/hammer
             data_errors, count = check_data(DATADIR, TMPFILE, OSDDIR, SPLIT_NAME)
             ERRORS += data_errors
             if count != (SPLIT_OBJ_COUNT * SPLIT_NSPACE_COUNT * pool_size):
@@ -1952,10 +2455,15 @@ def main(argv):
     call("/bin/rm -rf {dir}".format(dir=TESTDIR), shell=True)
     call("/bin/rm -rf {dir}".format(dir=DATADIR), shell=True)
 
+<<<<<<< HEAD
     ERRORS += test_removeall(CFSD_PREFIX, db, OBJREPPGS, REP_POOL, CEPH_BIN, OSDDIR, REP_NAME, NUM_CLONED_REP_OBJECTS)
 
     # vstart() starts 4 OSDs
     ERRORS += test_get_set_osdmap(CFSD_PREFIX, list(range(4)), ALLOSDS)
+=======
+    # vstart() starts 4 OSDs
+    ERRORS += test_get_set_osdmap(CFSD_PREFIX, range(4), ALLOSDS)
+>>>>>>> upstream/hammer
     ERRORS += test_get_set_inc_osdmap(CFSD_PREFIX, ALLOSDS[0])
     if ERRORS == 0:
         print("TEST PASSED")
@@ -1988,6 +2496,9 @@ if __name__ == "__main__":
         status = main(sys.argv[1:])
     finally:
         kill_daemons()
+<<<<<<< HEAD
         remove_btrfs_subvolumes(CEPH_DIR)
+=======
+>>>>>>> upstream/hammer
         call("/bin/rm -fr {dir}".format(dir=CEPH_DIR), shell=True)
     sys.exit(status)

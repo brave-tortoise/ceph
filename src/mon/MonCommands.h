@@ -139,21 +139,38 @@ COMMAND("pg dump_stuck " \
 	"pg", "r", "cli,rest")
 COMMAND("pg ls-by-pool " \
         "name=poolstr,type=CephString " \
+<<<<<<< HEAD
 	"name=states,type=CephChoices,strings=active|clean|down|replay|scrubbing|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
 	"list pg with pool = [poolname]", "pg", "r", "cli,rest")
 COMMAND("pg ls-by-primary " \
         "name=osd,type=CephOsdName " \
         "name=pool,type=CephInt,req=false " \
 	"name=states,type=CephChoices,strings=active|clean|down|replay|scrubbing|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
+=======
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+	"list pg with pool = [poolname | poolid]", "pg", "r", "cli,rest")
+COMMAND("pg ls-by-primary " \
+        "name=osd,type=CephOsdName " \
+        "name=pool,type=CephInt,req=false " \
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+>>>>>>> upstream/hammer
 	"list pg with primary = [osd]", "pg", "r", "cli,rest")
 COMMAND("pg ls-by-osd " \
         "name=osd,type=CephOsdName " \
         "name=pool,type=CephInt,req=false " \
+<<<<<<< HEAD
 	"name=states,type=CephChoices,strings=active|clean|down|replay|scrubbing|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
 	"list pg on osd [osd]", "pg", "r", "cli,rest")
 COMMAND("pg ls " \
         "name=pool,type=CephInt,req=false " \
 	"name=states,type=CephChoices,strings=active|clean|down|replay|scrubbing|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
+=======
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+	"list pg on osd [osd]", "pg", "r", "cli,rest")
+COMMAND("pg ls " \
+        "name=pool,type=CephInt,req=false " \
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+>>>>>>> upstream/hammer
 	"list pg with specific pool, osd, state", "pg", "r", "cli,rest")
 COMMAND("pg map name=pgid,type=CephPgid", "show mapping of pg to osds", \
 	"pg", "r", "cli,rest")
@@ -742,7 +759,11 @@ COMMAND("osd pool get " \
 	"get pool parameter <var>", "osd", "r", "cli,rest")
 COMMAND("osd pool set " \
 	"name=pool,type=CephPoolname " \
+<<<<<<< HEAD
 	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_rule|crush_ruleset|hashpspool|nodelete|nopgchange|nosizechange|write_fadvise_dontneed|noscrub|nodeep-scrub|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|use_gmt_hitset|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_dirty_high_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|min_read_recency_for_promote|min_write_recency_for_promote|fast_read|hit_set_grade_decay_rate|hit_set_search_last_n|scrub_min_interval|scrub_max_interval|deep_scrub_interval|recovery_priority|recovery_op_priority|scrub_priority|compression_mode|compression_algorithm|compression_required_ratio|compression_max_blob_size|compression_min_blob_size|csum_type|csum_min_block|csum_max_block|debug_white_box_testing_ec_overwrites " \
+=======
+	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|nodelete|nopgchange|nosizechange|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|use_gmt_hitset|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|min_read_recency_for_promote|write_fadvise_dontneed " \
+>>>>>>> upstream/hammer
 	"name=val,type=CephString " \
 	"name=force,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
 	"set pool parameter <var> to <val>", "osd", "rw", "cli,rest")
@@ -793,6 +814,12 @@ COMMAND("osd test-reweight-by-pg " \
 	"name=pools,type=CephPoolname,n=N,req=false",			\
 	"dry run of reweight OSDs by PG distribution [overload-percentage-for-consideration, default 120]", \
 	"osd", "rw", "cli,rest")
+<<<<<<< HEAD
+=======
+COMMAND("osd thrash " \
+	"name=num_epochs,type=CephInt,range=0", \
+	"thrash OSDs for <num_epochs>", "osd", "rw", "cli,rest")
+>>>>>>> upstream/hammer
 COMMAND("osd df " \
 	"name=output_method,type=CephChoices,strings=plain|tree,req=false", \
 	"show OSD utilization", "osd", "r", "cli,rest")

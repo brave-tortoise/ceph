@@ -749,7 +749,17 @@ void ReplicatedBackend::be_deep_scrub(
 
   uint32_t fadvise_flags = CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL | CEPH_OSD_OP_FLAG_FADVISE_DONTNEED;
 
+<<<<<<< HEAD
   while (true) {
+=======
+  while ( (r = store->read(
+	     coll,
+	     ghobject_t(
+	       poid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard),
+	     pos,
+	     cct->_conf->osd_deep_scrub_stride, bl,
+	     fadvise_flags, true)) > 0) {
+>>>>>>> upstream/hammer
     handle.reset_tp_timeout();
     r = store->read(
 	  ch,
@@ -1160,7 +1170,12 @@ void ReplicatedBackend::sub_op_modify(OpRequestRef op)
     update_snaps,
     rm->localt);
 
+<<<<<<< HEAD
   rm->opt.register_on_commit(
+=======
+  rm->localt.append(rm->opt);
+  rm->localt.register_on_commit(
+>>>>>>> upstream/hammer
     parent->bless_context(
       new C_OSD_RepModifyCommit(this, rm)));
   rm->localt.register_on_applied(
@@ -1826,6 +1841,7 @@ bool ReplicatedBackend::handle_pull_response(
 
   bool first = pi.recovery_progress.first;
   if (first) {
+<<<<<<< HEAD
     // attrs only reference the origin bufferlist (decode from
     // MOSDPGPush message) whose size is much greater than attrs in
     // recovery. If obc cache it (get_obc maybe cache the attr), this
@@ -1837,6 +1853,18 @@ bool ReplicatedBackend::handle_pull_response(
       a.second.rebuild();
     }
     pi.obc = get_parent()->get_obc(pi.recovery_info.soid, attrset);
+=======
+    // attrs only reference the origin bufferlist (decode from MOSDPGPush message)
+    // whose size is much greater than attrs in recovery. If obc cache it (get_obc maybe
+    // cache the attr), this causes the whole origin bufferlist would not be free until
+    // obc is evicted from obc cache. So rebuild the bufferlist before cache it.
+    for (map<string, bufferlist>::iterator it = pop.attrset.begin();
+         it != pop.attrset.end();
+         ++it) {
+      it->second.rebuild();
+    }
+    pi.obc = get_parent()->get_obc(pi.recovery_info.soid, pop.attrset);
+>>>>>>> upstream/hammer
     pi.recovery_info.oi = pi.obc->obs.oi;
     pi.recovery_info = recalc_subsets(
       pi.recovery_info,

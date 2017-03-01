@@ -599,6 +599,7 @@ class ObjectCacher {
    */
   int readx(OSDRead *rd, ObjectSet *oset, Context *onfinish);
   int writex(OSDWrite *wr, ObjectSet *oset, Context *onfreespace);
+<<<<<<< HEAD
   bool is_cached(ObjectSet *oset, vector<ObjectExtent>& extents,
 		 snapid_t snapid);
 
@@ -606,6 +607,13 @@ private:
   // write blocking
   int _wait_for_write(OSDWrite *wr, uint64_t len, ObjectSet *oset,
 		      Context *onfreespace);
+=======
+  bool is_cached(ObjectSet *oset, vector<ObjectExtent>& extents, snapid_t snapid);
+
+private:
+  // write blocking
+  int _wait_for_write(OSDWrite *wr, uint64_t len, ObjectSet *oset, Context *onfreespace);
+>>>>>>> upstream/hammer
   void maybe_wait_for_writeback(uint64_t len);
   bool _flush_set_finish(C_GatherBuilder *gather, Context *onfinish);
 
@@ -615,9 +623,14 @@ public:
   bool set_is_dirty_or_committing(ObjectSet *oset);
 
   bool flush_set(ObjectSet *oset, Context *onfinish=0);
+<<<<<<< HEAD
   bool flush_set(ObjectSet *oset, vector<ObjectExtent>& ex,
 		 Context *onfinish = 0);
   bool flush_all(Context *onfinish = 0);
+=======
+  bool flush_set(ObjectSet *oset, vector<ObjectExtent>& ex, Context *onfinish=0);
+  bool flush_all(Context *onfinish=0);
+>>>>>>> upstream/hammer
 
   void purge_set(ObjectSet *oset);
 
@@ -674,12 +687,20 @@ public:
     return readx(rd, oset, onfinish);
   }
 
+<<<<<<< HEAD
   int file_write(ObjectSet *oset, file_layout_t *layout,
 		 const SnapContext& snapc, loff_t offset, uint64_t len,
 		 bufferlist& bl, ceph::real_time mtime, int flags) {
     OSDWrite *wr = prepare_write(snapc, bl, mtime, flags, 0);
     Striper::file_to_extents(cct, oset->ino, layout, offset, len,
 			     oset->truncate_size, wr->extents);
+=======
+  int file_write(ObjectSet *oset, ceph_file_layout *layout, const SnapContext& snapc,
+                 loff_t offset, uint64_t len, 
+                 bufferlist& bl, utime_t mtime, int flags) {
+    OSDWrite *wr = prepare_write(snapc, bl, mtime, flags);
+    Striper::file_to_extents(cct, oset->ino, layout, offset, len, oset->truncate_size, wr->extents);
+>>>>>>> upstream/hammer
     return writex(wr, oset, NULL);
   }
 

@@ -175,7 +175,11 @@ bool Inode::cap_is_valid(Cap* cap) const
     << "cap expire  " << cap->session->cap_ttl << std::endl
     << "cur time    " << ceph_clock_now(cct) << std::endl;*/
   if ((cap->session->cap_gen <= cap->gen)
+<<<<<<< HEAD
       && (ceph_clock_now() < cap->session->cap_ttl)) {
+=======
+      && (ceph_clock_now(client->cct) < cap->session->cap_ttl)) {
+>>>>>>> upstream/hammer
     return true;
   }
   return false;
@@ -341,6 +345,21 @@ bool Inode::check_mode(const UserPerm& perms, unsigned want)
   }
 
   return (mode & want) == want;
+}
+
+void Inode::get() {
+  _ref++;
+  lsubdout(client->cct, client, 15) << "inode.get on " << this << " " <<  ino << '.' << snapid
+				    << " now " << _ref << dendl;
+}
+
+//private method to put a reference; see Client::put_inode()
+int Inode::_put(int n) {
+  _ref -= n;
+  lsubdout(client->cct, client, 15) << "inode.put on " << this << " " << ino << '.' << snapid
+				    << " now " << _ref << dendl;
+  assert(_ref >= 0);
+  return _ref;
 }
 
 void Inode::get() {

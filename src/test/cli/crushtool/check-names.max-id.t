@@ -5,4 +5,7 @@
   $ crushtool -i check-names.crushmap --check 2
   item id too large: item#2
   [1]
+<<<<<<< HEAD
   $ crushtool -i check-names.crushmap --check
+=======
+>>>>>>> upstream/hammer

@@ -38,7 +38,40 @@ class FileSystemCommandHandler;
 
 class MDSMonitor : public PaxosService {
  public:
+<<<<<<< HEAD
   MDSMonitor(Monitor *mn, Paxos *p, string service_name);
+=======
+  // mds maps
+  MDSMap mdsmap;          // current
+  bufferlist mdsmap_bl;   // encoded
+
+  MDSMap pending_mdsmap;  // current + pending updates
+
+  // my helpers
+  void print_map(MDSMap &m, int dbl=7);
+
+  class C_Updated : public Context {
+    MDSMonitor *mm;
+    MMDSBeacon *m;
+  public:
+    C_Updated(MDSMonitor *a, MMDSBeacon *c) :
+      mm(a), m(c) {}
+    void finish(int r) {
+      if (r >= 0)
+	mm->_updated(m);   // success
+      else if (r == -ECANCELED) {
+	mm->mon->no_reply(m);
+	m->put();
+      } else {
+	mm->dispatch((PaxosServiceMessage*)m);        // try again
+      }
+    }
+  };
+
+  void create_new_fs(MDSMap &m, const std::string &name, int metadata_pool, int data_pool);
+
+  version_t get_trim_to();
+>>>>>>> upstream/hammer
 
   // service methods
   void create_initial();

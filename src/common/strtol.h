@@ -34,6 +34,7 @@ uint64_t strict_sistrtoll(const char *str, std::string *err);
 template<typename T>
 T strict_si_cast(const char *str, std::string *err);
 
+<<<<<<< HEAD
 /* On enter buf points to the end of the buffer, e.g. where the least
  * significant digit of the input number will be printed. Returns pointer to
  * where the most significant digit were printed, including zero padding.
@@ -56,4 +57,6 @@ char* ritoa(T u, char *buf)
   return buf;
 }
 
+=======
+>>>>>>> upstream/hammer
 #endif

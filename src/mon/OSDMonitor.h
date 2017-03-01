@@ -227,6 +227,7 @@ private:
   // ...
   MOSDMap *build_latest_full();
   MOSDMap *build_incremental(epoch_t first, epoch_t last);
+<<<<<<< HEAD
   void send_full(MonOpRequestRef op);
   void send_incremental(MonOpRequestRef op, epoch_t first);
 public:
@@ -236,6 +237,12 @@ public:
 			MonOpRequestRef req = MonOpRequestRef());
 
 private:
+=======
+  void send_full(PaxosServiceMessage *m);
+  void send_incremental(PaxosServiceMessage *m, epoch_t first);
+  void send_incremental(epoch_t first, MonSession *session, bool onetime);
+
+>>>>>>> upstream/hammer
   int reweight_by_utilization(int oload,
 			      double max_change,
 			      int max_osds,
@@ -266,9 +273,15 @@ private:
   void _booted(MonOpRequestRef op, bool logit);
 
   void update_up_thru(int from, epoch_t up_thru);
+<<<<<<< HEAD
   bool preprocess_alive(MonOpRequestRef op);
   bool prepare_alive(MonOpRequestRef op);
   void _reply_map(MonOpRequestRef op, epoch_t e);
+=======
+  bool preprocess_alive(class MOSDAlive *m);
+  bool prepare_alive(class MOSDAlive *m);
+  void _reply_map(PaxosServiceMessage *m, epoch_t e);
+>>>>>>> upstream/hammer
 
   bool preprocess_pgtemp(MonOpRequestRef op);
   bool prepare_pgtemp(MonOpRequestRef op);
@@ -412,7 +425,11 @@ private:
   int load_metadata(int osd, map<string, string>& m, ostream *err);
 
  public:
+<<<<<<< HEAD
   OSDMonitor(CephContext *cct, Monitor *mn, Paxos *p, const string& service_name);
+=======
+  OSDMonitor(Monitor *mn, Paxos *p, string service_name);
+>>>>>>> upstream/hammer
 
   void tick();  // check state, take actions
 
@@ -437,8 +454,13 @@ private:
     send_incremental(op, start);
   }
 
+<<<<<<< HEAD
   int get_version(version_t ver, bufferlist& bl) override;
   int get_version_full(version_t ver, bufferlist& bl) override;
+=======
+  int get_version(version_t ver, bufferlist& bl);
+  int get_version_full(version_t ver, bufferlist& bl);
+>>>>>>> upstream/hammer
 
   epoch_t blacklist(const entity_addr_t& a, utime_t until);
 

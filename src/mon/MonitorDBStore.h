@@ -579,6 +579,7 @@ class MonitorDBStore
     }
     int r = db->submit_transaction_sync(dbt);
     assert(r >= 0);
+<<<<<<< HEAD
   }
 
   void _open(string kv_type) {
@@ -624,6 +625,8 @@ class MonitorDBStore
       db->init(g_conf->mon_rocksdb_options);
     else
       db->init();
+=======
+>>>>>>> upstream/hammer
   }
 
   int open(ostream &out) {

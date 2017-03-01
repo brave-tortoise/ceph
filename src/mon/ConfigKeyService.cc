@@ -43,7 +43,11 @@ void ConfigKeyService::get_store_prefixes(set<string>& s)
   s.insert(STORE_PREFIX);
 }
 
+<<<<<<< HEAD
 void ConfigKeyService::store_put(const string &key, bufferlist &bl, Context *cb)
+=======
+void ConfigKeyService::store_put(string key, bufferlist &bl, Context *cb)
+>>>>>>> upstream/hammer
 {
   MonitorDBStore::TransactionRef t = paxos->get_pending_transaction();
   t->put(STORE_PREFIX, key, bl);

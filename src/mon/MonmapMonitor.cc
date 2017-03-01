@@ -507,6 +507,7 @@ bool MonmapMonitor::prepare_command(MonOpRequestRef op)
 
     entity_addr_t addr = pending_map.get_addr(name);
     pending_map.remove(name);
+<<<<<<< HEAD
     pending_map.last_changed = ceph_clock_now();
     ss << "removing mon." << name << " at " << addr
        << ", there will be " << pending_map.size() << " monitors" ;
@@ -514,6 +515,17 @@ bool MonmapMonitor::prepare_command(MonOpRequestRef op)
     err = 0;
 
   } else {
+=======
+    pending_map.last_changed = ceph_clock_now(g_ceph_context);
+    ss << "removed mon." << name << " at " << addr << ", there are now " << pending_map.size() << " monitors" ;
+    err = 0;
+    getline(ss, rs);
+    // send reply immediately in case we get removed
+    mon->reply_command(m, 0, rs, get_last_committed());
+    return true;
+  }
+  else
+>>>>>>> upstream/hammer
     ss << "unknown command " << prefix;
     err = -EINVAL;
   }
@@ -626,6 +638,35 @@ void MonmapMonitor::check_subs()
 void MonmapMonitor::check_sub(Subscription *sub)
 {
   const auto epoch = mon->monmap->get_epoch();
+  dout(10) << __func__
+	   << " monmap next " << sub->next
+	   << " have " << epoch << dendl;
+  if (sub->next <= epoch) {
+    mon->send_latest_monmap(sub->session->con.get());
+    if (sub->onetime)
+      mon->session_map.remove_sub(sub);
+    else
+      sub->next = epoch + 1;
+  }
+}
+
+void MonmapMonitor::check_subs()
+{
+  dout(10) << __func__ << dendl;
+  const string type = "monmap";
+  if (mon->session_map.subs.count(type) == 0)
+    return;
+  xlist<Subscription*>::iterator p = mon->session_map.subs[type]->begin();
+  while (!p.end()) {
+    Subscription *sub = *p;
+    ++p;
+    check_sub(sub);
+  }
+}
+
+void MonmapMonitor::check_sub(Subscription *sub)
+{
+  const epoch_t epoch = mon->monmap->get_epoch();
   dout(10) << __func__
 	   << " monmap next " << sub->next
 	   << " have " << epoch << dendl;

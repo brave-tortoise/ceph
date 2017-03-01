@@ -49,21 +49,35 @@ namespace {
 
 class LockdepObs : public md_config_obs_t {
 public:
+<<<<<<< HEAD
   explicit LockdepObs(CephContext *cct) : m_cct(cct), m_registered(false) {
   }
   ~LockdepObs() {
+=======
+  LockdepObs(CephContext *cct) : m_cct(cct), m_registered(false) {
+  }
+  virtual ~LockdepObs() {
+>>>>>>> upstream/hammer
     if (m_registered) {
       lockdep_unregister_ceph_context(m_cct);
     }
   }
 
+<<<<<<< HEAD
   const char** get_tracked_conf_keys() const override {
+=======
+  const char** get_tracked_conf_keys() const {
+>>>>>>> upstream/hammer
     static const char *KEYS[] = {"lockdep", NULL};
     return KEYS;
   }
 
   void handle_conf_change(const md_config_t *conf,
+<<<<<<< HEAD
                           const std::set <std::string> &changed) override {
+=======
+                          const std::set <std::string> &changed) {
+>>>>>>> upstream/hammer
     if (conf->lockdep && !m_registered) {
       lockdep_register_ceph_context(m_cct);
       m_registered = true;
@@ -77,6 +91,7 @@ private:
   bool m_registered;
 };
 
+<<<<<<< HEAD
 class MempoolObs : public md_config_obs_t,
 		  public AdminSocketHook {
   CephContext *cct;
@@ -126,6 +141,8 @@ public:
     return false;
   }
 };
+=======
+>>>>>>> upstream/hammer
 
 } // anonymous namespace
 
@@ -518,11 +535,14 @@ CephContext::CephContext(uint32_t module_type_, int init_flags_)
     _conf(new md_config_t()),
     _log(NULL),
     _module_type(module_type_),
+<<<<<<< HEAD
     _init_flags(init_flags_),
     _set_uid(0),
     _set_gid(0),
     _set_uid_string(),
     _set_gid_string(),
+=======
+>>>>>>> upstream/hammer
     _crypto_inited(false),
     _service_thread(NULL),
     _log_obs(NULL),
@@ -532,10 +552,14 @@ CephContext::CephContext(uint32_t module_type_, int init_flags_)
     _heartbeat_map(NULL),
     _crypto_none(NULL),
     _crypto_aes(NULL),
+<<<<<<< HEAD
     _plugin_registry(NULL),
     _lockdep_obs(NULL),
     crush_location(this),
     _cct_perf(NULL)
+=======
+    _lockdep_obs(NULL)
+>>>>>>> upstream/hammer
 {
   ceph_spin_init(&_service_thread_lock);
   ceph_spin_init(&_associated_objs_lock);
@@ -584,9 +608,12 @@ CephContext::CephContext(uint32_t module_type_, int init_flags_)
 
   _crypto_none = CryptoHandler::create(CEPH_CRYPTO_NONE);
   _crypto_aes = CryptoHandler::create(CEPH_CRYPTO_AES);
+<<<<<<< HEAD
 
   MempoolObs *mempool_obs = 0;
   lookup_or_create_singleton_object(mempool_obs, "mempool_obs");
+=======
+>>>>>>> upstream/hammer
 }
 
 CephContext::~CephContext()
@@ -597,6 +624,7 @@ CephContext::~CephContext()
        it != _associated_objs.end(); ++it)
     delete it->second;
 
+<<<<<<< HEAD
   if (_cct_perf) {
     _perf_counters_collection->remove(_cct_perf);
     delete _cct_perf;
@@ -605,6 +633,8 @@ CephContext::~CephContext()
 
   delete _plugin_registry;
 
+=======
+>>>>>>> upstream/hammer
   _admin_socket->unregister_command("perfcounters_dump");
   _admin_socket->unregister_command("perf dump");
   _admin_socket->unregister_command("1");
@@ -659,6 +689,7 @@ CephContext::~CephContext()
     ceph::crypto::shutdown();
 }
 
+<<<<<<< HEAD
 void CephContext::put() {
   if (nref.dec() == 0) {
     ANNOTATE_HAPPENS_AFTER(&nref);
@@ -675,6 +706,12 @@ void CephContext::init_crypto()
     ceph::crypto::init(this);
     _crypto_inited = true;
   }
+=======
+void CephContext::init_crypto()
+{
+  ceph::crypto::init(this);
+  _crypto_inited = true;
+>>>>>>> upstream/hammer
 }
 
 void CephContext::start_service_thread()

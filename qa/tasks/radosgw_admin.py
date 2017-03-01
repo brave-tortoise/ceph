@@ -11,7 +11,6 @@ import copy
 import json
 import logging
 import time
-import datetime
 
 from cStringIO import StringIO
 
@@ -90,9 +89,6 @@ def task(ctx, config):
     # the role_endpoints that were assigned by the rgw task
     (remote_host, remote_port) = ctx.rgw.role_endpoints[client]
 
-    realm = ctx.rgw.realm
-    log.debug('radosgw-admin: realm %r', realm)
-    
     ##
     user1='foo'
     user2='fud'
@@ -262,8 +258,6 @@ def task(ctx, config):
             (err2, out2) = rgwadmin(ctx, dest_client,
                 ['metadata', 'get', 'bucket:{bucket_name}'.format(bucket_name=bucket_name2)],
                 check_status=True)
-            log.debug('metadata 1 %r', out1)
-            log.debug('metadata 2 %r', out2)
             assert out1 == out2
 
             # get the bucket.instance info and compare that
@@ -279,10 +273,8 @@ def task(ctx, config):
                 check_status=True)
             del out1['data']['bucket_info']['bucket']['pool']
             del out1['data']['bucket_info']['bucket']['index_pool']
-            del out1['data']['bucket_info']['bucket']['data_extra_pool']
             del out2['data']['bucket_info']['bucket']['pool']
             del out2['data']['bucket_info']['bucket']['index_pool']
-            del out2['data']['bucket_info']['bucket']['data_extra_pool']
             assert out1 == out2
 
         same_region = 0
@@ -396,9 +388,7 @@ def task(ctx, config):
             # manually edit mtime for this bucket to be 300 seconds in the past
             log.debug('manually edit mtime for this bucket to be 300 seconds in the past')
             new_data = copy.deepcopy(orig_data)
-            mtime = datetime.datetime.strptime(orig_data['mtime'], "%Y-%m-%d %H:%M:%S.%fZ") - datetime.timedelta(300)
-            new_data['mtime'] =  unicode(mtime.strftime("%Y-%m-%d %H:%M:%S.%fZ"))
-            log.debug("new mtime ", mtime)
+            new_data['mtime'] =  orig_data['mtime'] - 300
             assert new_data != orig_data
             (err, out) = rgwadmin(ctx, source_client,
                 ['metadata', 'put', 'bucket:{bucket_name}'.format(bucket_name=bucket_name2)],
@@ -791,7 +781,7 @@ def task(ctx, config):
 
     for obj in out:
         # TESTCASE 'log-show','log','show','after activity','returns expected info'
-        if obj[:4] == 'meta' or obj[:4] == 'data' or obj[:18] == 'obj_delete_at_hint':
+        if obj[:4] == 'meta' or obj[:4] == 'data':
             continue
 
         (err, rgwlog) = rgwadmin(ctx, client, ['log', 'show', '--object', obj],
@@ -941,7 +931,7 @@ def task(ctx, config):
 
     (err, out) = rgwadmin(ctx, client,
         ['policy', '--bucket', bucket.name, '--object', key.key],
-        check_status=True, format='xml')
+        check_status=True)
 
     acl = get_acl(key)
 
@@ -952,7 +942,7 @@ def task(ctx, config):
 
     (err, out) = rgwadmin(ctx, client,
         ['policy', '--bucket', bucket.name, '--object', key.key],
-        check_status=True, format='xml')
+        check_status=True)
 
     acl = get_acl(key)
 
@@ -1003,10 +993,7 @@ def task(ctx, config):
     # TESTCASE 'zone-info', 'zone', 'get', 'get zone info', 'succeeds, has default placement rule'
     #
 
-    if realm is None:
-        (err, out) = rgwadmin(ctx, client, ['zone', 'get','--rgw-zone','default'])
-    else:
-        (err, out) = rgwadmin(ctx, client, ['zone', 'get'])
+    (err, out) = rgwadmin(ctx, client, ['zone', 'get'])
     orig_placement_pools = len(out['placement_pools'])
 
     # removed this test, it is not correct to assume that zone has default placement, it really
@@ -1026,9 +1013,6 @@ def task(ctx, config):
         stdin=StringIO(json.dumps(out)),
         check_status=True)
 
-    if realm is None:
-        (err, out) = rgwadmin(ctx, client, ['zone', 'get','--rgw-zone','default'])
-    else:
-        (err, out) = rgwadmin(ctx, client, ['zone', 'get'])
+    (err, out) = rgwadmin(ctx, client, ['zone', 'get'])
     assert len(out) > 0
     assert len(out['placement_pools']) == orig_placement_pools + 1

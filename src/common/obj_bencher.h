@@ -76,9 +76,15 @@ protected:
   int fetch_bench_metadata(const std::string& metadata_file, uint64_t* op_size,
 			   uint64_t* object_size, int* num_objects, int* prevPid);
 
+<<<<<<< HEAD
   int write_bench(int secondsToRun, int concurrentios, const string& run_name_meta, unsigned max_objects);
   int seq_read_bench(int secondsToRun, int num_objects, int concurrentios, int writePid, bool no_verify=false);
   int rand_read_bench(int secondsToRun, int num_objects, int concurrentios, int writePid, bool no_verify=false);
+=======
+  int write_bench(int secondsToRun, int maxObjects, int concurrentios, const string& run_name_meta);
+  int seq_read_bench(int secondsToRun, int num_objects, int concurrentios, int writePid, bool no_verify);
+  int rand_read_bench(int secondsToRun, int num_objects, int concurrentios, int writePid, bool no_verify);
+>>>>>>> upstream/hammer
 
   int clean_up(int num_objects, int prevPid, int concurrentios);
   bool more_objects_matching_prefix(const std::string& prefix, std::list<Object>* name);
@@ -109,10 +115,16 @@ public:
   explicit ObjBencher(CephContext *cct_) : show_time(false), cct(cct_), lock("ObjBencher::lock") {}
   virtual ~ObjBencher() {}
   int aio_bench(
+<<<<<<< HEAD
     int operation, int secondsToRun,
     int concurrentios, uint64_t op_size, uint64_t object_size, unsigned max_objects,
     bool cleanup, bool hints, const std::string& run_name, bool no_verify=false);
   int clean_up(const std::string& prefix, int concurrentios, const std::string& run_name);
+=======
+    int operation, int secondsToRun, int maxObjectsToCreate,
+    int concurrentios, int op_size, bool cleanup, const char* run_name, bool no_verify=false);
+  int clean_up(const char* prefix, int concurrentios, const char* run_name);
+>>>>>>> upstream/hammer
 
   void set_show_time(bool dt) {
     show_time = dt;

@@ -17,7 +17,11 @@ class Dentry : public LRUObject {
   Dir	   *dir;
   InodeRef inode;
   int	   ref;                       // 1 if there's a dir beneath me.
+<<<<<<< HEAD
   int64_t offset;
+=======
+  uint64_t offset;
+>>>>>>> upstream/hammer
   mds_rank_t lease_mds;
   utime_t lease_ttl;
   uint64_t lease_gen;
@@ -47,8 +51,13 @@ class Dentry : public LRUObject {
 
   Dentry() :
     dir(0), ref(1), offset(0),
+<<<<<<< HEAD
     lease_mds(-1), lease_gen(0), lease_seq(0), cap_shared_gen(0)
   { }
+=======
+    lease_mds(-1), lease_gen(0), lease_seq(0), cap_shared_gen(0),
+    item_dentry_list(this)  { }
+>>>>>>> upstream/hammer
 private:
   ~Dentry() {
     assert(ref == 0);

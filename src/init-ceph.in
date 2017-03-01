@@ -16,6 +16,13 @@
 if [ -e /lib/lsb/init-functions ]; then
     . /lib/lsb/init-functions
 fi
+<<<<<<< HEAD
+=======
+
+# detect systemd, also check whether the systemd-run binary exists
+SYSTEMD_RUN=$(which systemd-run 2>/dev/null)
+grep -qs systemd /proc/1/comm || SYSTEMD_RUN=""
+>>>>>>> upstream/hammer
 
 if [ `dirname $0` = "." ] && [ $PWD != "/etc/init.d" ]; then
     # looks like an autotools src dir build
@@ -167,7 +174,10 @@ use_default_conf=1
 ## set variables like cluster or conf
 [ -e /etc/sysconfig/ceph ] && . /etc/sysconfig/ceph
 [ -e /etc/default/ceph ] && . /etc/default/ceph
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/hammer
 
 while echo $1 | grep -q '^-'; do     # FIXME: why not '^-'?
 case $1 in
@@ -362,7 +372,16 @@ for name in $what; do
 
 	    [ -n "$TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES" ] && tcmalloc="TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=$TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES"
 
+<<<<<<< HEAD
 	    cmd="$files $tcmalloc $wrap $cmd --cluster $cluster ${SET_CEPHUSER_ARGS} $runmode"
+=======
+	    if [ -n "$SYSTEMD_RUN" ]; then
+                time=`date +%s.%N` 
+		cmd="$SYSTEMD_RUN --unit=ceph-$name.$time -r bash -c '$files $tcmalloc $cmd --cluster $cluster -f'"
+	    else
+		cmd="$files $tcmalloc $wrap $cmd --cluster $cluster $runmode"
+	    fi
+>>>>>>> upstream/hammer
 
 	    if [ $dofsmount -eq 1 ] && [ -n "$fs_devs" ]; then
 		get_conf pre_mount "true" "pre mount command"

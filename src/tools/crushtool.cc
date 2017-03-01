@@ -168,8 +168,12 @@ void usage()
   cout << "\n";
   cout << "Options for the display/test stage\n";
   cout << "\n";
+<<<<<<< HEAD
   cout << "   --tree                print map summary as a tree\n";
   cout << "   --check [max_id]      check if any item is referencing an unknown name/type\n";
+=======
+  cout << "   --check max_id        check if any item is referencing an unknown name/type\n";
+>>>>>>> upstream/hammer
   cout << "   -i mapfn --show-location id\n";
   cout << "                         show location for given device id\n";
   cout << "   -i mapfn --test       test a range of inputs on the map\n";
@@ -325,7 +329,11 @@ int main(int argc, const char **argv)
     } else if (ceph_argparse_witharg(args, i, &val, "-c", "--compile", (char*)NULL)) {
       srcfn = val;
       compile = true;
+<<<<<<< HEAD
     } else if (ceph_argparse_witharg(args, i, &max_id, err, "--check", (char*)NULL)) {
+=======
+    } else if (ceph_argparse_withint(args, i, &max_id, &err, "--check", (char*)NULL)) {
+>>>>>>> upstream/hammer
       check = true;
     } else if (ceph_argparse_flag(args, i, "-t", "--test", (char*)NULL)) {
       test = true;
@@ -485,6 +493,7 @@ int main(int argc, const char **argv)
 	return EXIT_FAILURE;
       }
       tester.set_rule(x);
+<<<<<<< HEAD
     } else if (ceph_argparse_witharg(args, i, &x, err, "--ruleset", (char*)NULL)) {
       if (!err.str().empty()) {
 	cerr << err.str() << std::endl;
@@ -492,6 +501,15 @@ int main(int argc, const char **argv)
       }
       tester.set_ruleset(x);
     } else if (ceph_argparse_witharg(args, i, &x, err, "--batches", (char*)NULL)) {
+=======
+    } else if (ceph_argparse_withint(args, i, &x, &err, "--ruleset", (char*)NULL)) {
+      if (!err.str().empty()) {
+	cerr << err.str() << std::endl;
+	exit(EXIT_FAILURE);
+      }
+      tester.set_ruleset(x);
+    } else if (ceph_argparse_withint(args, i, &x, &err, "--batches", (char*)NULL)) {
+>>>>>>> upstream/hammer
       if (!err.str().empty()) {
 	cerr << err.str() << std::endl;
 	return EXIT_FAILURE;
@@ -603,6 +621,12 @@ int main(int argc, const char **argv)
       return EXIT_FAILURE;
     }
   }
+<<<<<<< HEAD
+=======
+  if (tree) {
+    crush.dump_tree(&cout, NULL);
+  }
+>>>>>>> upstream/hammer
 
   if (compile) {
     crush.create();
@@ -884,9 +908,14 @@ int main(int argc, const char **argv)
       return EXIT_FAILURE;
   }
 
+<<<<<<< HEAD
   // output ---
   if (modified) {
     crush.finalize();
+=======
+ if (modified) {
+   crush.finalize();
+>>>>>>> upstream/hammer
 
     if (outfn.empty()) {
       cout << me << " successfully built or modified map.  Use '-o <file>' to write it out." << std::endl;
@@ -903,6 +932,25 @@ int main(int argc, const char **argv)
     }
   }
 
+<<<<<<< HEAD
+=======
+  if (check) {
+    if (!tester.check_name_maps(max_id)) {
+      exit(1);
+    }
+  }
+
+  if (test) {
+    if (tester.get_output_utilization_all() ||
+	tester.get_output_utilization())
+      tester.set_output_statistics(true);
+
+    int r = tester.test();
+    if (r < 0)
+      exit(1);
+  }
+
+>>>>>>> upstream/hammer
   return 0;
 }
 /*

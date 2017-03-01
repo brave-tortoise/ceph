@@ -10,6 +10,7 @@
 
 extern void register_test_librbd();
 #ifdef TEST_LIBRBD_INTERNALS
+<<<<<<< HEAD
 extern void register_test_groups();
 extern void register_test_image_watcher();
 extern void register_test_internal();
@@ -19,12 +20,18 @@ extern void register_test_object_map();
 extern void register_test_operations();
 extern void register_test_mirroring();
 extern void register_test_mirroring_watcher();
+=======
+extern void register_test_image_watcher();
+extern void register_test_internal();
+extern void register_test_object_map();
+>>>>>>> upstream/hammer
 #endif // TEST_LIBRBD_INTERNALS
 
 int main(int argc, char **argv)
 {
   register_test_librbd();
 #ifdef TEST_LIBRBD_INTERNALS
+<<<<<<< HEAD
   register_test_groups();
   register_test_image_watcher();
   register_test_internal();
@@ -34,6 +41,11 @@ int main(int argc, char **argv)
   register_test_operations();
   register_test_mirroring();
   register_test_mirroring_watcher();
+=======
+  register_test_image_watcher();
+  register_test_internal();
+  register_test_object_map();
+>>>>>>> upstream/hammer
 #endif // TEST_LIBRBD_INTERNALS
 
   ::testing::InitGoogleTest(&argc, argv);

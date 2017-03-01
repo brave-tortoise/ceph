@@ -18,14 +18,24 @@
 #include "include/types.h"
 #include "include/utime.h"
 #include "include/memory.h"
+<<<<<<< HEAD
+=======
+
+#include "common/Formatter.h"
+>>>>>>> upstream/hammer
 #include "include/buffer.h"
 
 #include <string>
 
 class CephContext;
+<<<<<<< HEAD
 class CryptoKeyContext;
 namespace ceph { class Formatter; }
 
+=======
+class CryptoHandler;
+class CryptoKeyContext;
+>>>>>>> upstream/hammer
 
 /*
  * some per-key context that is specific to a particular crypto backend
@@ -50,11 +60,19 @@ protected:
   __u16 type;
   utime_t created;
   bufferptr secret;   // must set this via set_secret()!
+<<<<<<< HEAD
 
   // cache a pointer to the implementation-specific key handler, so we
   // don't have to create it for every crypto operation.
   mutable ceph::shared_ptr<CryptoKeyHandler> ckh;
 
+=======
+
+  // cache a pointer to the implementation-specific key handler, so we
+  // don't have to create it for every crypto operation.
+  mutable ceph::shared_ptr<CryptoKeyHandler> ckh;
+
+>>>>>>> upstream/hammer
   int _set_secret(int type, const bufferptr& s);
 
 public:

@@ -35,6 +35,7 @@ void RGWFCGX::init_env(CephContext* const cct)
   env.init(cct, (char **)fcgx->envp);
 }
 
+<<<<<<< HEAD
 size_t RGWFCGX::send_status(const int status, const char* const status_name)
 {
   static constexpr size_t STATUS_BUF_SIZE = 128;
@@ -44,18 +45,33 @@ size_t RGWFCGX::send_status(const int status, const char* const status_name)
                                   "Status: %d %s\r\n", status, status_name);
 
   return txbuf.sputn(statusbuf, statuslen);
+=======
+int RGWFCGX::send_status(int status, const char *status_name)
+{
+  status_num = status;
+  return print("Status: %d %s\r\n", status, status_name);
+>>>>>>> upstream/hammer
 }
 
 size_t RGWFCGX::send_100_continue()
 {
+<<<<<<< HEAD
   const auto sent = send_status(100, "Continue");
   flush();
   return sent;
+=======
+  int r = send_status(100, "Continue");
+  if (r >= 0) {
+    flush();
+  }
+  return r;
+>>>>>>> upstream/hammer
 }
 
 size_t RGWFCGX::send_header(const boost::string_ref& name,
                             const boost::string_ref& value)
 {
+<<<<<<< HEAD
   static constexpr char HEADER_SEP[] = ": ";
   static constexpr char HEADER_END[] = "\r\n";
 
@@ -67,6 +83,18 @@ size_t RGWFCGX::send_header(const boost::string_ref& name,
   sent += txbuf.sputn(HEADER_END, sizeof(HEADER_END) - 1);
 
   return sent;
+=======
+  /*
+   * Status 204 should not include a content-length header
+   * RFC7230 says so
+   */
+  if (status_num == 204)
+    return 0;
+
+  char buf[21];
+  snprintf(buf, sizeof(buf), "%" PRIu64, len);
+  return print("Content-Length: %s\r\n", buf);
+>>>>>>> upstream/hammer
 }
 
 size_t RGWFCGX::send_content_length(const uint64_t len)
@@ -79,6 +107,7 @@ size_t RGWFCGX::send_content_length(const uint64_t len)
 
   return txbuf.sputn(sizebuf, sizelen);
 }
+<<<<<<< HEAD
 
 size_t RGWFCGX::complete_header()
 {
@@ -88,3 +117,5 @@ size_t RGWFCGX::complete_header()
   flush();
   return sent;
 }
+=======
+>>>>>>> upstream/hammer

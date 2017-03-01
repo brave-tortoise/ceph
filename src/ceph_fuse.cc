@@ -35,7 +35,10 @@ using namespace std;
 #endif
 #include "global/global_init.h"
 #include "global/signal_handler.h"
+<<<<<<< HEAD
 #include "common/Preforker.h"
+=======
+>>>>>>> upstream/hammer
 #include "common/safe_io.h"
 
 #include <sys/types.h>
@@ -262,6 +265,9 @@ int main(int argc, const char **argv, const char *envp[]) {
       goto out_client_unmount;
     }
 
+    init_async_signal_handler();
+    register_async_signal_handler(SIGHUP, sighup_handler);
+
     cerr << "ceph-fuse[" << getpid() << "]: starting fuse" << std::endl;
     tester.init(cfuse, client);
     tester.create("tester");
@@ -291,6 +297,13 @@ int main(int argc, const char **argv, const char *envp[]) {
   out_mc_start_failed:
     free(newargv);
     delete mc;
+<<<<<<< HEAD
+=======
+  
+    unregister_async_signal_handler(SIGHUP, sighup_handler);
+    shutdown_async_signal_handler();
+    
+>>>>>>> upstream/hammer
     //cout << "child done" << std::endl;
     return forker.signal_exit(r);
   }

@@ -182,6 +182,7 @@ TEST(chain_xattr, chunk_aligned) {
     ASSERT_EQ(0, chain_fremovexattr(fd, name2.c_str()));
   }
 
+<<<<<<< HEAD
   for (int len = CHAIN_XATTR_SHORT_BLOCK_LEN - 10;
        len < CHAIN_XATTR_SHORT_BLOCK_LEN + 10;
        ++len) {
@@ -216,10 +217,13 @@ TEST(chain_xattr, chunk_aligned) {
 				       CHAIN_XATTR_SHORT_BLOCK_LEN*2));
   }
 
+=======
+>>>>>>> upstream/hammer
   ::close(fd);
   ::unlink(file);
 }
 
+<<<<<<< HEAD
 void get_vector_from_xattr(vector<string> &xattrs, char* xattr, int size) {
   char *end = xattr + size;
   while (xattr < end) {
@@ -249,6 +253,8 @@ bool listxattr_cmp(char* xattr1, char* xattr2, int size) {
   return diff.empty();
 }
 
+=======
+>>>>>>> upstream/hammer
 TEST(chain_xattr, listxattr) {
   const char* file = FILENAME;
   ::unlink(file);

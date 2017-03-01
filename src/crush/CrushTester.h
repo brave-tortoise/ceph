@@ -354,12 +354,17 @@ public:
    *         large, true otherwise
    */
   bool check_name_maps(unsigned max_id = 0) const;
+<<<<<<< HEAD
   /**
    * print out overlapped crush rules belonging to the same ruleset
    */
   void check_overlapped_rules() const;
   int test();
   int test_with_crushtool(const char *crushtool_cmd = "crushtool",
+=======
+  int test();
+  int test_with_crushtool(const string& crushtool,
+>>>>>>> upstream/hammer
 			  int max_id = -1,
 			  int timeout = 0,
 			  int ruleset = -1);

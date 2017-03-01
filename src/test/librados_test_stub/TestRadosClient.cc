@@ -84,8 +84,12 @@ private:
 TestRadosClient::TestRadosClient(CephContext *cct)
   : m_cct(cct->get()),
     m_aio_finisher(new Finisher(m_cct)),
+<<<<<<< HEAD
     m_watch_notify(m_cct, m_aio_finisher),
     m_transaction_lock("TestRadosClient::m_transaction_lock")
+=======
+    m_watch_notify(m_cct, m_aio_finisher)
+>>>>>>> upstream/hammer
 {
   get();
 
@@ -216,7 +220,11 @@ void TestRadosClient::flush_aio_operations(AioCompletionImpl *c) {
   for (size_t i = 0; i < m_finishers.size(); ++i) {
     AioFunctionContext *ctx = new AioFunctionContext(
       boost::bind(&WaitForFlush::flushed, wait_for_flush),
+<<<<<<< HEAD
       nullptr, nullptr);
+=======
+      m_aio_finisher, NULL);
+>>>>>>> upstream/hammer
     m_finishers[i]->queue(ctx);
   }
 }

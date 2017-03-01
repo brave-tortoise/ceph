@@ -22,8 +22,6 @@ def task(ctx, config):
 
     The config is optional, and is a dict containing some or all of:
 
-    cluster: (default 'ceph') the name of the cluster to thrash
-
     min_in: (default 3) the minimum number of OSDs to keep in the
        cluster
 
@@ -86,20 +84,9 @@ def task(ctx, config):
 
     clean_wait: (0) duration to wait before resuming thrashing once clean
 
-    sighup_delay: (0.1) duration to delay between sending signal.SIGHUP to a
-                  random live osd
-
     powercycle: (false) whether to power cycle the node instead
         of just the osd process. Note that this assumes that a single
         osd is the only important process on the node.
-
-    bdev_inject_crash: (0) seconds to delay while inducing a synthetic crash.
-        the delay lets the BlockDevice "accept" more aio operations but blocks
-        any flush, and then eventually crashes (losing some or all ios).  If 0,
-        no bdev failure injection is enabled.
-
-    bdev_inject_crash_probability: (.5) probability of doing a bdev failure
-        injection crash vs a normal OSD kill.
 
     chance_test_backfill_full: (0) chance to simulate full disks stopping
         backfill
@@ -110,22 +97,13 @@ def task(ctx, config):
     ceph_objectstore_tool: (true) whether to export/import a pg while an osd is down
     chance_move_pg: (1.0) chance of moving a pg if more than 1 osd is down (default 100%)
 
-    optrack_toggle_delay: (2.0) duration to delay between toggling op tracker
-                  enablement to all osds
-
     dump_ops_enable: (true) continuously dump ops on all live osds
-
-    noscrub_toggle_delay: (2.0) duration to delay between toggling noscrub
-
-    disable_objectstore_tool_tests: (false) disable ceph_objectstore_tool based
-                                    tests
 
     example:
 
     tasks:
     - ceph:
     - thrashosds:
-        cluster: ceph
         chance_down: 10
         op_delay: 3
         min_in: 1
@@ -136,23 +114,10 @@ def task(ctx, config):
         config = {}
     assert isinstance(config, dict), \
         'thrashosds task only accepts a dict for configuration'
-    # add default value for sighup_delay
-    config['sighup_delay'] = config.get('sighup_delay', 0.1)
-    # add default value for optrack_toggle_delay
-    config['optrack_toggle_delay'] = config.get('optrack_toggle_delay', 2.0)
     # add default value for dump_ops_enable
     config['dump_ops_enable'] = config.get('dump_ops_enable', "true")
-    # add default value for noscrub_toggle_delay
-    config['noscrub_toggle_delay'] = config.get('noscrub_toggle_delay', 2.0)
-
-    log.info("config is {config}".format(config=str(config)))
-
     overrides = ctx.config.get('overrides', {})
-    log.info("overrides is {overrides}".format(overrides=str(overrides)))
     teuthology.deep_merge(config, overrides.get('thrashosds', {}))
-    cluster = config.get('cluster', 'ceph')
-
-    log.info("config is {config}".format(config=str(config)))
 
     if 'powercycle' in config:
 
@@ -168,7 +133,7 @@ def task(ctx, config):
                              remote.shortname)
 
             # check that all osd remotes have a valid console
-            osds = ctx.cluster.only(teuthology.is_type('osd', cluster))
+            osds = ctx.cluster.only(teuthology.is_type('osd'))
             for remote in osds.remotes.keys():
                 if not remote.console.has_ipmi_credentials:
                     raise Exception(
@@ -176,14 +141,9 @@ def task(ctx, config):
                         'but not available on osd role: {r}'.format(
                             r=remote.name))
 
-    cluster_manager = ctx.managers[cluster]
-    for f in ['powercycle', 'bdev_inject_crash']:
-        if config.get(f):
-            cluster_manager.config[f] = config.get(f)
-
     log.info('Beginning thrashosds...')
     thrash_proc = ceph_manager.Thrasher(
-        cluster_manager,
+        ctx.manager,
         config,
         logger=log.getChild('thrasher')
         )
@@ -192,4 +152,4 @@ def task(ctx, config):
     finally:
         log.info('joining thrashosds')
         thrash_proc.do_join()
-        cluster_manager.wait_for_recovery(config.get('timeout', 360))
+        ctx.manager.wait_for_recovery(config.get('timeout', 360))

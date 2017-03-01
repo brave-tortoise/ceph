@@ -274,8 +274,12 @@ static bool rgw_find_host_in_domains(const string& host, string *domain, string 
   return false;
 }
 
+<<<<<<< HEAD
 static void dump_status(struct req_state *s, int status,
 			const char *status_name)
+=======
+static void dump_status(struct req_state *s, int status, const char *status_name)
+>>>>>>> upstream/hammer
 {
   s->formatter->set_status(status, status_name);
   try {
@@ -362,6 +366,7 @@ void dump_errno(const struct rgw_err &err, string& out) {
 void dump_errno(struct req_state *s)
 {
   dump_status(s, s->err.http_ret, http_status_names[s->err.http_ret]);
+<<<<<<< HEAD
 }
 
 void dump_errno(struct req_state *s, int http_ret)
@@ -428,6 +433,13 @@ void dump_header(struct req_state* const s,
                             static_cast<int>(ut.usec() / 10));
 
   return dump_header(s, name, boost::string_ref(buf, len));
+=======
+}
+
+void dump_errno(struct req_state *s, int http_ret)
+{
+  dump_status(s, http_ret, http_status_names[http_ret]);
+>>>>>>> upstream/hammer
 }
 
 void dump_content_length(struct req_state* const s, const uint64_t len)
@@ -475,12 +487,21 @@ void dump_etag(struct req_state* const s,
 
 void dump_bucket_from_state(struct req_state *s)
 {
+<<<<<<< HEAD
   if (g_conf->rgw_expose_bucket && ! s->bucket_name.empty()) {
     if (! s->bucket_tenant.empty()) {
       dump_header(s, "Bucket",
                   url_encode(s->bucket_tenant + "/" + s->bucket_name));
     } else {
       dump_header(s, "Bucket", url_encode(s->bucket_name));
+=======
+  int expose_bucket = g_conf->rgw_expose_bucket;
+  if (expose_bucket) {
+    if (!s->bucket_name_str.empty()) {
+      string b;
+      url_encode(s->bucket_name_str, b);
+      s->cio->print("Bucket: %s\r\n", b.c_str());
+>>>>>>> upstream/hammer
     }
   }
 }
@@ -515,8 +536,12 @@ void dump_redirect(struct req_state * const s, const std::string& redirect)
   return dump_header_if_nonempty(s, "Location", redirect);
 }
 
+<<<<<<< HEAD
 static size_t dump_time_header_impl(char (&timestr)[TIME_BUF_SIZE],
                                     const real_time t)
+=======
+void dump_time_header(struct req_state *s, const char *name, time_t t)
+>>>>>>> upstream/hammer
 {
   const utime_t ut(t);
   time_t secs = static_cast<time_t>(ut.sec());
@@ -592,12 +617,18 @@ void dump_access_control(struct req_state *s, const char *origin,
 			 const char *hdr, const char *exp_hdr,
 			 uint32_t max_age) {
   if (origin && (origin[0] != '\0')) {
+<<<<<<< HEAD
     dump_header(s, "Access-Control-Allow-Origin", origin);
+=======
+    s->cio->print("Access-Control-Allow-Origin: %s\r\n", origin);
+
+>>>>>>> upstream/hammer
     /* If the server specifies an origin host rather than "*",
      * then it must also include Origin in the Vary response header
      * to indicate to clients that server responses will differ
      * based on the value of the Origin request header.
      */
+<<<<<<< HEAD
     if (strcmp(origin, "*") != 0) {
       dump_header(s, "Vary", "Origin");
     }
@@ -608,6 +639,15 @@ void dump_access_control(struct req_state *s, const char *origin,
     if (hdr && (hdr[0] != '\0')) {
       dump_header(s, "Access-Control-Allow-Headers", hdr);
     }
+=======
+    if (strcmp(origin, "*") != 0)
+      s->cio->print("Vary: Origin\r\n");
+
+    if (meth && (meth[0] != '\0'))
+      s->cio->print("Access-Control-Allow-Methods: %s\r\n", meth);
+    if (hdr && (hdr[0] != '\0'))
+      s->cio->print("Access-Control-Allow-Headers: %s\r\n", hdr);
+>>>>>>> upstream/hammer
     if (exp_hdr && (exp_hdr[0] != '\0')) {
       dump_header(s, "Access-Control-Expose-Headers", exp_hdr);
     }
@@ -643,6 +683,7 @@ void dump_start(struct req_state *s)
 void dump_trans_id(req_state *s)
 {
   if (s->prot_flags & RGW_REST_SWIFT) {
+<<<<<<< HEAD
     dump_header(s, "X-Trans-Id", s->trans_id);
   } else if (s->trans_id.length()) {
     dump_header(s, "x-amz-request-id", s->trans_id);
@@ -652,17 +693,31 @@ void dump_trans_id(req_state *s)
 void end_header(struct req_state* s, RGWOp* op, const char *content_type,
 		const int64_t proposed_content_length, bool force_content_type,
 		bool force_no_error)
+=======
+    s->cio->print("X-Trans-Id: %s\r\n", s->trans_id.c_str());
+  }
+  else {
+    s->cio->print("x-amz-request-id: %s\r\n", s->trans_id.c_str());
+  }
+}
+
+void end_header(struct req_state *s, RGWOp *op, const char *content_type, const int64_t proposed_content_length,
+		bool force_content_type)
+>>>>>>> upstream/hammer
 {
   string ctype;
 
   dump_trans_id(s);
 
+<<<<<<< HEAD
   if ((!s->err.is_err()) &&
       (s->bucket_info.owner != s->user->user_id) &&
       (s->bucket_info.requester_pays)) {
     dump_header(s, "x-amz-request-charged", "requester");
   }
 
+=======
+>>>>>>> upstream/hammer
   if (op) {
     dump_access_control(s, op);
   }
@@ -673,8 +728,12 @@ void end_header(struct req_state* s, RGWOp* op, const char *content_type,
 
   /* do not send content type if content length is zero
      and the content type was not set by the user */
+<<<<<<< HEAD
   if (force_content_type ||
       (!content_type &&  s->formatter->get_len()  != 0) || s->err.is_err()){
+=======
+  if (force_content_type || (!content_type &&  s->formatter->get_len()  != 0) || s->err.is_err()){
+>>>>>>> upstream/hammer
     switch (s->format) {
     case RGW_FORMAT_XML:
       ctype = "application/xml";
@@ -713,15 +772,28 @@ void end_header(struct req_state* s, RGWOp* op, const char *content_type,
     s->formatter->output_footer();
     dump_content_length(s, s->formatter->get_len());
   } else {
+<<<<<<< HEAD
     if (proposed_content_length == CHUNKED_TRANSFER_ENCODING) {
       dump_chunked_encoding(s);
     } else if (proposed_content_length != NO_CONTENT_LENGTH) {
+=======
+    if (proposed_content_length != NO_CONTENT_LENGTH) {
+>>>>>>> upstream/hammer
       dump_content_length(s, proposed_content_length);
     }
   }
 
+<<<<<<< HEAD
   if (content_type) {
     dump_header(s, "Content-Type", content_type);
+=======
+  int r;
+  if (content_type) {
+      r = s->cio->print("Content-Type: %s\r\n", content_type);
+      if (r < 0) {
+	ldout(s->cct, 0) << "ERROR: s->cio->print() returned err=" << r << dendl;
+      }
+>>>>>>> upstream/hammer
   }
 
   try {
@@ -1825,8 +1897,12 @@ static int64_t parse_content_length(const char *content_length)
 
   return len;
 }
+<<<<<<< HEAD
 
 int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
+=======
+int RGWREST::preprocess(struct req_state *s, RGWClientIO *cio)
+>>>>>>> upstream/hammer
 {
   req_info& info = s->info;
 
@@ -1836,6 +1912,7 @@ int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
   s->info.request_uri_aws4 = s->info.request_uri;
 
   s->cio = cio;
+<<<<<<< HEAD
 
   // We need to know if this RGW instance is running the s3website API with a
   // higher priority than regular S3 API, or possibly in place of the regular
@@ -1879,6 +1956,16 @@ int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
         subdomain = s3website_subdomain;
       }
     }
+=======
+  if (info.host.size()) {
+    ldout(s->cct, 10) << "host=" << info.host << dendl;
+    string domain;
+    string subdomain;
+    bool in_hosted_domain = rgw_find_host_in_domains(info.host, &domain,
+						     &subdomain);
+    ldout(s->cct, 20) << "subdomain=" << subdomain << " domain=" << domain
+		      << " in_hosted_domain=" << in_hosted_domain << dendl;
+>>>>>>> upstream/hammer
 
     ldout(s->cct, 20)
       << "subdomain=" << subdomain 
@@ -1900,6 +1987,7 @@ int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
       }
 
       if (found) {
+<<<<<<< HEAD
 	ldout(s->cct, 5) << "resolved host cname " << info.host << " -> "
 			 << cname << dendl;
 	in_hosted_domain =
@@ -1925,6 +2013,13 @@ int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
           << " in_hosted_domain=" << in_hosted_domain 
           << " in_hosted_domain_s3website=" << in_hosted_domain_s3website 
           << dendl;
+=======
+        ldout(s->cct, 5) << "resolved host cname " << info.host << " -> "
+			 << cname << dendl;
+        in_hosted_domain = rgw_find_host_in_domains(cname, &domain, &subdomain);
+        ldout(s->cct, 20) << "subdomain=" << subdomain << " domain=" << domain
+			  << " in_hosted_domain=" << in_hosted_domain << dendl;
+>>>>>>> upstream/hammer
       }
     }
 
@@ -1996,7 +2091,11 @@ int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
    * Ergo if we are in Authorizer role, we MUST look at HTTP_CONTENT_LENGTH
    * instead of CONTENT_LENGTH for the Content-Length.
    *
+<<<<<<< HEAD
    * There is one slight wrinkle in this, and that's older versions of
+=======
+   * There is one slight wrinkle in this, and that's older versions of 
+>>>>>>> upstream/hammer
    * nginx/lighttpd/apache setting BOTH headers. As a result, we have to check
    * both headers and can't always simply pick A or B.
    */
@@ -2005,8 +2104,12 @@ int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
   if (!http_content_length != !content_length) {
     /* Easy case: one or the other is missing */
     s->length = (content_length ? content_length : http_content_length);
+<<<<<<< HEAD
   } else if (s->cct->_conf->rgw_content_length_compat &&
 	     content_length && http_content_length) {
+=======
+  } else if (s->cct->_conf->rgw_content_length_compat && content_length && http_content_length) {
+>>>>>>> upstream/hammer
     /* Hard case: Both are set, we have to disambiguate */
     int64_t content_length_i, http_content_length_i;
 
@@ -2029,14 +2132,22 @@ int RGWREST::preprocess(struct req_state *s, rgw::io::BasicClient* cio)
       }
     }
     s->length = content_length;
+<<<<<<< HEAD
     // End of: else if (s->cct->_conf->rgw_content_length_compat &&
     //   content_length &&
+=======
+    // End of: else if (s->cct->_conf->rgw_content_length_compat && content_length &&
+>>>>>>> upstream/hammer
     // http_content_length)
   } else {
     /* no content length was defined */
     s->length = NULL;
   }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/hammer
   if (s->length) {
     if (*s->length == '\0') {
       s->content_length = 0;

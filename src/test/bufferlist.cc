@@ -1906,6 +1906,19 @@ TEST(BufferList, rebuild) {
     p.copy(1, dst);
     EXPECT_EQ(0, memcmp(dst, "X", 1));
   }
+  {
+    bufferlist bl;
+    char t1[] = "X";
+    bufferlist a2;
+    a2.append(t1, 1);
+    bl.rebuild();
+    bl.append(a2);
+    EXPECT_EQ((unsigned)1, bl.length());
+    bufferlist::iterator p = bl.begin();
+    char dst[1];
+    p.copy(1, dst);
+    EXPECT_EQ(0, memcmp(dst, "X", 1));
+  }
 }
 
 TEST(BufferList, rebuild_page_aligned) {
@@ -2920,6 +2933,7 @@ TEST(BufferList, InvalidateCrc) {
   EXPECT_NE(crc, bl.crc32c(0));
 }
 
+<<<<<<< HEAD
 TEST(BufferList, TestIsProvidedBuffer) {
   char buff[100];
   bufferlist bl;
@@ -2929,6 +2943,8 @@ TEST(BufferList, TestIsProvidedBuffer) {
   ASSERT_FALSE(bl.is_provided_buffer(buff));
 }
 
+=======
+>>>>>>> upstream/hammer
 TEST(BufferHash, all) {
   {
     bufferlist bl;

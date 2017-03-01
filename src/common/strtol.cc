@@ -137,7 +137,11 @@ T strict_si_cast(const char *str, std::string *err)
     *err = "strict_sistrtoll: value not specified";
     return 0;
   }
+<<<<<<< HEAD
   const char &u = s.back();
+=======
+  const char &u = *s.rbegin();
+>>>>>>> upstream/hammer
   int m = 0;
   if (u == 'B')
     m = 0;
@@ -157,6 +161,7 @@ T strict_si_cast(const char *str, std::string *err)
     m = -1;
 
   if (m >= 0)
+<<<<<<< HEAD
     s.pop_back();
   else
     m = 0;
@@ -182,14 +187,41 @@ T strict_si_cast(const char *str, std::string *err)
     *err = "strict_sistrtoll: value seems to be too large";
     return 0;
   }
+=======
+    s.erase(s.size()-1);
+  else
+    m = 0;
+
+  long long ll = strict_strtoll(s.c_str(), 10, err);
+  if (ll < 0 && !std::numeric_limits<T>::is_signed) {
+    *err = "strict_sistrtoll: value should not be negative";
+    return 0;
+  }
+  if (ll < (long long)std::numeric_limits<T>::min() >> m) {
+    *err = "strict_sistrtoll: value seems to be too small";
+    return 0;
+  }
+  if (ll > std::numeric_limits<T>::max() >> m) {
+    *err = "strict_sistrtoll: value seems to be too large";
+    return 0;
+
+  }
+>>>>>>> upstream/hammer
   return (ll << m);
 }
 
 template int strict_si_cast<int>(const char *str, std::string *err);
+<<<<<<< HEAD
 template long strict_si_cast<long>(const char *str, std::string *err);
 template long long strict_si_cast<long long>(const char *str, std::string *err);
 template uint64_t strict_si_cast<uint64_t>(const char *str, std::string *err);
 template uint32_t strict_si_cast<uint32_t>(const char *str, std::string *err);
+=======
+
+template long long strict_si_cast<long long>(const char *str, std::string *err);
+
+template uint64_t strict_si_cast<uint64_t>(const char *str, std::string *err);
+>>>>>>> upstream/hammer
 
 uint64_t strict_sistrtoll(const char *str, std::string *err)
 {

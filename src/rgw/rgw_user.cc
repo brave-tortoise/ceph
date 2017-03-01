@@ -1947,7 +1947,11 @@ int RGWUser::execute_add(RGWUserAdminOpState& op_state, std::string *err_msg)
       user_info.bucket_quota.enabled = true;
     }
     if (cct->_conf->rgw_bucket_default_quota_max_size >= 0) {
+<<<<<<< HEAD
       user_info.bucket_quota.max_size = cct->_conf->rgw_bucket_default_quota_max_size;
+=======
+      user_info.bucket_quota.max_size_kb = cct->_conf->rgw_bucket_default_quota_max_size;
+>>>>>>> upstream/hammer
       user_info.bucket_quota.enabled = true;
     }
   }
@@ -1968,7 +1972,11 @@ int RGWUser::execute_add(RGWUserAdminOpState& op_state, std::string *err_msg)
       user_info.user_quota.enabled = true;
     }
     if (cct->_conf->rgw_user_default_quota_max_size >= 0) {
+<<<<<<< HEAD
       user_info.user_quota.max_size = cct->_conf->rgw_user_default_quota_max_size;
+=======
+      user_info.user_quota.max_size_kb = cct->_conf->rgw_user_default_quota_max_size;
+>>>>>>> upstream/hammer
       user_info.user_quota.enabled = true;
     }
   }
@@ -2170,9 +2178,12 @@ int RGWUser::execute_modify(RGWUserAdminOpState& op_state, std::string *err_msg)
 
   if (op_state.max_buckets_specified)
     user_info.max_buckets = op_state.get_max_buckets();
+<<<<<<< HEAD
 
   if (op_state.admin_specified)
     user_info.admin = op_state.admin;
+=======
+>>>>>>> upstream/hammer
 
   if (op_state.system_specified)
     user_info.system = op_state.system;
@@ -2649,6 +2660,7 @@ public:
     RGWUserCompleteInfo uci;
 
     try {
+<<<<<<< HEAD
       decode_json_obj(uci, obj);
     } catch (JSONDecoder::err& e) {
       return -EINVAL;
@@ -2660,6 +2672,12 @@ public:
     }
 
     rgw_user uid(entry);
+=======
+      decode_json_obj(info, obj);
+    } catch (JSONDecoder::err& e) {
+      return -EINVAL;
+    }
+>>>>>>> upstream/hammer
 
     RGWUserInfo old_info;
     real_time orig_mtime;

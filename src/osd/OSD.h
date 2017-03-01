@@ -506,8 +506,12 @@ public:
 
   int get_nodeid() const { return whoami; }
 
+<<<<<<< HEAD
   std::atomic<epoch_t> max_oldest_map;
 private:
+=======
+  atomic_t max_oldest_map;
+>>>>>>> upstream/hammer
   OSDMapRef osdmap;
 
 public:
@@ -632,6 +636,7 @@ private:
   Mutex sched_scrub_lock;
   int scrubs_pending;
   int scrubs_active;
+<<<<<<< HEAD
 
 public:
   struct ScrubJob {
@@ -658,13 +663,37 @@ public:
 		       double pool_scrub_max_interval, bool must) {
     ScrubJob scrub(cct, pgid, t, pool_scrub_min_interval, pool_scrub_max_interval,
 		   must);
+=======
+  struct ScrubJob {
+    /// pg to be scrubbed
+    spg_t pgid;
+    /// a time scheduled for scrub. but the scrub could be delayed if system
+    /// load is too high or it fails to fall in the scrub hours
+    utime_t sched_time;
+    /// the hard upper bound of scrub time
+    utime_t deadline;
+    ScrubJob() {}
+    explicit ScrubJob(const spg_t& pg, const utime_t& timestamp, bool must = true);
+    /// order the jobs by sched_time
+    bool operator<(const ScrubJob& rhs) const;
+  };
+  set<ScrubJob> sched_scrub_pg;
+
+  /// @returns the scrub_reg_stamp used for unregister the scrub job
+  utime_t reg_pg_scrub(spg_t pgid, utime_t t, bool must) {
+    ScrubJob scrub(pgid, t, must);
+>>>>>>> upstream/hammer
     Mutex::Locker l(sched_scrub_lock);
     sched_scrub_pg.insert(scrub);
     return scrub.sched_time;
   }
   void unreg_pg_scrub(spg_t pgid, utime_t t) {
     Mutex::Locker l(sched_scrub_lock);
+<<<<<<< HEAD
     size_t removed = sched_scrub_pg.erase(ScrubJob(cct, pgid, t));
+=======
+    size_t removed = sched_scrub_pg.erase(ScrubJob(pgid, t));
+>>>>>>> upstream/hammer
     assert(removed);
   }
   bool first_scrub_stamp(ScrubJob *out) {
@@ -680,11 +709,19 @@ public:
     Mutex::Locker l(sched_scrub_lock);
     if (sched_scrub_pg.empty())
       return false;
+<<<<<<< HEAD
     set<ScrubJob>::const_iterator iter = sched_scrub_pg.lower_bound(next);
     if (iter == sched_scrub_pg.cend())
       return false;
     ++iter;
     if (iter == sched_scrub_pg.cend())
+=======
+    set<ScrubJob>::iterator iter = sched_scrub_pg.lower_bound(next);
+    if (iter == sched_scrub_pg.end())
+      return false;
+    ++iter;
+    if (iter == sched_scrub_pg.end())
+>>>>>>> upstream/hammer
       return false;
     *out = *iter;
     return true;
@@ -1447,7 +1484,31 @@ public:
   }
 
 
+<<<<<<< HEAD
 private:
+=======
+    OSDMapRef osdmap;  /// Map as of which waiting_for_pg is current
+    map<spg_t, list<OpRequestRef> > waiting_for_pg;
+
+    Mutex sent_epoch_lock;
+    epoch_t last_sent_epoch;
+    Mutex received_map_lock;
+    epoch_t received_map_epoch; // largest epoch seen in MOSDMap from here
+
+    Session(CephContext *cct) :
+      RefCountedObject(cct),
+      auid(-1), con(0),
+      session_dispatch_lock("Session::session_dispatch_lock"),
+      sent_epoch_lock("Session::sent_epoch_lock"), last_sent_epoch(0),
+      received_map_lock("Session::received_map_lock"), received_map_epoch(0)
+    {}
+    void maybe_reset_osdmap() {
+      if (waiting_for_pg.empty()) {
+	osdmap.reset();
+      }
+    }
+  };
+>>>>>>> upstream/hammer
   void update_waiting_for_pg(Session *session, OSDMapRef osdmap);
   void session_notify_pg_create(Session *session, OSDMapRef osdmap, spg_t pgid);
   void session_notify_pg_cleared(Session *session, OSDMapRef osdmap, spg_t pgid);
@@ -1548,6 +1609,15 @@ private:
     for (auto& i : session->waiting_for_pg) {
       i.second.clear_and_dispose(TrackedOp::Putter());
     }
+<<<<<<< HEAD
+=======
+    /* Messages have connection refs, we need to clear the
+     * connection->session->message->connection
+     * cycles which result.
+     * Bug #12338
+     */
+    session->waiting_on_map.clear();
+>>>>>>> upstream/hammer
     session->waiting_for_pg.clear();
     session->osdmap.reset();
   }
@@ -1783,6 +1853,7 @@ private:
     OSD *osd;
     uint32_t num_shards;
 
+<<<<<<< HEAD
   public:
     ShardedOpWQ(uint32_t pnum_shards, OSD *o, time_t ti, time_t si, ShardedThreadPool* tp):
       ShardedThreadPool::ShardedWQ < pair <PGRef, PGQueueable> >(ti, si, tp),
@@ -1799,6 +1870,22 @@ private:
 	  osd->cct->_conf->osd_op_pq_max_tokens_per_priority, 
 	  osd->cct->_conf->osd_op_pq_min_cost, osd->cct, osd->op_queue);
 	shard_list.push_back(one_shard);
+=======
+    public:
+      ShardedOpWQ(uint32_t pnum_shards, OSD *o, time_t ti, time_t si, ShardedThreadPool* tp):
+        ShardedThreadPool::ShardedWQ < pair <PGRef, OpRequestRef> >(ti, si, tp),
+        osd(o), num_shards(pnum_shards) {
+        for(uint32_t i = 0; i < num_shards; i++) {
+          char lock_name[32] = {0};
+          snprintf(lock_name, sizeof(lock_name), "%s.%d", "OSD:ShardedOpWQ:", i);
+          char order_lock[32] = {0};
+          snprintf(order_lock, sizeof(order_lock), "%s.%d", "OSD:ShardedOpWQ:order:", i);
+          ShardData* one_shard = new ShardData(lock_name, order_lock, 
+            osd->cct->_conf->osd_op_pq_max_tokens_per_priority, 
+            osd->cct->_conf->osd_op_pq_min_cost);
+          shard_list.push_back(one_shard);
+        }
+>>>>>>> upstream/hammer
       }
     }
     
@@ -1994,7 +2081,10 @@ private:
 
   void wait_for_new_map(OpRequestRef op);
   void handle_osd_map(class MOSDMap *m);
+<<<<<<< HEAD
   void _committed_osd_maps(epoch_t first, epoch_t last, class MOSDMap *m);
+=======
+>>>>>>> upstream/hammer
   void trim_maps(epoch_t oldest, int nreceived, bool skip_maps);
   void note_down_osd(int osd);
   void note_up_osd(int osd);
@@ -2324,8 +2414,112 @@ protected:
   void do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data);
 
   // -- pg recovery --
+<<<<<<< HEAD
   void do_recovery(PG *pg, epoch_t epoch_queued, uint64_t pushes_reserved,
 		   ThreadPool::TPHandle &handle);
+=======
+  xlist<PG*> recovery_queue;
+  utime_t defer_recovery_until;
+  int recovery_ops_active;
+#ifdef DEBUG_RECOVERY_OIDS
+  map<spg_t, set<hobject_t> > recovery_oids;
+#endif
+
+  struct RecoveryWQ : public ThreadPool::WorkQueue<PG> {
+    OSD *osd;
+    RecoveryWQ(OSD *o, time_t ti, time_t si, ThreadPool *tp)
+      : ThreadPool::WorkQueue<PG>("OSD::RecoveryWQ", ti, si, tp), osd(o) {}
+
+    bool _empty() {
+      return osd->recovery_queue.empty();
+    }
+    bool _enqueue(PG *pg);
+    void _dequeue(PG *pg) {
+      if (pg->recovery_item.remove_myself())
+	pg->put("RecoveryWQ");
+    }
+    PG *_dequeue() {
+      if (osd->recovery_queue.empty())
+	return NULL;
+      
+      if (!osd->_recover_now())
+	return NULL;
+
+      PG *pg = osd->recovery_queue.front();
+      osd->recovery_queue.pop_front();
+      return pg;
+    }
+    void _queue_front(PG *pg) {
+      if (!pg->recovery_item.is_on_list()) {
+	pg->get("RecoveryWQ");
+	osd->recovery_queue.push_front(&pg->recovery_item);
+      }
+    }
+    void _process(PG *pg, ThreadPool::TPHandle &handle) {
+      osd->do_recovery(pg, handle);
+      pg->put("RecoveryWQ");
+    }
+    void _clear() {
+      while (!osd->recovery_queue.empty()) {
+	PG *pg = osd->recovery_queue.front();
+	osd->recovery_queue.pop_front();
+	pg->put("RecoveryWQ");
+      }
+    }
+  } recovery_wq;
+
+  void start_recovery_op(PG *pg, const hobject_t& soid);
+  void finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue);
+  void do_recovery(PG *pg, ThreadPool::TPHandle &handle);
+  bool _recover_now();
+
+  // replay / delayed pg activation
+  Mutex replay_queue_lock;
+  list< pair<spg_t, utime_t > > replay_queue;
+  
+  void check_replay_queue();
+
+
+  // -- snap trimming --
+  xlist<PG*> snap_trim_queue;
+  
+  struct SnapTrimWQ : public ThreadPool::WorkQueue<PG> {
+    OSD *osd;
+    SnapTrimWQ(OSD *o, time_t ti, time_t si, ThreadPool *tp)
+      : ThreadPool::WorkQueue<PG>("OSD::SnapTrimWQ", ti, si, tp), osd(o) {}
+
+    bool _empty() {
+      return osd->snap_trim_queue.empty();
+    }
+    bool _enqueue(PG *pg) {
+      if (pg->snap_trim_item.is_on_list())
+	return false;
+      pg->get("SnapTrimWQ");
+      osd->snap_trim_queue.push_back(&pg->snap_trim_item);
+      return true;
+    }
+    void _dequeue(PG *pg) {
+      if (pg->snap_trim_item.remove_myself())
+	pg->put("SnapTrimWQ");
+    }
+    PG *_dequeue() {
+      if (osd->snap_trim_queue.empty())
+	return NULL;
+      PG *pg = osd->snap_trim_queue.front();
+      osd->snap_trim_queue.pop_front();
+      return pg;
+    }
+    void _process(PG *pg) {
+      pg->snap_trimmer();
+      pg->put("SnapTrimWQ");
+    }
+    void _clear() {
+      while (PG *pg = _dequeue()) {
+	pg->put("SnapTrimWQ");
+      }
+    }
+  } snap_trim_wq;
+>>>>>>> upstream/hammer
 
 
   // -- scrubbing --
@@ -2334,16 +2528,125 @@ protected:
   bool scrub_load_below_threshold();
   bool scrub_time_permit(utime_t now);
 
+<<<<<<< HEAD
+=======
+  xlist<PG*> scrub_queue;
+
+  struct ScrubWQ : public ThreadPool::WorkQueue<PG> {
+    OSD *osd;
+    ScrubWQ(OSD *o, time_t ti, time_t si, ThreadPool *tp)
+      : ThreadPool::WorkQueue<PG>("OSD::ScrubWQ", ti, si, tp), osd(o) {}
+
+    bool _empty() {
+      return osd->scrub_queue.empty();
+    }
+    bool _enqueue(PG *pg) {
+      if (pg->scrub_item.is_on_list()) {
+	return false;
+      }
+      pg->get("ScrubWQ");
+      osd->scrub_queue.push_back(&pg->scrub_item);
+      return true;
+    }
+    void _dequeue(PG *pg) {
+      if (pg->scrub_item.remove_myself()) {
+	pg->put("ScrubWQ");
+      }
+    }
+    PG *_dequeue() {
+      if (osd->scrub_queue.empty())
+	return NULL;
+      PG *pg = osd->scrub_queue.front();
+      osd->scrub_queue.pop_front();
+      return pg;
+    }
+    void _process(
+      PG *pg,
+      ThreadPool::TPHandle &handle) {
+      pg->scrub(handle);
+      pg->put("ScrubWQ");
+    }
+    void _clear() {
+      while (!osd->scrub_queue.empty()) {
+	PG *pg = osd->scrub_queue.front();
+	osd->scrub_queue.pop_front();
+	pg->put("ScrubWQ");
+      }
+    }
+  } scrub_wq;
+
+  struct RepScrubWQ : public ThreadPool::WorkQueue<MOSDRepScrub> {
+  private: 
+    OSD *osd;
+    list<MOSDRepScrub*> rep_scrub_queue;
+
+  public:
+    RepScrubWQ(OSD *o, time_t ti, time_t si, ThreadPool *tp)
+      : ThreadPool::WorkQueue<MOSDRepScrub>("OSD::RepScrubWQ", ti, si, tp), osd(o) {}
+
+    bool _empty() {
+      return rep_scrub_queue.empty();
+    }
+    bool _enqueue(MOSDRepScrub *msg) {
+      rep_scrub_queue.push_back(msg);
+      return true;
+    }
+    void _dequeue(MOSDRepScrub *msg) {
+      assert(0); // Not applicable for this wq
+      return;
+    }
+    MOSDRepScrub *_dequeue() {
+      if (rep_scrub_queue.empty())
+	return NULL;
+      MOSDRepScrub *msg = rep_scrub_queue.front();
+      rep_scrub_queue.pop_front();
+      return msg;
+    }
+    void _process(
+      MOSDRepScrub *msg,
+      ThreadPool::TPHandle &handle) {
+      PG *pg = NULL;
+      {
+	Mutex::Locker lock(osd->osd_lock);
+	if (osd->is_stopping() ||
+	    !osd->_have_pg(msg->pgid)) {
+	  msg->put();
+	  return;
+	}
+	pg = osd->_lookup_lock_pg(msg->pgid);
+      }
+      assert(pg);
+      pg->replica_scrub(msg, handle);
+      msg->put();
+      pg->unlock();
+    }
+    void _clear() {
+      while (!rep_scrub_queue.empty()) {
+	MOSDRepScrub *msg = rep_scrub_queue.front();
+	rep_scrub_queue.pop_front();
+	msg->put();
+      }
+    }
+  } rep_scrub_wq;
+
+>>>>>>> upstream/hammer
   // -- removing --
   struct RemoveWQ :
     public ThreadPool::WorkQueueVal<pair<PGRef, DeletingStateRef> > {
     CephContext* cct;
     ObjectStore *&store;
     list<pair<PGRef, DeletingStateRef> > remove_queue;
+<<<<<<< HEAD
     RemoveWQ(CephContext* cct, ObjectStore *&o, time_t ti, time_t si,
 	     ThreadPool *tp)
       : ThreadPool::WorkQueueVal<pair<PGRef, DeletingStateRef> >(
 	"OSD::RemoveWQ", ti, si, tp), cct(cct), store(o) {}
+=======
+    RemoveWQ(ObjectStore *&o, time_t ti, time_t si, ThreadPool *tp)
+      : ThreadPool::WorkQueueVal<pair<PGRef, DeletingStateRef> >(
+	"OSD::RemoveWQ", ti, si, tp),
+	store(o) {}
+>>>>>>> upstream/hammer
 
     bool _empty() override {
       return remove_queue.empty();

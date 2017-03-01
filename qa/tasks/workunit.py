@@ -5,8 +5,6 @@ import logging
 import pipes
 import os
 
-from util import get_remote_for_role
-
 from teuthology import misc
 from teuthology.config import config as teuth_config
 from teuthology.orchestra.run import CommandFailedError
@@ -14,6 +12,8 @@ from teuthology.parallel import parallel
 from teuthology.orchestra import run
 
 log = logging.getLogger(__name__)
+
+CLIENT_PREFIX = 'client.'
 
 
 def task(ctx, config):
@@ -59,15 +59,6 @@ def task(ctx, config):
               BAZ: quux
             timeout: 3h
 
-    This task supports roles that include a ceph cluster, e.g.::
-
-        tasks:
-        - ceph:
-        - workunit:
-            clients:
-              backup.client.0: [foo]
-              client.1: [bar] # cluster is implicitly 'ceph'
-
     :param ctx: Context
     :param config: Configuration
     """
@@ -103,7 +94,7 @@ def task(ctx, config):
         if role == "all":
             continue
 
-        assert 'client' in role
+        assert role.startswith(CLIENT_PREFIX)
         created_mnt_dir = _make_scratch_dir(ctx, role, config.get('subdir'))
         created_mountpoint[role] = created_mnt_dir
 
@@ -125,20 +116,6 @@ def task(ctx, config):
                               config.get('subdir'), timeout=timeout)
 
 
-def _client_mountpoint(ctx, cluster, id_):
-    """
-    Returns the path to the expected mountpoint for workunits running
-    on some kind of filesystem.
-    """
-    # for compatibility with tasks like ceph-fuse that aren't cluster-aware yet,
-    # only include the cluster name in the dir if the cluster is not 'ceph'
-    if cluster == 'ceph':
-        dir_ = 'mnt.{0}'.format(id_)
-    else:
-        dir_ = 'mnt.{0}.{1}'.format(cluster, id_)
-    return os.path.join(misc.get_testdir(ctx), dir_)
-
-
 def _delete_dir(ctx, role, created_mountpoint):
     """
     Delete file used by this role, and delete the directory that this
@@ -147,9 +124,11 @@ def _delete_dir(ctx, role, created_mountpoint):
     :param ctx: Context
     :param role: "role.#" where # is used for the role id.
     """
-    cluster, _, id_ = misc.split_role(role)
-    remote = get_remote_for_role(ctx, role)
-    mnt = _client_mountpoint(ctx, cluster, id_)
+    testdir = misc.get_testdir(ctx)
+    id_ = role[len(CLIENT_PREFIX):]
+    (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+    mnt = os.path.join(testdir, 'mnt.{id}'.format(id=id_))
+    # Is there any reason why this is not: join(mnt, role) ?
     client = os.path.join(mnt, 'client.{id}'.format(id=id_))
 
     # Remove the directory inside the mount where the workunit ran
@@ -186,10 +165,11 @@ def _make_scratch_dir(ctx, role, subdir):
     :param subdir: use this subdir (False if not used)
     """
     created_mountpoint = False
-    cluster, _, id_ = misc.split_role(role)
-    remote = get_remote_for_role(ctx, role)
+    id_ = role[len(CLIENT_PREFIX):]
+    log.debug("getting remote for {id} role {role_}".format(id=id_, role_=role))
+    (remote,) = ctx.cluster.only(role).remotes.iterkeys()
     dir_owner = remote.user
-    mnt = _client_mountpoint(ctx, cluster, id_)
+    mnt = os.path.join(misc.get_testdir(ctx), 'mnt.{id}'.format(id=id_))
     # if neither kclient nor ceph-fuse are required for a workunit,
     # mnt may not exist. Stat and create the directory if it doesn't.
     try:
@@ -257,24 +237,26 @@ def _spawn_on_all_clients(ctx, refspec, tests, env, subdir, timeout=None):
 
     See run_tests() for parameter documentation.
     """
-    is_client = misc.is_type('client')
-    client_remotes = {}
+    client_generator = misc.all_roles_of_type(ctx.cluster, 'client')
+    client_remotes = list()
+
     created_mountpoint = {}
-    for remote, roles_for_host in ctx.cluster.remotes.items():
-        for role in roles_for_host:
-            if is_client(role):
-                client_remotes[role] = remote
-                created_mountpoint[role] = _make_scratch_dir(ctx, role, subdir)
+    for client in client_generator:
+        (client_remote,) = ctx.cluster.only('client.{id}'.format(id=client)).remotes.iterkeys()
+        client_remotes.append((client_remote, 'client.{id}'.format(id=client)))
+        created_mountpoint[client] = _make_scratch_dir(ctx, "client.{id}".format(id=client), subdir)
 
     for unit in tests:
         with parallel() as p:
-            for role, remote in client_remotes.items():
+            for remote, role in client_remotes:
                 p.spawn(_run_tests, ctx, refspec, role, [unit], env, subdir,
                         timeout=timeout)
 
     # cleanup the generated client directories
-    for role, _ in client_remotes.items():
-        _delete_dir(ctx, role, created_mountpoint[role])
+    client_generator = misc.all_roles_of_type(ctx.cluster, 'client')
+    for client in client_generator:
+        _delete_dir(ctx, 'client.{id}'.format(id=client), created_mountpoint[client])
+
 
 def _run_tests(ctx, refspec, role, tests, env, subdir=None, timeout=None):
     """
@@ -296,10 +278,10 @@ def _run_tests(ctx, refspec, role, tests, env, subdir=None, timeout=None):
     """
     testdir = misc.get_testdir(ctx)
     assert isinstance(role, basestring)
-    cluster, type_, id_ = misc.split_role(role)
-    assert type_ == 'client'
-    remote = get_remote_for_role(ctx, role)
-    mnt = _client_mountpoint(ctx, cluster, id_)
+    assert role.startswith(CLIENT_PREFIX)
+    id_ = role[len(CLIENT_PREFIX):]
+    (remote,) = ctx.cluster.only(role).remotes.iterkeys()
+    mnt = os.path.join(testdir, 'mnt.{id}'.format(id=id_))
     # subdir so we can remove and recreate this a lot without sudo
     if subdir is None:
         scratch_tmp = os.path.join(mnt, 'client.{id}'.format(id=id_), 'tmp')
@@ -308,9 +290,7 @@ def _run_tests(ctx, refspec, role, tests, env, subdir=None, timeout=None):
     clonedir = '{tdir}/clone.{role}'.format(tdir=testdir, role=role)
     srcdir = '{cdir}/qa/workunits'.format(cdir=clonedir)
 
-    git_url = teuth_config.get_ceph_qa_suite_git_url()
-    # if we are running an upgrade test, and ceph-ci does not have branches like
-    # `jewel`, so should use ceph.git as an alternative.
+    git_url = teuth_config.get_ceph_git_url()
     try:
         remote.run(
             logger=log.getChild(role),
@@ -330,9 +310,7 @@ def _run_tests(ctx, refspec, role, tests, env, subdir=None, timeout=None):
             ],
         )
     except CommandFailedError:
-        if not git_url.endswith('/ceph-ci.git'):
-            raise
-        alt_git_url = git_url.replace('/ceph-ci.git', '/ceph.git')
+        alt_git_url = git_url.replace('ceph-ci', 'ceph')
         log.info(
             "failed to check out '%s' from %s; will also try in %s",
             refspec,
@@ -356,6 +334,7 @@ def _run_tests(ctx, refspec, role, tests, env, subdir=None, timeout=None):
                 'git', 'checkout', refspec,
             ],
         )
+
     remote.run(
         logger=log.getChild(role),
         args=[
@@ -390,7 +369,6 @@ def _run_tests(ctx, refspec, role, tests, env, subdir=None, timeout=None):
                     run.Raw('CEPH_CLI_TEST_DUP_COMMAND=1'),
                     run.Raw('CEPH_REF={ref}'.format(ref=refspec)),
                     run.Raw('TESTDIR="{tdir}"'.format(tdir=testdir)),
-                    run.Raw('CEPH_ARGS="--cluster {0}"'.format(cluster)),
                     run.Raw('CEPH_ID="{id}"'.format(id=id_)),
                     run.Raw('PATH=$PATH:/usr/sbin'),
                     run.Raw('CEPH_BASE={dir}'.format(dir=clonedir)),

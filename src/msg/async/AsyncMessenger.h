@@ -57,9 +57,45 @@ class Processor {
   ~Processor() { delete listen_handler; };
 
   void stop();
+<<<<<<< HEAD
   int bind(const entity_addr_t &bind_addr,
 	   const set<int>& avoid_ports,
 	   entity_addr_t* bound_addr);
+=======
+  int bind(const entity_addr_t &bind_addr, const set<int>& avoid_ports);
+  int rebind(const set<int>& avoid_port);
+  int start(Worker *w);
+  void accept();
+};
+
+class WorkerPool {
+  WorkerPool(const WorkerPool &);
+  WorkerPool& operator=(const WorkerPool &);
+  CephContext *cct;
+  uint64_t seq;
+  vector<Worker*> workers;
+  vector<int> coreids;
+  // Used to indicate whether thread started
+  bool started;
+  Mutex barrier_lock;
+  Cond barrier_cond;
+  atomic_t barrier_count;
+
+  class C_barrier : public EventCallback {
+    WorkerPool *pool;
+   public:
+    C_barrier(WorkerPool *p): pool(p) {}
+    void do_request(int id) {
+      Mutex::Locker l(pool->barrier_lock);
+      pool->barrier_count.dec();
+      pool->barrier_cond.Signal();
+    }
+  };
+  friend class C_barrier;
+ public:
+  WorkerPool(CephContext *c);
+  virtual ~WorkerPool();
+>>>>>>> upstream/hammer
   void start();
   void accept();
 };

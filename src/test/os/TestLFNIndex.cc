@@ -93,9 +93,13 @@ protected:
 
 class TestHASH_INDEX_TAG : public TestWrapLFNIndex, public ::testing::Test {
 public:
+<<<<<<< HEAD
   TestHASH_INDEX_TAG()
     : TestWrapLFNIndex(g_ceph_context, coll_t(), "PATH_1",
 		       CollectionIndex::HASH_INDEX_TAG) {
+=======
+  TestHASH_INDEX_TAG() : TestWrapLFNIndex(coll_t("ABC"), "PATH_1", CollectionIndex::HASH_INDEX_TAG) {
+>>>>>>> upstream/hammer
   }
 };
 
@@ -113,9 +117,13 @@ TEST_F(TestHASH_INDEX_TAG, generate_and_parse_name) {
 
 class TestHASH_INDEX_TAG_2 : public TestWrapLFNIndex, public ::testing::Test {
 public:
+<<<<<<< HEAD
   TestHASH_INDEX_TAG_2()
     : TestWrapLFNIndex(g_ceph_context,
 		       coll_t(), "PATH_1", CollectionIndex::HASH_INDEX_TAG_2) {
+=======
+  TestHASH_INDEX_TAG_2() : TestWrapLFNIndex(coll_t("ABC"), "PATH_1", CollectionIndex::HASH_INDEX_TAG_2) {
+>>>>>>> upstream/hammer
   }
 };
 
@@ -138,9 +146,13 @@ TEST_F(TestHASH_INDEX_TAG_2, generate_and_parse_name) {
 
 class TestHOBJECT_WITH_POOL : public TestWrapLFNIndex, public ::testing::Test {
 public:
+<<<<<<< HEAD
   TestHOBJECT_WITH_POOL()
     : TestWrapLFNIndex(g_ceph_context, coll_t(),
 		       "PATH_1", CollectionIndex::HOBJECT_WITH_POOL) {
+=======
+  TestHOBJECT_WITH_POOL() : TestWrapLFNIndex(coll_t("ABC"), "PATH_1", CollectionIndex::HOBJECT_WITH_POOL) {
+>>>>>>> upstream/hammer
   }
 };
 
@@ -184,18 +196,29 @@ TEST_F(TestHOBJECT_WITH_POOL, generate_and_parse_name) {
 
 class TestLFNIndex : public TestWrapLFNIndex, public ::testing::Test {
 public:
+<<<<<<< HEAD
   TestLFNIndex()
     : TestWrapLFNIndex(g_ceph_context, coll_t(), "PATH_1",
 		       CollectionIndex::HOBJECT_WITH_POOL) {
   }
 
   void SetUp() override {
+=======
+  TestLFNIndex() : TestWrapLFNIndex(coll_t("ABC"), "PATH_1", CollectionIndex::HOBJECT_WITH_POOL) {
+  }
+
+  virtual void SetUp() {
+>>>>>>> upstream/hammer
     ::chmod("PATH_1", 0700);
     ASSERT_EQ(0, ::system("rm -fr PATH_1"));
     ASSERT_EQ(0, ::mkdir("PATH_1", 0700));
   }
 
+<<<<<<< HEAD
   void TearDown() override {
+=======
+  virtual void TearDown() {
+>>>>>>> upstream/hammer
     ASSERT_EQ(0, ::system("rm -fr PATH_1"));
   }
 };
@@ -317,7 +340,11 @@ TEST_F(TestLFNIndex, remove_object) {
     std::string mangled_name_1 = mangled_name;
     mangled_name_1.replace(mangled_name_1.find("0_long"), 6, "1_long");
     const std::string pathname_1("PATH_1/" + mangled_name_1);
+<<<<<<< HEAD
     const std::string cmd("cp -a " + pathname + " " + pathname_1);
+=======
+    const std::string cmd("cp --preserve=xattr " + pathname + " " + pathname_1);
+>>>>>>> upstream/hammer
     EXPECT_EQ(0, ::system(cmd.c_str()));
     const string ATTR = "user.MARK";
     EXPECT_EQ((unsigned)1, (unsigned)chain_setxattr(pathname_1.c_str(), ATTR.c_str(), "Y", 1));

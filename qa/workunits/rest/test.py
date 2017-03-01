@@ -170,10 +170,15 @@ if __name__ == '__main__':
     r = expect('mds/dump.xml', 'GET', 200, 'xml')
     assert(r.tree.find('output/mdsmap/created') is not None)
 
+<<<<<<< HEAD
     expect('fs/flag/set?flag_name=enable_multiple&val=true', 'PUT', 200, '')
     expect('osd/pool/create?pg_num=1&pool=my_cephfs_metadata', 'PUT', 200, '')
     expect('osd/pool/create?pg_num=1&pool=my_cephfs_data', 'PUT', 200, '')
     expect('fs/new?fs_name=mycephfs&metadata=my_cephfs_metadata&data=my_cephfs_data', 'PUT', 200, '')
+=======
+    expect('mds/newfs?metadata=0&data=1&sure=--yes-i-really-mean-it', 'PUT',
+           200, '')
+>>>>>>> upstream/hammer
     expect('osd/pool/create?pool=data2&pg_num=10', 'PUT', 200, '')
     r = expect('osd/dump', 'GET', 200, 'json', JSONHDR)
     pools = r.myjson['output']['pools']

@@ -172,6 +172,7 @@ void PGLog::proc_replica_log(
     log.log.rbegin();
   while (1) {
     if (first_non_divergent == log.log.rend())
+<<<<<<< HEAD
       break;
     if (first_non_divergent->version <= olog.head) {
       dout(20) << "merge_log point (usually last shared) is "
@@ -201,6 +202,57 @@ void PGLog::proc_replica_log(
 
   IndexedLog folog(olog);
   auto divergent = folog.rewind_from_head(lu);
+=======
+      break;
+    if (first_non_divergent->version <= olog.head) {
+      dout(20) << "merge_log point (usually last shared) is "
+	       << *first_non_divergent << dendl;
+      break;
+    }
+    ++first_non_divergent;
+  }
+
+  /* Because olog.head >= log.tail, we know that both pgs must at least have
+   * the event represented by log.tail.  Thus, lower_bound >= log.tail.  It's
+   * possible that olog/log contain no actual events between olog.head and
+   * log.tail, however, since they might have been split out.  Thus, if
+   * we cannot find an event e such that log.tail <= e.version <= log.head,
+   * the last_update must actually be log.tail.
+   */
+  eversion_t lu =
+    (first_non_divergent == log.log.rend() ||
+     first_non_divergent->version < log.tail) ?
+    log.tail :
+    first_non_divergent->version;
+
+  list<pg_log_entry_t> divergent;
+  list<pg_log_entry_t>::const_iterator pp = olog.log.end();
+  while (true) {
+    if (pp == olog.log.begin())
+      break;
+
+    --pp;
+    const pg_log_entry_t& oe = *pp;
+
+    // don't continue past the tail of our log.
+    if (oe.version <= log.tail) {
+      ++pp;
+      break;
+    }
+
+    if (oe.version <= lu) {
+      ++pp;
+      break;
+    }
+
+    divergent.push_front(oe);
+  }
+
+
+  IndexedLog folog;
+  folog.log.insert(folog.log.begin(), olog.log.begin(), pp);
+  folog.index();
+>>>>>>> upstream/hammer
   _merge_divergent_entries(
     folog,
     divergent,
@@ -252,6 +304,7 @@ void PGLog::rewind_divergent_log(ObjectStore::Transaction& t, eversion_t newhead
   if (info.last_complete > newhead)
     info.last_complete = newhead;
 
+<<<<<<< HEAD
   auto divergent = log.rewind_from_head(newhead);
   if (!divergent.empty()) {
     mark_dirty_from(divergent.front().version);
@@ -260,6 +313,12 @@ void PGLog::rewind_divergent_log(ObjectStore::Transaction& t, eversion_t newhead
     dout(10) << "rewind_divergent_log future divergent " << entry << dendl;
   }
   info.last_update = newhead;
+=======
+  if (log.rollback_info_trimmed_to > newhead)
+    log.rollback_info_trimmed_to = newhead;
+
+  log.index();
+>>>>>>> upstream/hammer
 
   _merge_divergent_entries(
     log,
@@ -444,9 +503,18 @@ void PGLog::write_log_and_missing(
   bool require_rollback)
 {
   if (is_dirty()) {
+<<<<<<< HEAD
     dout(5) << "write_log_and_missing with: "
 	     << "dirty_to: " << dirty_to
 	     << ", dirty_from: " << dirty_from
+=======
+    dout(5) << "write_log with: "
+	     << "dirty_to: " << dirty_to
+	     << ", dirty_from: " << dirty_from
+	     << ", dirty_divergent_priors: "
+	     << (dirty_divergent_priors ? "true" : "false")
+	     << ", divergent_priors: " << divergent_priors.size()
+>>>>>>> upstream/hammer
 	     << ", writeout_from: " << writeout_from
 	     << ", trimmed: " << trimmed
 	     << ", clear_divergent_priors: " << clear_divergent_priors

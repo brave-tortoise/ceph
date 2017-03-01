@@ -3,8 +3,12 @@
 #include "cls/rbd/cls_rbd_types.h"
 #include "test/librbd/test_fixture.h"
 #include "test/librbd/test_support.h"
+<<<<<<< HEAD
 #include "librbd/ExclusiveLock.h"
 #include "librbd/ImageState.h"
+=======
+#include "librbd/AioCompletion.h"
+>>>>>>> upstream/hammer
 #include "librbd/ImageWatcher.h"
 #include "librbd/internal.h"
 #include "librbd/ObjectMap.h"
@@ -48,7 +52,11 @@ public:
       return r;
     }
 
+<<<<<<< HEAD
     r = snap_create(*ictx, snap_name);
+=======
+    r = librbd::snap_create(ictx, snap_name);
+>>>>>>> upstream/hammer
     if (r < 0) {
       return r;
     }
@@ -138,7 +146,11 @@ TEST_F(TestInternal, SnapCreateLocksImage) {
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
+<<<<<<< HEAD
   ASSERT_EQ(0, snap_create(*ictx, "snap1"));
+=======
+  ASSERT_EQ(0, librbd::snap_create(ictx, "snap1"));
+>>>>>>> upstream/hammer
   BOOST_SCOPE_EXIT( (ictx) ) {
     ASSERT_EQ(0, ictx->operations->snap_remove("snap1"));
   } BOOST_SCOPE_EXIT_END;
@@ -155,7 +167,11 @@ TEST_F(TestInternal, SnapCreateFailsToLockImage) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
   ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
 
+<<<<<<< HEAD
   ASSERT_EQ(-EROFS, snap_create(*ictx, "snap1"));
+=======
+  ASSERT_EQ(-EROFS, librbd::snap_create(ictx, "snap1"));
+>>>>>>> upstream/hammer
 }
 
 TEST_F(TestInternal, SnapRollbackLocksImage) {
@@ -271,6 +287,7 @@ TEST_F(TestInternal, AioWriteRequestsLock) {
   ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
 
   std::string buffer(256, '1');
+<<<<<<< HEAD
   Context *ctx = new DummyContext();
   auto c = librbd::io::AioCompletion::create(ctx);
   c->get();
@@ -278,6 +295,13 @@ TEST_F(TestInternal, AioWriteRequestsLock) {
   bufferlist bl;
   bl.append(buffer);
   ictx->io_work_queue->aio_write(c, 0, buffer.size(), std::move(bl), 0);
+=======
+  DummyContext *ctx = new DummyContext();
+  librbd::AioCompletion *c =
+    librbd::aio_create_completion_internal(ctx, librbd::rbd_ctx_cb);
+  c->get();
+  aio_write(ictx, 0, buffer.size(), buffer.c_str(), c, 0);
+>>>>>>> upstream/hammer
 
   bool is_owner;
   ASSERT_EQ(0, librbd::is_exclusive_lock_owner(ictx, &is_owner));
@@ -296,10 +320,18 @@ TEST_F(TestInternal, AioDiscardRequestsLock) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
   ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
 
+<<<<<<< HEAD
   Context *ctx = new DummyContext();
   auto c = librbd::io::AioCompletion::create(ctx);
   c->get();
   ictx->io_work_queue->aio_discard(c, 0, 256, false);
+=======
+  DummyContext *ctx = new DummyContext();
+  librbd::AioCompletion *c =
+    librbd::aio_create_completion_internal(ctx, librbd::rbd_ctx_cb);
+  c->get();
+  aio_discard(ictx, 0, 256, c);
+>>>>>>> upstream/hammer
 
   bool is_owner;
   ASSERT_EQ(0, librbd::is_exclusive_lock_owner(ictx, &is_owner));
@@ -400,6 +432,7 @@ TEST_F(TestInternal, MultipleResize) {
   ASSERT_EQ(0U, size);
 }
 
+<<<<<<< HEAD
 TEST_F(TestInternal, Metadata) {
   REQUIRE_FEATURE(RBD_FEATURE_LAYERING);
 
@@ -723,6 +756,26 @@ TEST_F(TestInternal, ShrinkFlushesCache) {
 
   librbd::NoOpProgressContext no_op;
   ASSERT_EQ(0, ictx->operations->resize(m_image_size >> 1, true, no_op));
+=======
+TEST_F(TestInternal, ShrinkFlushesCache) {
+  librbd::ImageCtx *ictx;
+  ASSERT_EQ(0, open_image(m_image_name, &ictx));
+
+  {
+    RWLock::WLocker owner_locker(ictx->owner_lock);
+    ASSERT_EQ(0, ictx->image_watcher->try_lock());
+  }
+
+  std::string buffer(4096, '1');
+  C_SaferCond cond_ctx;
+  librbd::AioCompletion *c =
+    librbd::aio_create_completion_internal(&cond_ctx, librbd::rbd_ctx_cb);
+  c->get();
+  aio_write(ictx, 0, buffer.size(), buffer.c_str(), c, 0);
+
+  librbd::NoOpProgressContext no_op;
+  ASSERT_EQ(0, librbd::resize(ictx, m_image_size >> 1, no_op));
+>>>>>>> upstream/hammer
 
   ASSERT_TRUE(c->is_complete());
   ASSERT_EQ(0, c->wait_for_complete());
@@ -730,6 +783,7 @@ TEST_F(TestInternal, ShrinkFlushesCache) {
   c->put();
 }
 
+<<<<<<< HEAD
 TEST_F(TestInternal, ImageOptions) {
   rbd_image_options_t opts1 = NULL, opts2 = NULL;
   uint64_t uint64_val1 = 10, uint64_val2 = 0;
@@ -873,6 +927,8 @@ TEST_F(TestInternal, RemoveById) {
   ASSERT_EQ(0, librbd::remove(m_ioctx, "", image_id, remove_no_op));
 }
 
+=======
+>>>>>>> upstream/hammer
 static int iterate_cb(uint64_t off, size_t len, int exists, void *arg)
 {
   interval_set<uint64_t> *diff = static_cast<interval_set<uint64_t> *>(arg);
@@ -895,8 +951,12 @@ TEST_F(TestInternal, DiffIterateCloneOverwrite) {
   ASSERT_EQ(4096, image.write(0, 4096, bl));
 
   interval_set<uint64_t> one;
+<<<<<<< HEAD
   ASSERT_EQ(0, image.diff_iterate2(NULL, 0, size, false, false, iterate_cb,
                                    (void *)&one));
+=======
+  ASSERT_EQ(0, image.diff_iterate(NULL, 0, size, iterate_cb, (void *)&one));
+>>>>>>> upstream/hammer
   ASSERT_EQ(0, image.snap_create("one"));
   ASSERT_EQ(0, image.snap_protect("one"));
 
@@ -906,8 +966,13 @@ TEST_F(TestInternal, DiffIterateCloneOverwrite) {
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(clone_name, &ictx));
+<<<<<<< HEAD
   ASSERT_EQ(0, snap_create(*ictx, "one"));
   ASSERT_EQ(0, ictx->operations->snap_protect("one"));
+=======
+  ASSERT_EQ(0, librbd::snap_create(ictx, "one"));
+  ASSERT_EQ(0, librbd::snap_protect(ictx, "one"));
+>>>>>>> upstream/hammer
 
   // Simulate a client that doesn't support deep flatten (old librbd / krbd)
   // which will copy up the full object from the parent
@@ -919,8 +984,15 @@ TEST_F(TestInternal, DiffIterateCloneOverwrite) {
 
   interval_set<uint64_t> diff;
   ASSERT_EQ(0, librbd::snap_set(ictx, "one"));
+<<<<<<< HEAD
   ASSERT_EQ(0, librbd::diff_iterate(ictx, nullptr, 0, size, true, false,
                                     iterate_cb, (void *)&diff));
   ASSERT_EQ(one, diff);
 }
 
+=======
+  ASSERT_EQ(0, librbd::diff_iterate(ictx, NULL, 0, size, iterate_cb,
+				    (void *)&diff));
+  ASSERT_EQ(one, diff);
+}
+>>>>>>> upstream/hammer

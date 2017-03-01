@@ -131,6 +131,7 @@ void hobject_t::decode(bufferlist::iterator& bl)
   if (struct_v >= 4) {
     ::decode(nspace, bl);
     ::decode(pool, bl);
+<<<<<<< HEAD
     // for compat with hammer, which did not handle the transition
     // from pool -1 -> pool INT64_MIN for MIN properly.  this object
     // name looks a bit like a pgmeta object for the meta collection,
@@ -149,6 +150,17 @@ void hobject_t::decode(bufferlist::iterator& bl)
     if (max) {
       *this = hobject_t::get_max();
     }
+=======
+    // newer OSDs have a different hobject_t::get_min(); decode it properly.
+    if (pool == INT64_MIN &&
+	hash == 0 &&
+	snap == 0 &&
+	!max &&
+	oid.name.empty()) {
+      pool = -1;
+      assert(is_min());
+    }
+>>>>>>> upstream/hammer
   }
   DECODE_FINISH(bl);
   build_hash_cache();
@@ -241,6 +253,7 @@ ostream& operator<<(ostream& out, const hobject_t& o)
     return out << "MIN";
   if (o.is_max())
     return out << "MAX";
+<<<<<<< HEAD
   out << o.pool << ':';
   out << std::hex;
   out.width(8);
@@ -257,6 +270,15 @@ ostream& operator<<(ostream& out, const hobject_t& o)
   v.push_back(':');
   append_out_escaped(o.oid.name, &v);
   out << v << ':' << o.snap;
+=======
+  out << o.pool << '/';
+  out << std::hex << o.get_hash() << std::dec;
+  if (o.nspace.length())
+    out << ":" << o.nspace;
+  if (o.get_key().length())
+    out << "." << o.get_key();
+  out << "/" << o.oid << "/" << o.snap;
+>>>>>>> upstream/hammer
   return out;
 }
 
@@ -429,6 +451,7 @@ void ghobject_t::decode(bufferlist::iterator& bl)
   if (struct_v >= 4) {
     ::decode(hobj.nspace, bl);
     ::decode(hobj.pool, bl);
+<<<<<<< HEAD
     // for compat with hammer, which did not handle the transition from
     // pool -1 -> pool INT64_MIN for MIN properly (see hobject_t::decode()).
     if (hobj.pool == -1 &&
@@ -437,6 +460,15 @@ void ghobject_t::decode(bufferlist::iterator& bl)
 	!hobj.max &&
 	hobj.oid.name.empty()) {
       hobj.pool = INT64_MIN;
+=======
+    // newer OSDs have a different hobject_t::get_min(); decode it properly.
+    if (hobj.pool == INT64_MIN &&
+	hobj.hash == 0 &&
+	hobj.snap == 0 &&
+	!hobj.max &&
+	hobj.oid.name.empty()) {
+      hobj.pool = -1;
+>>>>>>> upstream/hammer
       assert(hobj.is_min());
     }
   }

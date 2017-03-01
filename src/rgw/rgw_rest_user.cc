@@ -82,8 +82,13 @@ void RGWOp_User_Create::execute()
   bool system;
   bool exclusive;
 
+<<<<<<< HEAD
   int32_t max_buckets;
   int32_t default_max_buckets = s->cct->_conf->rgw_user_max_buckets;
+=======
+  uint32_t max_buckets;
+  uint32_t default_max_buckets = s->cct->_conf->rgw_user_max_buckets;
+>>>>>>> upstream/hammer
 
   RGWUserAdminOpState op_state;
 
@@ -98,7 +103,11 @@ void RGWOp_User_Create::execute()
   RESTArgs::get_string(s, "user-caps", caps, &caps);
   RESTArgs::get_bool(s, "generate-key", true, &gen_key);
   RESTArgs::get_bool(s, "suspended", false, &suspended);
+<<<<<<< HEAD
   RESTArgs::get_int32(s, "max-buckets", default_max_buckets, &max_buckets);
+=======
+  RESTArgs::get_uint32(s, "max-buckets", default_max_buckets, &max_buckets);
+>>>>>>> upstream/hammer
   RESTArgs::get_bool(s, "system", false, &system);
   RESTArgs::get_bool(s, "exclusive", false, &exclusive);
 
@@ -150,7 +159,11 @@ void RGWOp_User_Create::execute()
   }
 
   if (s->cct->_conf->rgw_bucket_default_quota_max_size >= 0) {
+<<<<<<< HEAD
     bucket_quota.max_size = s->cct->_conf->rgw_bucket_default_quota_max_size;
+=======
+    bucket_quota.max_size_kb = s->cct->_conf->rgw_bucket_default_quota_max_size;
+>>>>>>> upstream/hammer
     bucket_quota.enabled = true;
   }
 
@@ -160,7 +173,11 @@ void RGWOp_User_Create::execute()
   }
 
   if (s->cct->_conf->rgw_user_default_quota_max_size >= 0) {
+<<<<<<< HEAD
     user_quota.max_size = s->cct->_conf->rgw_user_default_quota_max_size;
+=======
+    user_quota.max_size_kb = s->cct->_conf->rgw_user_default_quota_max_size;
+>>>>>>> upstream/hammer
     user_quota.enabled = true;
   }
 

@@ -380,7 +380,13 @@ std::ostream &operator<<(std::ostream &out,
 std::ostream &operator<<(std::ostream &out,
                          const librbd::watch_notify::ClientId &client);
 std::ostream &operator<<(std::ostream &out,
+<<<<<<< HEAD
                          const librbd::watch_notify::AsyncRequestId &request);
+=======
+                         const librbd::WatchNotify::ClientId &client);
+std::ostream &operator<<(std::ostream &out,
+                         const librbd::WatchNotify::AsyncRequestId &request);
+>>>>>>> upstream/hammer
 
 WRITE_CLASS_ENCODER(librbd::watch_notify::ClientId);
 WRITE_CLASS_ENCODER(librbd::watch_notify::AsyncRequestId);

@@ -21,11 +21,18 @@
 #include <set>
 
 #include "include/assert.h"
+<<<<<<< HEAD
 #include "include/buffer_fwd.h"
 #include "include/atomic.h"
 #include "common/cmdparse.h"
 #include "include/Spinlock.h"
 #include "crush/CrushLocation.h"
+=======
+#include "include/buffer.h"
+#include "include/atomic.h"
+#include "common/cmdparse.h"
+#include "include/Spinlock.h"
+>>>>>>> upstream/hammer
 #include <boost/noncopyable.hpp>
 
 class AdminSocket;
@@ -72,6 +79,9 @@ public:
 
   md_config_t *_conf;
   ceph::logging::Log *_log;
+
+  /* init ceph::crypto */
+  void init_crypto();
 
   /* init ceph::crypto */
   void init_crypto();
@@ -228,6 +238,7 @@ private:
 
   uint32_t _module_type;
 
+<<<<<<< HEAD
   int _init_flags;
 
   uid_t _set_uid; ///< uid to drop privs to
@@ -235,6 +246,8 @@ private:
   std::string _set_uid_string;
   std::string _set_gid_string;
 
+=======
+>>>>>>> upstream/hammer
   bool _crypto_inited;
 
   /* libcommon service thread.
@@ -261,9 +274,12 @@ private:
 
   ceph_spinlock_t _associated_objs_lock;
   std::map<std::string, SingletonWrapper*> _associated_objs;
+<<<<<<< HEAD
 
   ceph_spinlock_t _fork_watchers_lock;
   std::vector<ForkWatcher*> _fork_watchers;
+=======
+>>>>>>> upstream/hammer
 
   // crypto
   CryptoHandler *_crypto_none;
@@ -274,6 +290,7 @@ private:
   ceph_spinlock_t _feature_lock;
   std::set<std::string> _experimental_features;
 
+<<<<<<< HEAD
   PluginRegistry *_plugin_registry;
 
   md_config_obs_t *_lockdep_obs;
@@ -291,6 +308,10 @@ private:
   PerfCounters *_cct_perf;
   ceph_spinlock_t _cct_perf_lock;
 
+=======
+  md_config_obs_t *_lockdep_obs;
+
+>>>>>>> upstream/hammer
   friend class CephContextObs;
 };
 

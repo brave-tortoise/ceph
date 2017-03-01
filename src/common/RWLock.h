@@ -33,6 +33,7 @@ class RWLock final
   bool track, lockdep;
 
   std::string unique_name(const char* name) const;
+<<<<<<< HEAD
 
 public:
   RWLock(const RWLock& other) = delete;
@@ -61,6 +62,16 @@ public:
     ANNOTATE_BENIGN_RACE_SIZED(&nrlock, sizeof(nrlock), "RWlock nrlock");
     ANNOTATE_BENIGN_RACE_SIZED(&nwlock, sizeof(nwlock), "RWlock nwlock");
     if (lockdep && g_lockdep) id = lockdep_register(name.c_str());
+=======
+
+public:
+  RWLock(const RWLock& other);
+  const RWLock& operator=(const RWLock& other);
+
+  RWLock(const std::string &n) : name(n), id(-1), nrlock(0), nwlock(0) {
+    pthread_rwlock_init(&L, NULL);
+    if (g_lockdep) id = lockdep_register(name.c_str());
+>>>>>>> upstream/hammer
   }
 
   bool is_locked() const {
@@ -78,7 +89,11 @@ public:
     if (track)
       assert(!is_locked());
     pthread_rwlock_destroy(&L);
+<<<<<<< HEAD
     if (lockdep && g_lockdep) {
+=======
+    if (g_lockdep) {
+>>>>>>> upstream/hammer
       lockdep_unregister(id);
     }
   }
@@ -92,14 +107,19 @@ public:
         nrlock.dec();
       }
     }
+<<<<<<< HEAD
     if (lockdep && this->lockdep && g_lockdep)
       id = lockdep_will_unlock(name.c_str(), id);
+=======
+    if (lockdep && g_lockdep) id = lockdep_will_unlock(name.c_str(), id);
+>>>>>>> upstream/hammer
     int r = pthread_rwlock_unlock(&L);
     assert(r == 0);
   }
 
   // read
   void get_read() const {
+<<<<<<< HEAD
     if (lockdep && g_lockdep) id = lockdep_will_lock(name.c_str(), id);
     int r = pthread_rwlock_rdlock(&L);
     assert(r == 0);
@@ -112,6 +132,18 @@ public:
       if (track)
          nrlock.inc();
       if (lockdep && g_lockdep) id = lockdep_locked(name.c_str(), id);
+=======
+    if (g_lockdep) id = lockdep_will_lock(name.c_str(), id);
+    int r = pthread_rwlock_rdlock(&L);
+    assert(r == 0);
+    if (g_lockdep) id = lockdep_locked(name.c_str(), id);
+    nrlock.inc();
+  }
+  bool try_get_read() const {
+    if (pthread_rwlock_tryrdlock(&L) == 0) {
+      nrlock.inc();
+      if (g_lockdep) id = lockdep_locked(name.c_str(), id);
+>>>>>>> upstream/hammer
       return true;
     }
     return false;
@@ -122,6 +154,7 @@ public:
 
   // write
   void get_write(bool lockdep=true) {
+<<<<<<< HEAD
     if (lockdep && this->lockdep && g_lockdep)
       id = lockdep_will_lock(name.c_str(), id);
     int r = pthread_rwlock_wrlock(&L);
@@ -130,14 +163,26 @@ public:
       id = lockdep_locked(name.c_str(), id);
     if (track)
       nwlock.inc();
+=======
+    if (lockdep && g_lockdep) id = lockdep_will_lock(name.c_str(), id);
+    int r = pthread_rwlock_wrlock(&L);
+    assert(r == 0);
+    if (g_lockdep) id = lockdep_locked(name.c_str(), id);
+    nwlock.inc();
+>>>>>>> upstream/hammer
 
   }
   bool try_get_write(bool lockdep=true) {
     if (pthread_rwlock_trywrlock(&L) == 0) {
+<<<<<<< HEAD
       if (lockdep && this->lockdep && g_lockdep)
 	id = lockdep_locked(name.c_str(), id);
       if (track)
          nwlock.inc();
+=======
+      if (lockdep && g_lockdep) id = lockdep_locked(name.c_str(), id);
+      nwlock.inc();
+>>>>>>> upstream/hammer
       return true;
     }
     return false;

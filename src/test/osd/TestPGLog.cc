@@ -457,24 +457,40 @@ TEST_F(PGLogTest, rewind_divergent_log) {
 
     {
       pg_log_entry_t e;
+<<<<<<< HEAD
       e.mark_unrollbackable();
+=======
+      e.mod_desc.mark_unrollbackable();
+>>>>>>> upstream/hammer
       e.version = eversion_t(1, 5);
       e.soid.set_hash(0x9);
       add(e);
     }
     {
       pg_log_entry_t e;
+<<<<<<< HEAD
       e.mark_unrollbackable();
+=======
+      e.mod_desc.mark_unrollbackable();
+>>>>>>> upstream/hammer
       e.version = eversion_t(1, 6);
       e.soid.set_hash(0x10);
       add(e);
     }
     TestHandler h(remove_snap);
+<<<<<<< HEAD
     roll_forward_to(eversion_t(1, 6), &h);
     rewind_divergent_log(t, eversion_t(1, 5), info, &h,
 			 dirty_info, dirty_big_info);
     pg_log_t log;
     reset_backfill_claim_log(log, &h);
+=======
+    trim_rollback_info(eversion_t(1, 6), &h);
+    rewind_divergent_log(t, eversion_t(1, 5), info, &h,
+			 dirty_info, dirty_big_info);
+    pg_log_t log;
+    claim_log_and_clear_rollback_info(log, &h);
+>>>>>>> upstream/hammer
   }
 }
 
@@ -1537,8 +1553,13 @@ TEST_F(PGLogTest, proc_replica_log) {
     EXPECT_TRUE(t.empty());
     EXPECT_TRUE(omissing.have_missing());
     EXPECT_TRUE(omissing.is_missing(divergent_object));
+<<<<<<< HEAD
     EXPECT_EQ(omissing.get_items().at(divergent_object).have, eversion_t(0, 0));
     EXPECT_EQ(omissing.get_items().at(divergent_object).need, eversion_t(1, 1));
+=======
+    EXPECT_EQ(omissing.missing[divergent_object].have, eversion_t(0, 0));
+    EXPECT_EQ(omissing.missing[divergent_object].need, eversion_t(1, 1));
+>>>>>>> upstream/hammer
     EXPECT_EQ(last_update, oinfo.last_update);
   }
 
@@ -1620,7 +1641,11 @@ TEST_F(PGLogTest, proc_replica_log) {
     EXPECT_TRUE(t.empty());
     EXPECT_TRUE(omissing.have_missing());
     EXPECT_TRUE(omissing.is_missing(divergent_object));
+<<<<<<< HEAD
     EXPECT_EQ(eversion_t(1, 3), omissing.get_items().at(divergent_object).need);
+=======
+    EXPECT_EQ(eversion_t(1, 3), omissing.missing[divergent_object].need);
+>>>>>>> upstream/hammer
     EXPECT_EQ(olog.head, oinfo.last_update);
     EXPECT_EQ(olog.head, oinfo.last_complete);
 
@@ -1629,8 +1654,13 @@ TEST_F(PGLogTest, proc_replica_log) {
     EXPECT_TRUE(t.empty());
     EXPECT_TRUE(omissing.have_missing());
     EXPECT_TRUE(omissing.is_missing(divergent_object));
+<<<<<<< HEAD
     EXPECT_EQ(omissing.get_items().at(divergent_object).have, eversion_t(0, 0));
     EXPECT_EQ(omissing.get_items().at(divergent_object).need, eversion_t(1, 1));
+=======
+    EXPECT_EQ(omissing.missing[divergent_object].have, eversion_t(0, 0));
+    EXPECT_EQ(omissing.missing[divergent_object].need, eversion_t(1, 1));
+>>>>>>> upstream/hammer
     EXPECT_EQ(last_update, oinfo.last_update);
   }
 
@@ -1865,11 +1895,16 @@ TEST_F(PGLogTest, merge_log_split_missing_entries_at_head) {
 
   t.setup();
   t.set_div_bounds(mk_evt(9, 79), mk_evt(8, 69));
+<<<<<<< HEAD
   t.set_auth_bounds(mk_evt(15, 160), mk_evt(9, 77));
+=======
+  t.set_auth_bounds(mk_evt(10, 160), mk_evt(9, 77));
+>>>>>>> upstream/hammer
   t.final.add(mk_obj(1), mk_evt(15, 150), mk_evt(8, 70));
   run_test_case(t);
 }
 
+<<<<<<< HEAD
 TEST_F(PGLogTest, olog_tail_gt_log_tail_split) {
   TestCase t;
   t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(10, 100), mk_evt(8, 70)));
@@ -1898,6 +1933,8 @@ TEST_F(PGLogTest, olog_tail_gt_log_tail_split2) {
   run_test_case(t);
 }
 
+=======
+>>>>>>> upstream/hammer
 TEST_F(PGLogTest, filter_log_1) {
   {
     clear();

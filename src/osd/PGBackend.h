@@ -363,6 +363,29 @@ typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
 
    virtual IsPGRecoverablePredicate *get_is_recoverable_predicate() = 0;
    virtual IsPGReadablePredicate *get_is_readable_predicate() = 0;
+<<<<<<< HEAD
+=======
+
+   void temp_colls(list<coll_t> *out) {
+     if (temp_created)
+       out->push_back(temp_coll);
+   }
+   void split_colls(
+     spg_t child,
+     int split_bits,
+     int seed,
+     ObjectStore::Transaction *t) {
+     coll_t target = coll_t::make_temp_coll(child);
+     if (!temp_created)
+       return;
+     t->create_collection(target);
+     t->split_collection(
+       temp_coll,
+       split_bits,
+       seed,
+       target);
+   }
+>>>>>>> upstream/hammer
 
    virtual void dump_recovery_info(Formatter *f) const = 0;
 
@@ -537,11 +560,20 @@ typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
      inconsistent_obj_wrapper &object_error);
    void be_compare_scrubmaps(
      const map<pg_shard_t,ScrubMap*> &maps,
+<<<<<<< HEAD
      bool repair,
      map<hobject_t, set<pg_shard_t>> &missing,
      map<hobject_t, set<pg_shard_t>> &inconsistent,
      map<hobject_t, list<pg_shard_t>> &authoritative,
      map<hobject_t, pair<uint32_t,uint32_t>> &missing_digest,
+=======
+     bool okseed,   ///< true if scrub digests have same seed our oi digests
+     bool repair,
+     map<hobject_t, set<pg_shard_t> > &missing,
+     map<hobject_t, set<pg_shard_t> > &inconsistent,
+     map<hobject_t, list<pg_shard_t> > &authoritative,
+     map<hobject_t, pair<uint32_t,uint32_t> > &missing_digest,
+>>>>>>> upstream/hammer
      int &shallow_errors, int &deep_errors,
      Scrub::Store *store,
      const spg_t& pgid,

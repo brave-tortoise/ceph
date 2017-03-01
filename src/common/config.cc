@@ -1069,6 +1069,7 @@ int md_config_t::set_val_impl(const std::string &val, config_option const *opt,
   return 0;
 }
 
+<<<<<<< HEAD
 template<typename T> struct strtox_helper;
 
 template<> struct strtox_helper<float> {
@@ -1112,10 +1113,29 @@ public:
       std::string err;
       int b = strict_strtol(val, 10, &err);
       if (!err.empty()) {
+=======
+int md_config_t::set_val_raw(const char *val, const config_option *opt)
+{
+  assert(lock.is_locked());
+  switch (opt->type) {
+    case OPT_INT: {
+      std::string err;
+      int f = strict_si_cast<int>(val, &err);
+      if (!err.empty())
+	return -EINVAL;
+      *(int*)opt->conf_ptr(this) = f;
+      return 0;
+    }
+    case OPT_LONGLONG: {
+      std::string err;
+      long long f = strict_si_cast<long long>(val, &err);
+      if (!err.empty())
+>>>>>>> upstream/hammer
 	return -EINVAL;
       }
       *ptr = !!b;
     }
+<<<<<<< HEAD
     return 0;
   }
     
@@ -1125,10 +1145,41 @@ public:
       int operator()(const T md_config_t::* member_ptr) {
 	T *obj = const_cast<T *>(&(conf->*member_ptr));
 	if (!obj->parse(val)) {
+=======
+    case OPT_STR:
+      *(std::string*)opt->conf_ptr(this) = val ? val : "";
+      return 0;
+    case OPT_FLOAT: {
+      std::string err;
+      float f = strict_strtof(val, &err);
+      if (!err.empty())
+	return -EINVAL;
+      *(float*)opt->conf_ptr(this) = f;
+      return 0;
+    }
+    case OPT_DOUBLE: {
+      std::string err;
+      double f = strict_strtod(val, &err);
+      if (!err.empty())
+	return -EINVAL;
+      *(double*)opt->conf_ptr(this) = f;
+      return 0;
+    }
+    case OPT_BOOL:
+      if (strcasecmp(val, "false") == 0)
+	*(bool*)opt->conf_ptr(this) = false;
+      else if (strcasecmp(val, "true") == 0)
+	*(bool*)opt->conf_ptr(this) = true;
+      else {
+	std::string err;
+	int b = strict_strtol(val, 10, &err);
+	if (!err.empty())
+>>>>>>> upstream/hammer
 	  return -EINVAL;
 	}
 	return 0;
       }
+<<<<<<< HEAD
 
   // float, double
   template<typename T,
@@ -1136,6 +1187,29 @@ public:
       int operator()(const T md_config_t::* member_ptr) {
 	T* ptr = const_cast<T *>(&(conf->*member_ptr));
 	return strict_strtox(val, *ptr);
+=======
+      return 0;
+    case OPT_U32: {
+      std::string err;
+      int f = strict_si_cast<int>(val, &err);
+      if (!err.empty())
+	return -EINVAL;
+      *(uint32_t*)opt->conf_ptr(this) = f;
+      return 0;
+    }
+    case OPT_U64: {
+      std::string err;
+      uint64_t f = strict_si_cast<uint64_t>(val, &err);
+      if (!err.empty())
+	return -EINVAL;
+      *(uint64_t*)opt->conf_ptr(this) = f;
+      return 0;
+    }
+    case OPT_ADDR: {
+      entity_addr_t *addr = (entity_addr_t*)opt->conf_ptr(this);
+      if (!addr->parse(val)) {
+	return -EINVAL;
+>>>>>>> upstream/hammer
       }
 
   // integers

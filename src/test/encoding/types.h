@@ -270,6 +270,10 @@ TYPE(rbd_replay::action::Dependency)
 TYPE(rbd_replay::action::ActionEntry);
 #endif
 
+#include "rbd_replay/ActionTypes.h"
+TYPE(rbd_replay::action::Dependency)
+TYPE(rbd_replay::action::ActionEntry);
+
 #ifdef WITH_RADOSGW
 
 #include "rgw/rgw_rados.h"

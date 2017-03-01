@@ -24,18 +24,30 @@ template <typename ImageCtxT = ImageCtx>
 class C_AsyncObjectThrottle : public Context {
 public:
   C_AsyncObjectThrottle(AsyncObjectThrottleFinisher &finisher,
+<<<<<<< HEAD
                         ImageCtxT &image_ctx)
     : m_image_ctx(image_ctx), m_finisher(finisher) {
+=======
+                        ImageCtx &image_ctx)
+    : m_image_ctx(image_ctx), m_finisher(finisher)
+  {
+>>>>>>> upstream/hammer
   }
 
   virtual int send() = 0;
 
 protected:
+<<<<<<< HEAD
   ImageCtxT &m_image_ctx;
 
   void finish(int r) override {
     m_finisher.finish_op(r);
   }
+=======
+  ImageCtx &m_image_ctx;
+
+  virtual void finish(int r);
+>>>>>>> upstream/hammer
 
 private:
   AsyncObjectThrottleFinisher &m_finisher;
@@ -48,8 +60,12 @@ public:
     C_AsyncObjectThrottle<ImageCtxT>* (AsyncObjectThrottle&,
                                        uint64_t)> ContextFactory;
 
+<<<<<<< HEAD
   AsyncObjectThrottle(const AsyncRequest<ImageCtxT> *async_request,
                       ImageCtxT &image_ctx,
+=======
+  AsyncObjectThrottle(const AsyncRequest *async_request, ImageCtx &image_ctx,
+>>>>>>> upstream/hammer
                       const ContextFactory& context_factory, Context *ctx,
 		      ProgressContext *prog_ctx, uint64_t object_no,
 		      uint64_t end_object_no);
@@ -59,8 +75,13 @@ public:
 
 private:
   Mutex m_lock;
+<<<<<<< HEAD
   const AsyncRequest<ImageCtxT> *m_async_request;
   ImageCtxT &m_image_ctx;
+=======
+  const AsyncRequest *m_async_request;
+  ImageCtx &m_image_ctx;
+>>>>>>> upstream/hammer
   ContextFactory m_context_factory;
   Context *m_ctx;
   ProgressContext *m_prog_ctx;

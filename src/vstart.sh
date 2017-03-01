@@ -24,6 +24,7 @@ if [ -e CMakeCache.txt ]; then
   [ -z "$MGR_PYTHON_PATH" ] && MGR_PYTHON_PATH=$CEPH_ROOT/src/pybind/mgr
 fi
 
+<<<<<<< HEAD
 # use CEPH_BUILD_ROOT to vstart from a 'make install' 
 if [ -n "$CEPH_BUILD_ROOT" ]; then
         [ -z "$CEPH_BIN" ] && CEPH_BIN=$CEPH_BUILD_ROOT/bin
@@ -49,6 +50,18 @@ fi
 export PYTHONPATH=$PYBIND:$CEPH_LIB/cython_modules/lib.2:$PYTHONPATH
 export LD_LIBRARY_PATH=$CEPH_LIB:$LD_LIBRARY_PATH
 export DYLD_LIBRARY_PATH=$CEPH_LIB:$DYLD_LIBRARY_PATH
+=======
+if [ -z "${CEPH_VSTART_WRAPPER}" ]; then
+    PATH=$(pwd):$PATH
+fi
+
+export PYTHONPATH=./pybind
+export LD_LIBRARY_PATH=$CEPH_LIB
+export DYLD_LIBRARY_PATH=$LD_LIBRARY_PATH
+
+# abort on failure
+set -e
+>>>>>>> upstream/hammer
 
 [ -z "$CEPH_NUM_MON" ] && CEPH_NUM_MON="$MON"
 [ -z "$CEPH_NUM_OSD" ] && CEPH_NUM_OSD="$OSD"

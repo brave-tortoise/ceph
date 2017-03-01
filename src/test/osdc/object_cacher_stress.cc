@@ -191,7 +191,10 @@ int correctness_test(uint64_t delay_ns)
   std::cerr << "just start()ed ObjectCacher" << std::endl;
 
   SnapContext snapc;
+<<<<<<< HEAD
   ceph_tid_t journal_tid = 0;
+=======
+>>>>>>> upstream/hammer
   std::string oid("correctness_test_obj");
   ObjectCacher::ObjectSet object_set(NULL, 0, 0);
   ceph::bufferlist zeroes_bl;
@@ -199,17 +202,29 @@ int correctness_test(uint64_t delay_ns)
 
   // set up a 4MB all-zero object
   std::cerr << "writing 4x1MB object" << std::endl;
+<<<<<<< HEAD
   std::map<int, C_SaferCond> create_finishers;
   for (int i = 0; i < 4; ++i) {
     ObjectCacher::OSDWrite *wr = obc.prepare_write(snapc, zeroes_bl,
 						   ceph::real_time::min(), 0,
 						   ++journal_tid);
+=======
+  std::map<int, ceph::shared_ptr<C_SaferCond> > create_finishers;
+  for (int i = 0; i < 4; ++i) {
+    ObjectCacher::OSDWrite *wr = obc.prepare_write(snapc, zeroes_bl,
+						   utime_t(), 0);
+>>>>>>> upstream/hammer
     ObjectExtent extent(oid, 0, zeroes_bl.length()*i, zeroes_bl.length(), 0);
     extent.oloc.pool = 0;
     extent.buffer_extents.push_back(make_pair(0, 1<<20));
     wr->extents.push_back(extent);
     lock.Lock();
+<<<<<<< HEAD
     obc.writex(wr, &object_set, &create_finishers[i]);
+=======
+    create_finishers[i].reset(new C_SaferCond());
+    obc.writex(wr, &object_set, create_finishers[i].get());
+>>>>>>> upstream/hammer
     lock.Unlock();
   }
 
@@ -221,19 +236,35 @@ int correctness_test(uint64_t delay_ns)
   ones_bl.append(ones);
   for (int i = 1<<18; i < 1<<22; i+=1<<18) {
     ObjectCacher::OSDWrite *wr = obc.prepare_write(snapc, ones_bl,
+<<<<<<< HEAD
 						   ceph::real_time::min(), 0,
 						   ++journal_tid);
+=======
+						   utime_t(), 0);
+>>>>>>> upstream/hammer
     ObjectExtent extent(oid, 0, i, ones_bl.length(), 0);
     extent.oloc.pool = 0;
     extent.buffer_extents.push_back(make_pair(0, 1<<16));
     wr->extents.push_back(extent);
     lock.Lock();
+<<<<<<< HEAD
     obc.writex(wr, &object_set, &create_finishers[i]);
     lock.Unlock();
   }
 
   for (auto i = create_finishers.begin(); i != create_finishers.end(); ++i) {
     i->second.wait();
+=======
+    create_finishers[i].reset(new C_SaferCond());
+    obc.writex(wr, &object_set, create_finishers[i].get());
+    lock.Unlock();
+  }
+
+  for (std::map<int, ceph::shared_ptr<C_SaferCond> >::iterator i = create_finishers.begin();
+       i != create_finishers.end();
+       ++i) {
+    (i->second)->wait();
+>>>>>>> upstream/hammer
   }
   std::cout << "Finished setting up object" << std::endl;
   lock.Lock();
@@ -288,8 +319,12 @@ int correctness_test(uint64_t delay_ns)
   std::cout << "Data (correctly) not available without fetching" << std::endl;
 
   ObjectCacher::OSDWrite *verify_wr = obc.prepare_write(snapc, ones_bl,
+<<<<<<< HEAD
 							ceph::real_time::min(), 0,
 							++journal_tid);
+=======
+							utime_t(), 0);
+>>>>>>> upstream/hammer
   ObjectExtent verify_extent(oid, 0, (1<<18)+(1<<16), ones_bl.length(), 0);
   verify_extent.oloc.pool = 0;
   verify_extent.buffer_extents.push_back(make_pair(0, 1<<16));
@@ -300,7 +335,11 @@ int correctness_test(uint64_t delay_ns)
   std::cout << "wrote dirtying data" << std::endl;
 
   std::cout << "Waiting to read data into cache" << std::endl;
+<<<<<<< HEAD
   frontreadcond.wait();
+=======
+  r = frontreadcond.wait();
+>>>>>>> upstream/hammer
   verify_finisher.wait();
 
   std::cout << "Validating data" << std::endl;
@@ -331,8 +370,13 @@ int correctness_test(uint64_t delay_ns)
     std::cout << "unclean buffers left over!" << std::endl;
     vector<ObjectExtent> discard_extents;
     int i = 0;
+<<<<<<< HEAD
     for (auto oi = object_set.objects.begin(); !oi.end(); ++oi) {
       discard_extents.emplace_back(oid, i++, 0, 1<<22, 0);
+=======
+    for (xlist<ObjectCacher::Object *>::iterator oi = object_set.objects.begin(); !oi.end(); ++oi) {
+      discard_extents.push_back(ObjectExtent(oid, i++, 0, 1<<22, 0));
+>>>>>>> upstream/hammer
     }
     obc.discard_set(&object_set, discard_extents);
     lock.Unlock();

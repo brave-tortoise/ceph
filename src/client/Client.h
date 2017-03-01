@@ -47,11 +47,16 @@ using std::fstream;
 #include "osdc/ObjectCacher.h"
 
 #include "InodeRef.h"
+<<<<<<< HEAD
 #include "UserPerm.h"
 #include "include/cephfs/ceph_statx.h"
 
 class FSMap;
 class FSMapUser;
+=======
+
+class MDSMap;
+>>>>>>> upstream/hammer
 class MonClient;
 
 class CephContext;
@@ -136,8 +141,12 @@ typedef void (*client_dentry_callback_t)(void *handle, vinodeno_t dirino,
 typedef int (*client_remount_callback_t)(void *handle);
 
 typedef int (*client_getgroups_callback_t)(void *handle, gid_t **sgids);
+<<<<<<< HEAD
 typedef void(*client_switch_interrupt_callback_t)(void *handle, void *data);
 typedef mode_t (*client_umask_callback_t)(void *handle);
+=======
+typedef void(*client_switch_interrupt_callback_t)(void *req, void *data);
+>>>>>>> upstream/hammer
 
 struct client_callback_args {
   void *handle;
@@ -191,7 +200,16 @@ struct dir_result_t {
 			 // frag+name order;
 			 //   ((frag value) << 28) | (the nth entry in frag);
 
+<<<<<<< HEAD
   unsigned next_offset;  // offset of next chunk (last_name's + 1)
+=======
+  InodeRef inode;
+
+  int64_t offset;        // high bits: frag_t, low bits: an offset
+
+  uint64_t this_offset;  // offset of last chunk, adjusted for . and ..
+  uint64_t next_offset;  // offset of next chunk (last_name's + 1)
+>>>>>>> upstream/hammer
   string last_name;      // last entry in previous chunk
 
   uint64_t release_count;
@@ -201,6 +219,10 @@ struct dir_result_t {
   UserPerm perms;
 
   frag_t buffer_frag;
+<<<<<<< HEAD
+=======
+  vector<pair<string,InodeRef> > *buffer;
+>>>>>>> upstream/hammer
 
   struct dentry {
     int64_t offset;
@@ -356,15 +378,26 @@ protected:
   void dump_mds_requests(Formatter *f);
   void dump_mds_sessions(Formatter *f);
 
+<<<<<<< HEAD
   int make_request(MetaRequest *req, const UserPerm& perms,
 		   InodeRef *ptarget = 0, bool *pcreated = 0,
 		   mds_rank_t use_mds=-1, bufferlist *pdirbl=0);
+=======
+  int make_request(MetaRequest *req, int uid, int gid,
+		   //MClientRequest *req, int uid, int gid,
+		   InodeRef *ptarget = 0, bool *pcreated = 0,
+		   int use_mds=-1, bufferlist *pdirbl=0);
+>>>>>>> upstream/hammer
   void put_request(MetaRequest *request);
   void unregister_request(MetaRequest *request);
 
   int verify_reply_trace(int r, MetaRequest *request, MClientReply *reply,
+<<<<<<< HEAD
 			 InodeRef *ptarget, bool *pcreated,
 			 const UserPerm& perms);
+=======
+			 InodeRef *ptarget, bool *pcreated, int uid, int gid);
+>>>>>>> upstream/hammer
   void encode_cap_releases(MetaRequest *request, mds_rank_t mds);
   int encode_inode_release(Inode *in, MetaRequest *req,
 			   mds_rank_t mds, int drop,
@@ -400,7 +433,11 @@ protected:
 
 public:
   entity_name_t get_myname() { return messenger->get_myname(); } 
+<<<<<<< HEAD
   void _sync_write_commit(Inode *in);
+=======
+  void sync_write_commit(InodeRef& in);
+>>>>>>> upstream/hammer
 
 protected:
   Filer                 *filer;     
@@ -515,19 +552,26 @@ protected:
 
   // path traversal for high-level interface
   InodeRef cwd;
+<<<<<<< HEAD
   int path_walk(const filepath& fp, InodeRef *end, const UserPerm& perms,
 		bool followsym=true, int mask=0);
 		
+=======
+  int path_walk(const filepath& fp, InodeRef *end, bool followsym=true);
+>>>>>>> upstream/hammer
   int fill_stat(Inode *in, struct stat *st, frag_info_t *dirstat=0, nest_info_t *rstat=0);
   int fill_stat(InodeRef& in, struct stat *st, frag_info_t *dirstat=0, nest_info_t *rstat=0) {
     return fill_stat(in.get(), st, dirstat, rstat);
   }
+<<<<<<< HEAD
 
   void fill_statx(Inode *in, unsigned int mask, struct ceph_statx *stx);
   void fill_statx(InodeRef& in, unsigned int mask, struct ceph_statx *stx) {
     return fill_statx(in.get(), mask, stx);
   }
 
+=======
+>>>>>>> upstream/hammer
   void touch_dn(Dentry *dn);
 
   // trim cache.
@@ -585,6 +629,10 @@ protected:
   void _handle_full_flag(int64_t pool);
 
   void _close_sessions();
+
+  std::map<int64_t, int> pool_perms;
+  list<Cond*> waiting_for_pool_perm;
+  int check_pool_perm(Inode *in, int need);
 
  public:
   void set_filer_flags(int flags);
@@ -672,8 +720,13 @@ protected:
   void _schedule_invalidate_callback(Inode *in, int64_t off, int64_t len);
   void _invalidate_inode_cache(Inode *in);
   void _invalidate_inode_cache(Inode *in, int64_t off, int64_t len);
+<<<<<<< HEAD
   void _async_invalidate(vinodeno_t ino, int64_t off, int64_t len);
   bool _release(Inode *in);
+=======
+  void _async_invalidate(InodeRef& in, int64_t off, int64_t len, bool keep_caps);
+  void _release(Inode *in);
+>>>>>>> upstream/hammer
   
   /**
    * Initiate a flush of the data associated with the given inode.
@@ -760,6 +813,7 @@ private:
 
   // internal interface
   //   call these with client_lock held!
+<<<<<<< HEAD
   int _do_lookup(Inode *dir, const string& name, int mask, InodeRef *target,
 		 const UserPerm& perms);
 
@@ -812,6 +866,35 @@ private:
   int _create(Inode *in, const char *name, int flags, mode_t mode, InodeRef *inp,
 	      Fh **fhp, int stripe_unit, int stripe_count, int object_size,
 	      const char *data_pool, bool *created, const UserPerm &perms);
+=======
+  int _do_lookup(Inode *dir, const string& name, InodeRef *target);
+  int _lookup(Inode *dir, const string& dname, InodeRef *target);
+
+  int _link(Inode *in, Inode *dir, const char *name, int uid=-1, int gid=-1, InodeRef *inp = 0);
+  int _unlink(Inode *dir, const char *name, int uid=-1, int gid=-1);
+  int _rename(Inode *olddir, const char *oname, Inode *ndir, const char *nname, int uid=-1, int gid=-1);
+  int _mkdir(Inode *dir, const char *name, mode_t mode, int uid=-1, int gid=-1, InodeRef *inp = 0);
+  int _rmdir(Inode *dir, const char *name, int uid=-1, int gid=-1);
+  int _symlink(Inode *dir, const char *name, const char *target, int uid=-1, int gid=-1, InodeRef *inp = 0);
+  int _mknod(Inode *dir, const char *name, mode_t mode, dev_t rdev, int uid=-1, int gid=-1, InodeRef *inp = 0);
+  int _setattr(Inode *in, struct stat *attr, int mask, int uid=-1, int gid=-1, InodeRef *inp = 0);
+  int _setattr(InodeRef &in, struct stat *attr, int mask, int uid=-1, int gid=-1, InodeRef *inp = 0) {
+    return _setattr(in.get(), attr, mask, uid, gid, inp);
+  }
+  int _getattr(Inode *in, int mask, int uid=-1, int gid=-1, bool force=false);
+  int _getattr(InodeRef &in, int mask, int uid=-1, int gid=-1, bool force=false) {
+    return _getattr(in.get(), mask, uid, gid, force);
+  }
+  int _readlink(Inode *in, char *buf, size_t size);
+  int _getxattr(Inode *in, const char *name, void *value, size_t len, int uid=-1, int gid=-1);
+  int _listxattr(Inode *in, char *names, size_t len, int uid=-1, int gid=-1);
+  int _setxattr(Inode *in, const char *name, const void *value, size_t len, int flags, int uid=-1, int gid=-1);
+  int _removexattr(Inode *in, const char *nm, int uid=-1, int gid=-1);
+  int _open(Inode *in, int flags, mode_t mode, Fh **fhp, int uid=-1, int gid=-1);
+  int _create(Inode *in, const char *name, int flags, mode_t mode, InodeRef *inp, Fh **fhp,
+              int stripe_unit, int stripe_count, int object_size, const char *data_pool,
+	      bool *created = NULL, int uid=-1, int gid=-1);
+>>>>>>> upstream/hammer
 
   loff_t _lseek(Fh *fh, loff_t offset, int whence);
   int _read(Fh *fh, int64_t offset, uint64_t size, bufferlist *bl);
@@ -1200,9 +1283,15 @@ public:
   int ll_fallocate(Fh *fh, int mode, loff_t offset, loff_t length);
   int ll_release(Fh *fh);
   int ll_getlk(Fh *fh, struct flock *fl, uint64_t owner);
+<<<<<<< HEAD
   int ll_setlk(Fh *fh, struct flock *fl, uint64_t owner, int sleep);
   int ll_flock(Fh *fh, int cmd, uint64_t owner);
   int ll_file_layout(Fh *fh, file_layout_t *layout);
+=======
+  int ll_setlk(Fh *fh, struct flock *fl, uint64_t owner, int sleep, void *fuse_req);
+  int ll_flock(Fh *fh, int cmd, uint64_t owner, void *fuse_req);
+  int ll_file_layout(Fh *fh, ceph_file_layout *layout);
+>>>>>>> upstream/hammer
   void ll_interrupt(void *d);
   bool ll_handle_umask() {
     return acl_type != NO_ACL;

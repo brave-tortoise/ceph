@@ -417,8 +417,12 @@ bool parse_iso8601(const char *s, struct tm *t, uint32_t *pns, bool extended_for
     return false;
 
   uint32_t ms;
+<<<<<<< HEAD
   string nsstr = str.substr(1,  len - 2);
   int r = stringtoul(nsstr, &ms);
+=======
+  int r = stringtoul(str.substr(1, len - 2), &ms);
+>>>>>>> upstream/hammer
   if (r < 0)
     return false;
 
