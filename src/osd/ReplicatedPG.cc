@@ -416,6 +416,7 @@ bool ReplicatedPG::is_degraded_or_backfilling_object(const hobject_t& soid)
   if (pg_log.get_missing().missing.count(soid))
     return true;
   assert(!actingbackfill.empty());
+
   for (set<pg_shard_t>::iterator i = actingbackfill.begin();
        i != actingbackfill.end();
        ++i) {
@@ -1410,6 +1411,20 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     wait_for_unreadable_object(head, op);
     return;
   }
+
+  dout(0) << "wugy-debug: "
+	<< "req_id: " << m->get_reqid()
+	<< dendl;
+  /*for(set<pg_shard_t>::iterator i = actingset.begin(); i != actingset.end(); ++i) {
+	dout(0) << "wugy-debug: "
+		<< "actingset: " << i->osd
+		<< dendl;
+  }
+  for(set<pg_shard_t>::iterator i = actingbackfill.begin(); i != actingbackfill.end(); ++i) {
+	dout(0) << "wugy-debug: "
+		<< "actingbackfill: " << i->osd
+		<< dendl;
+  }*/
 
   // degraded object?
   if (write_ordered && is_degraded_or_backfilling_object(head)) {

@@ -587,6 +587,8 @@ OPTION(osd_pg_max_concurrent_snap_trims, OPT_U64, 2)
 // back up after being wrongly marked down.
 OPTION(osd_heartbeat_min_healthy_ratio, OPT_FLOAT, .33)
 
+OPTION(osd_async_recovery_max_updates, OPT_U32, 200) // switch from sync to async recovery if beyond this num of updates
+
 OPTION(osd_mon_heartbeat_interval, OPT_INT, 30)  // (seconds) how often to ping monitor if no peers
 OPTION(osd_mon_report_interval_max, OPT_INT, 120)
 OPTION(osd_mon_report_interval_min, OPT_INT, 5)  // pg stats, failures, up_thru, boot.

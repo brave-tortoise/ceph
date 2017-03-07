@@ -2410,7 +2410,13 @@ int ReplicatedBackend::start_pushes(
     map<pg_shard_t, pg_missing_t>::const_iterator j =
       get_parent()->get_shard_missing().find(peer);
     assert(j != get_parent()->get_shard_missing().end());
+    /*dout(0) << "wugy-debug: "
+	<< "actingbackfill: " << peer.osd
+	<< dendl;*/
     if (j->second.is_missing(soid)) {
+	/*dout(0) << "wugy-debug: "
+		<< "start push " << peer.osd
+		<< dendl;*/
       ++pushes;
       h->pushes[peer].push_back(PushOp());
       prep_push_to_replica(obc, soid, peer,

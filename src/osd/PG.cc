@@ -1059,13 +1059,16 @@ void PG::calc_ec_acting(
  */
 void PG::calc_replicated_acting(
   map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard,
+  unsigned max_updates,
   unsigned size,
+  unsigned min_size,
   const vector<int> &acting,
   pg_shard_t acting_primary,
   const vector<int> &up,
   pg_shard_t up_primary,
   const map<pg_shard_t, pg_info_t> &all_info,
   bool compat_mode,
+  set<pg_shard_t> &strayset,
   vector<int> *want,
   set<pg_shard_t> *backfill,
   set<pg_shard_t> *acting_backfill,
@@ -1193,6 +1196,40 @@ void PG::calc_replicated_acting(
       usable++;
     }
   }
+
+
+  // recovery -> backfill?
+  if (want->size() > min_size) {
+    map<eversion_t, int> last_update_to_shard;
+    for (vector<int>::iterator it = want->begin(); it != want->end(); ++it) {
+      pg_shard_t shard(*it, shard_id_t::NO_SHARD);
+      const pg_info_t &cur_info = all_info.find(shard)->second;
+      last_update_to_shard.insert(std::make_pair(cur_info.last_update, *it));
+    }
+    eversion_t max_last_update = last_update_to_shard.rbegin()->first;
+    for (map<eversion_t, int>::iterator p = last_update_to_shard.begin();
+         p != last_update_to_shard.end(); ++p) {
+      assert(p->first.epoch <= max_last_update.epoch);
+      assert(p->first.version <= max_last_update.version);
+      // change recovery to backfill if there are over max_updates gap
+      if (want->size() > min_size &&
+          max_last_update.version - p->first.version > max_updates) {
+        vector<int>::iterator q = find(want->begin(), want->end(), p->second);
+        assert(q != want->end());
+        want->erase(q);
+	// remove from stray set
+	set<pg_shard_t>::iterator r = strayset.find(pg_shard_t(p->second, shard_id_t::NO_SHARD));
+	if (r != strayset.end())
+	  strayset.erase(r);
+	backfill->insert(pg_shard_t(p->second, shard_id_t::NO_SHARD));
+        ss << " too many updates for shard " << p->second
+	   << ", switch from recovery to backfill " << std::endl;
+      } else {
+	break;
+      }
+    }
+  }
+
 }
 
 /**
@@ -1278,13 +1315,16 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id)
   if (!pool.info.ec_pool())
     calc_replicated_acting(
       auth_log_shard,
+      cct->_conf->osd_async_recovery_max_updates,
       get_osdmap()->get_pg_size(info.pgid.pgid),
+      get_osdmap()->get_pg_min_size(info.pgid.pgid),
       acting,
       primary,
       up,
       up_primary,
       all_info,
       compat_mode,
+      stray_set,
       &want,
       &want_backfill,
       &want_acting_backfill,
@@ -1305,7 +1345,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id)
       &want_acting_backfill,
       &want_primary,
       ss);
-  dout(10) << ss.str() << dendl;
+  dout(0) << "wugy-debug: " << ss.str() << dendl;
 
   unsigned num_want_acting = 0;
   for (vector<int>::iterator i = want.begin();
