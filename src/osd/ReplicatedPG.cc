@@ -413,23 +413,43 @@ void ReplicatedPG::wait_for_all_missing(OpRequestRef op)
 
 bool ReplicatedPG::is_degraded_or_backfilling_object(const hobject_t& soid)
 {
+  if (waiting_for_degraded_object.count(soid))
+    return true;
   if (pg_log.get_missing().missing.count(soid))
     return true;
-  assert(!actingbackfill.empty());
 
-  for (set<pg_shard_t>::iterator i = actingbackfill.begin();
-       i != actingbackfill.end();
+  assert(!actingset.empty());
+  for (set<pg_shard_t>::iterator i = actingset.begin();
+       i != actingset.end();
        ++i) {
     if (*i == get_primary()) continue;
     pg_shard_t peer = *i;
     if (peer_missing.count(peer) &&
 	peer_missing[peer].missing.count(soid))
       return true;
+  }
 
-    // Object is degraded if after last_backfill AND
-    // we are backfilling it
-    if (is_backfill_targets(peer) &&
-	peer_info[peer].last_backfill <= soid &&
+  assert(!actingbackfill.empty());
+  for (set<pg_shard_t>::iterator i = actingbackfill.begin();
+       i != actingbackfill.end();
+       ++i) {
+    if (*i == get_primary()) continue;
+    if (actingset.count(*i)) continue;
+    pg_shard_t peer = *i;
+    if (peer_missing.count(peer) &&
+	peer_missing[peer].missing.count(soid) &&
+	recovering.count(soid))
+      return true;
+  }
+
+  // Object is degraded if after last_backfill AND
+  // we are backfilling it
+  for (set<pg_shard_t>::iterator i = backfill_targets.begin();
+	i != backfill_targets.end();
+	++i) {
+    if (*i == get_primary()) continue;
+    pg_shard_t peer = *i;
+    if (peer_info[peer].last_backfill <= soid &&
 	last_backfill_started >= soid &&
 	backfills_in_flight.count(soid))
       return true;

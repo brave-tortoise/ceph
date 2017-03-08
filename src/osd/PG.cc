@@ -1221,7 +1221,7 @@ void PG::calc_replicated_acting(
   }
 
 
-  // recovery -> backfill?
+  // recovery -> async recovery?
   if (want->size() > min_size) {
     map<eversion_t, int> last_update_to_shard;
     for (vector<int>::iterator it = want->begin(); it != want->end(); ++it) {
@@ -1234,6 +1234,7 @@ void PG::calc_replicated_acting(
          p != last_update_to_shard.end(); ++p) {
       assert(p->first.epoch <= max_last_update.epoch);
       assert(p->first.version <= max_last_update.version);
+	//ss << "check shard " << p->second << std::endl;
       // change recovery to backfill if there are over max_updates gap
       if (want->size() > min_size &&
           max_last_update.version - p->first.version > max_updates) {
@@ -1244,9 +1245,9 @@ void PG::calc_replicated_acting(
 	set<pg_shard_t>::iterator r = strayset.find(pg_shard_t(p->second, shard_id_t::NO_SHARD));
 	if (r != strayset.end())
 	  strayset.erase(r);
-	backfill->insert(pg_shard_t(p->second, shard_id_t::NO_SHARD));
+	//backfill->insert(pg_shard_t(p->second, shard_id_t::NO_SHARD));
         ss << " too many updates for shard " << p->second
-	   << ", switch from recovery to backfill " << std::endl;
+	   << ", switch from recovery to async recovery " << std::endl;
       } else {
 	break;
       }
@@ -1368,7 +1369,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id)
       &want_acting_backfill,
       &want_primary,
       ss);
-  dout(0) << "wugy-debug: " << ss.str() << dendl;
+  dout(10) << ss.str() << dendl;
 
   unsigned num_want_acting = 0;
   for (vector<int>::iterator i = want.begin();
@@ -3018,6 +3019,25 @@ void PG::append_log(
        p != logv.end();
        ++p) {
     add_log_entry(*p, keys[p->get_key_name()]);
+
+    if (is_primary()) {
+      // update peer_missing and missing_loc
+      for (set<pg_shard_t>::iterator i = actingbackfill.begin();
+           i != actingbackfill.end();
+           ++i) {
+        if (*i == get_primary()) continue;
+        pg_shard_t peer = *i;
+        if (peer_missing.count(peer) &&
+            peer_missing[peer].missing.count(p->soid)) {
+          missing_loc.revise_need(p->soid, p->version);
+        }
+      }
+    } else {
+      if (pg_log.get_missing().is_missing(p->soid)) {
+        pg_log.revise_need(p->soid, p->version);
+      }
+    }
+
   }
 
   PGLogEntryHandler handler;
