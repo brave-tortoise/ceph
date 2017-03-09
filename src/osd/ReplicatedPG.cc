@@ -1432,10 +1432,10 @@ void ReplicatedPG::do_op(OpRequestRef& op)
     return;
   }
 
-  dout(0) << "wugy-debug: "
+  /*dout(0) << "wugy-debug: "
 	<< "req_id: " << m->get_reqid()
 	<< dendl;
-  /*for(set<pg_shard_t>::iterator i = actingset.begin(); i != actingset.end(); ++i) {
+  for(set<pg_shard_t>::iterator i = actingset.begin(); i != actingset.end(); ++i) {
 	dout(0) << "wugy-debug: "
 		<< "actingset: " << i->osd
 		<< dendl;
