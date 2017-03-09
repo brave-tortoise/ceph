@@ -1107,7 +1107,8 @@ void PG::calc_replicated_acting(
   if (up.size() &&
       !all_info.find(up_primary)->second.is_incomplete() &&
       all_info.find(up_primary)->second.last_update >= auth_log_shard->second.log_tail &&
-      auth_log_shard->second.last_update.version - all_info.find(up_primary)->second.last_update.version < max_updates) {
+      //auth_log_shard->second.last_update.version - all_info.find(up_primary)->second.last_update.version < max_updates) {
+      auth_log_shard->second.last_update.version == all_info.find(up_primary)->second.last_update.version) {
     ss << "up_primary: " << up_primary << ") selected as primary" << std::endl;
     primary = all_info.find(up_primary); // prefer up[0], all thing being equal
   } else {
@@ -1237,7 +1238,8 @@ void PG::calc_replicated_acting(
 	//ss << "check shard " << p->second << std::endl;
       // change recovery to async recovery if there are over max_updates gap
       if (want->size() > min_size &&
-          max_last_update.version - p->first.version > max_updates) {
+          //max_last_update.version - p->first.version > max_updates) {
+          p->first.version < max_last_update.version) {
         vector<int>::iterator q = find(want->begin(), want->end(), p->second);
         assert(q != want->end());
         want->erase(q);
