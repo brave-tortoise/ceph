@@ -1082,7 +1082,6 @@ void PG::calc_ec_acting(
  */
 void PG::calc_replicated_acting(
   map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard,
-  unsigned max_updates,
   unsigned size,
   unsigned min_size,
   const vector<int> &acting,
@@ -1107,7 +1106,6 @@ void PG::calc_replicated_acting(
   if (up.size() &&
       !all_info.find(up_primary)->second.is_incomplete() &&
       all_info.find(up_primary)->second.last_update >= auth_log_shard->second.log_tail &&
-      //auth_log_shard->second.last_update.version - all_info.find(up_primary)->second.last_update.version < max_updates) {
       auth_log_shard->second.last_update.version == all_info.find(up_primary)->second.last_update.version) {
     ss << "up_primary: " << up_primary << ") selected as primary" << std::endl;
     primary = all_info.find(up_primary); // prefer up[0], all thing being equal
@@ -1235,10 +1233,8 @@ void PG::calc_replicated_acting(
          p != last_update_to_shard.end(); ++p) {
       assert(p->first.epoch <= max_last_update.epoch);
       assert(p->first.version <= max_last_update.version);
-	//ss << "check shard " << p->second << std::endl;
-      // change recovery to async recovery if there are over max_updates gap
+      // change recovery to async recovery if the osd follows behind auth_log_shard
       if (want->size() > min_size &&
-          //max_last_update.version - p->first.version > max_updates) {
           p->first.version < max_last_update.version) {
         vector<int>::iterator q = find(want->begin(), want->end(), p->second);
         assert(q != want->end());
@@ -1341,7 +1337,6 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id)
   if (!pool.info.ec_pool())
     calc_replicated_acting(
       auth_log_shard,
-      cct->_conf->osd_async_recovery_max_updates,
       get_osdmap()->get_pg_size(info.pgid.pgid),
       get_osdmap()->get_pg_min_size(info.pgid.pgid),
       acting,

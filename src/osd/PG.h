@@ -961,7 +961,6 @@ public:
     ostream &ss);
   static void calc_replicated_acting(
     map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard,
-    unsigned max_updates,
     unsigned size,
     unsigned min_size,
     const vector<int> &acting,
