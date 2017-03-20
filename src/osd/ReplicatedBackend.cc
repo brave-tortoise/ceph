@@ -1311,7 +1311,7 @@ void ReplicatedBackend::calc_head_subsets(
   assert(it != missing.missing.end());
   if((delta_recovery = it->second.delta_recovery)) {
     data_subset.intersection_of(it->second.dirty_regions);
-    dout(10) << " calc_head_subsets"
+    dout(0) << " calc_head_subsets"
 	<< " data_subset " << data_subset << dendl;
   }
 
@@ -1343,6 +1343,11 @@ void ReplicatedBackend::calc_head_subsets(
     }
     dout(10) << "calc_head_subsets " << head << " does not have prev " << c
              << " overlap " << prev << dendl;
+  }
+
+  cloning.intersection_of(data_subset);
+  if(cloning.empty()) {
+    return;
   }
 
   if (cloning.num_intervals() > cct->_conf->osd_recover_clone_overlap_limit) {
@@ -1720,8 +1725,8 @@ void ReplicatedBackend::submit_push_data(
   }
 
   if (first) {
-    get_parent()->on_local_recover_start(recovery_info.soid, t);
     if(!delta_recovery) {
+      get_parent()->on_local_recover_start(recovery_info.soid, t);
       t->remove(get_temp_coll(t), recovery_info.soid);
       t->touch(target_coll, recovery_info.soid);
       t->truncate(target_coll, recovery_info.soid, recovery_info.size);
