@@ -2961,7 +2961,8 @@ void pg_log_entry_t::decode_with_checksum(bufferlist::iterator& p)
 
 void pg_log_entry_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(10, 4, bl);
+  //ENCODE_START(10, 4, bl);
+  ENCODE_START(11, 4, bl);
   ::encode(op, bl);
   ::encode(soid, bl);
   ::encode(version, bl);
@@ -2986,12 +2987,15 @@ void pg_log_entry_t::encode(bufferlist &bl) const
   ::encode(user_version, bl);
   ::encode(mod_desc, bl);
   ::encode(extra_reqids, bl);
+  ::encode(delta_recovery, bl);
+  ::encode(dirty_regions, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_log_entry_t::decode(bufferlist::iterator &bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(10, 4, 4, bl);
+  //DECODE_START_LEGACY_COMPAT_LEN(10, 4, 4, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(11, 4, 4, bl);
   ::decode(op, bl);
   if (struct_v < 2) {
     sobject_t old_soid;
@@ -3040,6 +3044,12 @@ void pg_log_entry_t::decode(bufferlist::iterator &bl)
     mod_desc.mark_unrollbackable();
   if (struct_v >= 10)
     ::decode(extra_reqids, bl);
+  if (struct_v >= 11) {
+    ::decode(delta_recovery, bl);
+    ::decode(dirty_regions, bl);
+  } else {
+    delta_recovery = false;
+  }
 
   DECODE_FINISH(bl);
 }
@@ -3096,7 +3106,8 @@ void pg_log_entry_t::generate_test_instances(list<pg_log_entry_t*>& o)
 ostream& operator<<(ostream& out, const pg_log_entry_t& e)
 {
   out << e.version << " (" << e.prior_version << ") "
-      << e.get_op_name() << ' ' << e.soid << " by " << e.reqid << " " << e.mtime;
+      << e.get_op_name() << ' ' << e.soid << " by " << e.reqid << " " << e.mtime
+      << "delta_recovery = " << e.delta_recovery << " dirty_regions: " << e.dirty_regions;
   if (e.snaps.length()) {
     vector<snapid_t> snaps;
     bufferlist c = e.snaps;
@@ -3401,23 +3412,36 @@ eversion_t pg_missing_t::have_old(const hobject_t& oid) const
 void pg_missing_t::add_next_event(const pg_log_entry_t& e)
 {
   if (e.is_update()) {
+    map<hobject_t, item>::iterator it = missing.find(e.soid);
+    bool is_missing_divergent_item = (it != missing.end());
     if (e.prior_version == eversion_t() || e.is_clone()) {
       // new object.
       //assert(missing.count(e.soid) == 0);  // might already be missing divergent item.
-      if (missing.count(e.soid))  // already missing divergent item
-	rmissing.erase(missing[e.soid].need.version);
-      missing[e.soid] = item(e.version, eversion_t());  // .have = nil
-    } else if (missing.count(e.soid)) {
+      //if (missing.count(e.soid)) {  // already missing divergent item
+      if (is_missing_divergent_item) {
+	//rmissing.erase(missing[e.soid].need.version);
+	//missing[e.soid].merge(e);
+	rmissing.erase(it->second.need.version);
+	it->second.merge(e);
+	it->second.have = eversion_t();
+      } else {
+	missing[e.soid] = item(e);
+        missing[e.soid].have = eversion_t();
+      }
+    //} else if (missing.count(e.soid)) {
+    } else if (is_missing_divergent_item) {
       // already missing (prior).
       //assert(missing[e.soid].need == e.prior_version);
-      rmissing.erase(missing[e.soid].need.version);
-      missing[e.soid].need = e.version;  // leave .have unchanged.
+      //rmissing.erase(missing[e.soid].need.version);
+      //missing[e.soid].merge(e);
+      rmissing.erase(it->second.need.version);
+      it->second.merge(e);
     } else if (e.is_backlog()) {
       // May not have prior version
       assert(0 == "these don't exist anymore");
     } else {
       // not missing, we must have prior_version (if any)
-      missing[e.soid] = item(e.version, e.prior_version);
+      missing[e.soid] = item(e);
     }
     rmissing[e.version.version] = e.soid;
   } else
@@ -3429,6 +3453,7 @@ void pg_missing_t::revise_need(hobject_t oid, eversion_t need)
   if (missing.count(oid)) {
     rmissing.erase(missing[oid].need.version);
     missing[oid].need = need;            // no not adjust .have
+    missing[oid].delta_recovery = false;
   } else {
     missing[oid] = item(need, eversion_t());
   }
@@ -3439,6 +3464,8 @@ void pg_missing_t::revise_have(hobject_t oid, eversion_t have)
 {
   if (missing.count(oid)) {
     missing[oid].have = have;
+    missing[oid].delta_recovery = false;
+    missing[oid].dirty_regions.clear();
   }
 }
 
@@ -4476,7 +4503,8 @@ void ObjectRecoveryProgress::dump(Formatter *f) const
 
 void ObjectRecoveryInfo::encode(bufferlist &bl) const
 {
-  ENCODE_START(2, 1, bl);
+  //ENCODE_START(2, 1, bl);
+  ENCODE_START(3, 1, bl);
   ::encode(soid, bl);
   ::encode(version, bl);
   ::encode(size, bl);
@@ -4484,13 +4512,15 @@ void ObjectRecoveryInfo::encode(bufferlist &bl) const
   ::encode(ss, bl);
   ::encode(copy_subset, bl);
   ::encode(clone_subset, bl);
+  ::encode(delta_recovery, bl);
   ENCODE_FINISH(bl);
 }
 
 void ObjectRecoveryInfo::decode(bufferlist::iterator &bl,
 				int64_t pool)
 {
-  DECODE_START(2, bl);
+  //DECODE_START(2, bl);
+  DECODE_START(3, bl);
   ::decode(soid, bl);
   ::decode(version, bl);
   ::decode(size, bl);
@@ -4498,6 +4528,9 @@ void ObjectRecoveryInfo::decode(bufferlist::iterator &bl,
   ::decode(ss, bl);
   ::decode(copy_subset, bl);
   ::decode(clone_subset, bl);
+  if(struct_v > 2) {
+    ::decode(delta_recovery, bl);
+  }
   DECODE_FINISH(bl);
 
   if (struct_v < 2) {

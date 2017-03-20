@@ -1297,7 +1297,8 @@ void ReplicatedBackend::calc_head_subsets(
   const pg_missing_t& missing,
   const hobject_t &last_backfill,
   interval_set<uint64_t>& data_subset,
-  map<hobject_t, interval_set<uint64_t> >& clone_subsets)
+  map<hobject_t, interval_set<uint64_t> >& clone_subsets,
+  bool & delta_recovery)
 {
   dout(10) << "calc_head_subsets " << head
 	   << " clone_overlap " << snapset.clone_overlap << dendl;
@@ -1305,6 +1306,14 @@ void ReplicatedBackend::calc_head_subsets(
   uint64_t size = obc->obs.oi.size;
   if (size)
     data_subset.insert(0, size);
+
+  map<hobject_t, pg_missing_t::item>::const_iterator it = missing.missing.find(head);
+  assert(it != missing.missing.end());
+  if((delta_recovery = it->second.delta_recovery)) {
+    data_subset.intersection_of(it->second.dirty_regions);
+    dout(10) << " calc_head_subsets"
+	<< " data_subset " << data_subset << dendl;
+  }
 
   if (get_parent()->get_pool().allow_incomplete_clones()) {
     dout(10) << __func__ << ": caching (was) enabled, skipping clone subsets" << dendl;
@@ -1322,29 +1331,28 @@ void ReplicatedBackend::calc_head_subsets(
   if (size)
     prev.insert(0, size);
 
+  hobject_t c = head;
   for (int j=snapset.clones.size()-1; j>=0; j--) {
-    hobject_t c = head;
     c.snap = snapset.clones[j];
     prev.intersection_of(snapset.clone_overlap[snapset.clones[j]]);
     if (!missing.is_missing(c) && c < last_backfill) {
       dout(10) << "calc_head_subsets " << head << " has prev " << c
-	       << " overlap " << prev << dendl;
-      clone_subsets[c] = prev;
-      cloning.union_of(prev);
+               << " overlap " << prev << dendl;
+      cloning = prev;
       break;
     }
     dout(10) << "calc_head_subsets " << head << " does not have prev " << c
-	     << " overlap " << prev << dendl;
+             << " overlap " << prev << dendl;
   }
-
 
   if (cloning.num_intervals() > cct->_conf->osd_recover_clone_overlap_limit) {
     dout(10) << "skipping clone, too many holes" << dendl;
-    clone_subsets.clear();
     cloning.clear();
+    return;
   }
 
   // what's left for us to push?
+  clone_subsets[c] = cloning;
   data_subset.subtract(cloning);
 
   dout(10) << "calc_head_subsets " << head
@@ -1506,7 +1514,16 @@ void ReplicatedBackend::prepare_pull(
   } else {
     // pulling head or unversioned object.
     // always pull the whole thing.
-    recovery_info.copy_subset.insert(0, (uint64_t)-1);
+    //recovery_info.copy_subset.insert(0, (uint64_t)-1);
+    map<hobject_t, pg_missing_t::item>::const_iterator it = get_parent()->get_local_missing().missing.find(soid);
+    assert(it != get_parent()->get_local_missing().missing.end());
+    recovery_info.delta_recovery = it->second.delta_recovery;
+    if (recovery_info.delta_recovery) {
+      recovery_info.copy_subset.insert(it->second.dirty_regions);
+    } else {
+      recovery_info.copy_subset.insert(0, (uint64_t)-1);
+    }
+    dout(10) << " prepare_pull recovery_info: " << recovery_info << dendl;
     recovery_info.size = ((uint64_t)-1);
   }
 
@@ -1546,6 +1563,7 @@ void ReplicatedBackend::prep_push_to_replica(
 
   map<hobject_t, interval_set<uint64_t> > clone_subsets;
   interval_set<uint64_t> data_subset;
+  bool delta_recovery = false;
 
   // are we doing a clone on the replica?
   if (soid.snap && soid.snap < CEPH_NOSNAP) {
@@ -1589,10 +1607,10 @@ void ReplicatedBackend::prep_push_to_replica(
       obc,
       ssc->snapset, soid, get_parent()->get_shard_missing().find(peer)->second,
       get_parent()->get_shard_info().find(peer)->second.last_backfill,
-      data_subset, clone_subsets);
+      data_subset, clone_subsets, delta_recovery);
   }
 
-  prep_push(obc, soid, peer, oi.version, data_subset, clone_subsets, pop);
+  prep_push(obc, soid, peer, oi.version, data_subset, clone_subsets, pop, delta_recovery);
 }
 
 void ReplicatedBackend::prep_push(ObjectContextRef obc,
@@ -1615,7 +1633,8 @@ void ReplicatedBackend::prep_push(
   eversion_t version,
   interval_set<uint64_t> &data_subset,
   map<hobject_t, interval_set<uint64_t> >& clone_subsets,
-  PushOp *pop)
+  PushOp *pop,
+  bool delta_recovery)
 {
   get_parent()->begin_peer_recover(peer, soid);
   // take note.
@@ -1624,6 +1643,7 @@ void ReplicatedBackend::prep_push(
   pi.recovery_info.size = obc->obs.oi.size;
   pi.recovery_info.copy_subset = data_subset;
   pi.recovery_info.clone_subset = clone_subsets;
+  pi.recovery_info.delta_recovery = delta_recovery;
   pi.recovery_info.soid = soid;
   pi.recovery_info.oi = obc->obs.oi;
   pi.recovery_info.version = version;
@@ -1689,7 +1709,8 @@ void ReplicatedBackend::submit_push_data(
   ObjectStore::Transaction *t)
 {
   coll_t target_coll;
-  if (first && complete) {
+  bool delta_recovery = recovery_info.delta_recovery;
+  if ((first && complete) || delta_recovery) {
     target_coll = coll;
   } else {
     dout(10) << __func__ << ": Creating oid "
@@ -1700,9 +1721,11 @@ void ReplicatedBackend::submit_push_data(
 
   if (first) {
     get_parent()->on_local_recover_start(recovery_info.soid, t);
-    t->remove(get_temp_coll(t), recovery_info.soid);
-    t->touch(target_coll, recovery_info.soid);
-    t->truncate(target_coll, recovery_info.soid, recovery_info.size);
+    if(!delta_recovery) {
+      t->remove(get_temp_coll(t), recovery_info.soid);
+      t->touch(target_coll, recovery_info.soid);
+      t->truncate(target_coll, recovery_info.soid, recovery_info.size);
+    }
     t->omap_setheader(target_coll, recovery_info.soid, omap_header);
   }
   uint64_t off = 0;
@@ -1722,7 +1745,7 @@ void ReplicatedBackend::submit_push_data(
 	      attrs);
 
   if (complete) {
-    if (!first) {
+    if (!first && !delta_recovery) {
       dout(10) << __func__ << ": Removing oid "
 	       << recovery_info.soid << " from the temp collection" << dendl;
       clear_temp_obj(recovery_info.soid);
@@ -2277,9 +2300,18 @@ void ReplicatedBackend::handle_pull(pg_shard_t peer, PullOp &op, PushOp *reply)
     if (progress.first && recovery_info.size == ((uint64_t)-1)) {
       // Adjust size and copy_subset
       recovery_info.size = st.st_size;
-      recovery_info.copy_subset.clear();
+      /*recovery_info.copy_subset.clear();
       if (st.st_size)
-        recovery_info.copy_subset.insert(0, st.st_size);
+        recovery_info.copy_subset.insert(0, st.st_size);*/
+      assert(!recovery_info.copy_subset.empty());
+      if(st.st_size) {
+        interval_set<uint64_t> temp;
+        temp.insert(0, st.st_size);
+        recovery_info.copy_subset.intersection_of(temp);
+      } else {
+        recovery_info.copy_subset.clear();
+      }
+      dout(10) << "handle_pull, recovery_info: " << recovery_info << dendl;
       assert(recovery_info.clone_subset.empty());
     }
 
