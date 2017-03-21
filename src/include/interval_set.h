@@ -30,6 +30,9 @@ using namespace std;
 # define MAX(a,b)  ((a)>=(b) ? (a):(b))
 #endif
 
+#ifndef RECOVERY_SKIP_GAP
+# define RECOVERY_SKIP_GAP 65536
+#endif
 
 template<typename T>
 class interval_set {
@@ -470,6 +473,53 @@ class interval_set {
     interval_set a;
     swap(a);    
     union_of(a, b);
+  }
+
+  void union_of_skip_gap(const interval_set &a, const interval_set &b) {
+    assert(&a != this);
+    assert(&b != this);
+    clear();
+
+    typename map<T,T>::const_iterator pa = a.m.begin();
+    typename map<T,T>::const_iterator pb = b.m.begin();
+
+    while(pa != a.m.end() && pb != b.m.end()) {
+      // passing?
+      if(pa->first + pa->second + RECOVERY_SKIP_GAP <= pb->first) {
+	insert(pa->first, pa->second);
+	pa++;
+	continue;
+      }
+      if(pb->first + pb->second + RECOVERY_SKIP_GAP <= pa->first) {
+	insert(pb->first, pb->second);
+	pb++;
+	continue;
+      }
+      T start = MIN(pa->first, pb->first);
+      T len;
+      if(pa->first + pa->second > pb->first + pb->second) {
+	len = pa->first - start;
+	pb++;
+      } else {
+	len = pb->first - start;
+	pa++;
+      }
+      if(len)	insert(start, len);
+    }
+
+    while(pa != a.m.end()) {
+      insert(pa->first, pa->second);
+      pa++;
+    }
+    while(pb != b.m.end()) {
+      insert(pb->first, pb->second);
+      pb++;
+    }
+  }
+  void union_of_skip_gap(const interval_set &b) {
+    interval_set a;
+    swap(a);
+    union_of_skip_gap(a, b);
   }
 
   bool subset_of(const interval_set &big) const {
