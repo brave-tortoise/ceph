@@ -31,7 +31,7 @@ using namespace std;
 #endif
 
 #ifndef RECOVERY_SKIP_GAP
-# define RECOVERY_SKIP_GAP 65536
+# define RECOVERY_SKIP_GAP 131072
 #endif
 
 template<typename T>
