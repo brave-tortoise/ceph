@@ -24,12 +24,6 @@ device 14 osd.14
 device 15 osd.15
 device 16 osd.16
 device 17 osd.17
-device 18 osd.18
-device 19 osd.19
-device 20 osd.20
-device 21 osd.21
-device 22 osd.22
-device 23 osd.23
 
 # types
 type 0 osd
@@ -45,97 +39,97 @@ type 9 region
 type 10 root
 
 # buckets
-host node1-ssd {
-	id -12		# do not change unnecessarily
-	# weight 0.880
+host node1-1 {
+	id -2		# do not change unnecessarily
+	# weight 5.460
 	alg straw
 	hash 0	# rjenkins1
-	item osd.0 weight 0.440
-	item osd.1 weight 0.440
+	item osd.0 weight 1.820
+	item osd.1 weight 1.820
+	item osd.2 weight 1.820
 }
-host node2-ssd {
-	id -13		# do not change unnecessarily
-	# weight 0.880
+host node1-2 {
+	id -5		# do not change unnecessarily
+	# weight 5.460
 	alg straw
 	hash 0	# rjenkins1
-	item osd.2 weight 0.440
-	item osd.3 weight 0.440
+	item osd.3 weight 1.820
+	item osd.4 weight 1.820
+	item osd.5 weight 1.820
 }
-host node3-ssd {
-	id -14		# do not change unnecessarily
-	# weight 0.880
-	alg straw
-	hash 0	# rjenkins1
-	item osd.4 weight 0.440
-	item osd.5 weight 0.440
-}
-root ssd {
-	id -11		# do not change unnecessarily
-	# weight 2.640
-	alg straw
-	hash 0	# rjenkins1
-	item node1-ssd weight 0.880
-	item node2-ssd weight 0.880
-	item node3-ssd weight 0.880
-}
-host node1-hdd {
-	id -22		# do not change unnecessarily
+rack node1 {
+	id -3		# do not change unnecessarily
 	# weight 10.920
+	alg straw
+	hash 0	# rjenkins1
+	item node1-1 weight 5.460
+	item node1-2 weight 5.460
+}
+host node2-1 {
+	id -6		# do not change unnecessarily
+	# weight 5.460
 	alg straw
 	hash 0	# rjenkins1
 	item osd.6 weight 1.820
 	item osd.7 weight 1.820
 	item osd.8 weight 1.820
+}
+host node2-2 {
+	id -8		# do not change unnecessarily
+	# weight 5.460
+	alg straw
+	hash 0	# rjenkins1
 	item osd.9 weight 1.820
 	item osd.10 weight 1.820
 	item osd.11 weight 1.820
 }
-host node2-hdd {
-	id -23		# do not change unnecessarily
+rack node2 {
+	id -7		# do not change unnecessarily
 	# weight 10.920
+	alg straw
+	hash 0	# rjenkins1
+	item node2-1 weight 5.460
+	item node2-2 weight 5.460
+}
+host node3-1 {
+	id -9		# do not change unnecessarily
+	# weight 5.460
 	alg straw
 	hash 0	# rjenkins1
 	item osd.12 weight 1.820
 	item osd.13 weight 1.820
 	item osd.14 weight 1.820
+}
+host node3-2 {
+	id -11		# do not change unnecessarily
+	# weight 5.460
+	alg straw
+	hash 0	# rjenkins1
 	item osd.15 weight 1.820
 	item osd.16 weight 1.820
 	item osd.17 weight 1.820
 }
-host node3-hdd {
-	id -24		# do not change unnecessarily
+rack node3 {
+	id -10		# do not change unnecessarily
 	# weight 10.920
 	alg straw
 	hash 0	# rjenkins1
-	item osd.18 weight 1.820
-	item osd.19 weight 1.820
-	item osd.20 weight 1.820
-	item osd.21 weight 1.820
-	item osd.22 weight 1.820
-	item osd.23 weight 1.820
+	item node3-1 weight 5.460
+	item node3-2 weight 5.460
 }
 root hdd {
-	id -21		# do not change unnecessarily
+	id -4		# do not change unnecessarily
 	# weight 32.760
 	alg straw
 	hash 0	# rjenkins1
-	item node1-hdd weight 10.920
-	item node2-hdd weight 10.920
-	item node3-hdd weight 10.920
+	item node1 weight 10.920
+	item node2 weight 10.920
+	item node3 weight 10.920
 }
 
 # rules
-rule ssd {
+rule replicated_ruleset {
 	ruleset 0
-	type replicated
-	min_size 1
-	max_size 10
-	step take ssd
-	step chooseleaf firstn 0 type host
-	step emit
-}
-rule hdd {
-	ruleset 1
 	type replicated
 	min_size 1
 	max_size 10
