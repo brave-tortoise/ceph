@@ -2152,6 +2152,9 @@ struct pg_log_entry_t {
 
   uint64_t offset;   // [soft state] my offset on disk
 
+  bool delta_recovery;
+  interval_set<uint64_t> dirty_regions;
+
   /// describes state for a locally-rollbackable entry
   ObjectModDesc mod_desc;
 
@@ -2159,7 +2162,8 @@ struct pg_log_entry_t {
 
   pg_log_entry_t()
     : op(0), user_version(0),
-      invalid_hash(false), invalid_pool(false), offset(0) {}
+      invalid_hash(false), invalid_pool(false), offset(0),
+      delta_recovery(false) {}
   pg_log_entry_t(int _op, const hobject_t& _soid, 
 		 const eversion_t& v, const eversion_t& pv,
 		 version_t uv,
@@ -2167,7 +2171,8 @@ struct pg_log_entry_t {
     : op(_op), soid(_soid), version(v),
       prior_version(pv), user_version(uv),
       reqid(rid), mtime(mt), invalid_hash(false), invalid_pool(false),
-      offset(0) {}
+      offset(0),
+      delta_recovery(false) {}
       
   bool is_clone() const { return op == CLONE; }
   bool is_modify() const { return op == MODIFY; }
@@ -2342,29 +2347,51 @@ inline ostream& operator<<(ostream& out, const pg_log_t& log)
 struct pg_missing_t {
   struct item {
     eversion_t need, have;
-    item() {}
-    item(eversion_t n) : need(n) {}  // have no old version
-    item(eversion_t n, eversion_t h) : need(n), have(h) {}
+    bool delta_recovery;
+    interval_set<uint64_t> dirty_regions;
+    item() : delta_recovery(false) {}
+    item(eversion_t n) : need(n), delta_recovery(false) {}
+    item(eversion_t n, eversion_t h) : need(n), have(h), delta_recovery(false) {}
+    item(const pg_log_entry_t & e) : need(e.version), have(e.prior_version),
+	delta_recovery(e.delta_recovery) {
+      if(delta_recovery) {
+	dirty_regions.insert(e.dirty_regions);
+      }
+    }
+
+    void merge(const pg_log_entry_t & e) {
+      need = e.version;
+      delta_recovery = (delta_recovery && e.delta_recovery);
+      dirty_regions.union_of(e.dirty_regions);
+    }
 
     void encode(bufferlist& bl) const {
       ::encode(need, bl);
       ::encode(have, bl);
+      ::encode(delta_recovery, bl);
+      ::encode(dirty_regions, bl);
     }
     void decode(bufferlist::iterator& bl) {
       ::decode(need, bl);
       ::decode(have, bl);
+      ::decode(delta_recovery, bl);
+      ::decode(dirty_regions, bl);
     }
     void dump(Formatter *f) const {
       f->dump_stream("need") << need;
       f->dump_stream("have") << have;
+      f->dump_stream("delta_recovery") << delta_recovery;
+      f->dump_stream("dirty_regions") << dirty_regions;
     }
     static void generate_test_instances(list<item*>& o) {
       o.push_back(new item);
       o.push_back(new item);
       o.back()->need = eversion_t(1, 2);
       o.back()->have = eversion_t(1, 1);
+      o.back()->delta_recovery = true;
+      o.back()->dirty_regions.insert(0, 4096);
     }
-  }; 
+  };
   WRITE_CLASS_ENCODER(item)
 
   map<hobject_t, item> missing;         // oid -> (need v, have v)
@@ -3363,8 +3390,9 @@ struct ObjectRecoveryInfo {
   SnapSet ss;
   interval_set<uint64_t> copy_subset;
   map<hobject_t, interval_set<uint64_t> > clone_subset;
+  bool delta_recovery;
 
-  ObjectRecoveryInfo() : size(0) { }
+  ObjectRecoveryInfo() : size(0), delta_recovery(false) { }
 
   static void generate_test_instances(list<ObjectRecoveryInfo*>& o);
   void encode(bufferlist &bl) const;

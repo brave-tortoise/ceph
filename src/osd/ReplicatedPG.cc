@@ -3331,6 +3331,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
   for (vector<OSDOp>::iterator p = ops.begin(); p != ops.end(); ++p, ctx->current_osd_subop_num++) {
     OSDOp& osd_op = *p;
     ceph_osd_op& op = osd_op.op;
+    ctx->delta_recovery = false;
 
     // TODO: check endianness (__le32 vs uint32_t, etc.)
     // The fields in ceph_osd_op are little-endian (according to the definition in rados.h),
@@ -4103,6 +4104,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
     case CEPH_OSD_OP_WRITE:
       ++ctx->num_write;
       { // write
+	ctx->delta_recovery = true;
         __u32 seq = oi.truncate_seq;
 	tracepoint(osd, do_osd_op_pre_write, soid.oid.name.c_str(), soid.snap.val, oi.size, seq, op.extent.offset, op.extent.length, op.extent.truncate_size, op.extent.truncate_seq);
 	if (op.extent.length != osd_op.indata.length()) {
@@ -4153,6 +4155,9 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	    t->truncate(soid, op.extent.truncate_size);
 	    oi.truncate_seq = op.extent.truncate_seq;
 	    oi.truncate_size = op.extent.truncate_size;
+	    interval_set<uint64_t> modified_extent;
+	    modified_extent.insert(oi.truncate_size, oi.size - oi.truncate_size);
+	    ctx->dirty_regions.union_of(modified_extent);
 	    if (op.extent.truncate_size != oi.size) {
 	      ctx->delta_stats.num_bytes -= oi.size;
 	      ctx->delta_stats.num_bytes += op.extent.truncate_size;
@@ -4186,6 +4191,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
     case CEPH_OSD_OP_WRITEFULL:
       ++ctx->num_write;
       { // write full object
+	ctx->delta_recovery = true;
 	tracepoint(osd, do_osd_op_pre_writefull, soid.oid.name.c_str(), soid.snap.val, oi.size, op.extent.offset, op.extent.length);
 
 	if (op.extent.length != osd_op.indata.length()) {
@@ -4251,11 +4257,13 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 
     case CEPH_OSD_OP_ROLLBACK :
       ++ctx->num_write;
+      ctx->delta_recovery = true;
       tracepoint(osd, do_osd_op_pre_rollback, soid.oid.name.c_str(), soid.snap.val);
       result = _rollback_to(ctx, op);
       break;
 
     case CEPH_OSD_OP_ZERO:
+      ctx->delta_recovery = true;
       tracepoint(osd, do_osd_op_pre_zero, soid.oid.name.c_str(), soid.snap.val, op.extent.offset, op.extent.length);
       if (pool.info.require_rollback()) {
 	result = -EOPNOTSUPP;
@@ -4316,6 +4324,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       // falling through
 
     case CEPH_OSD_OP_TRUNCATE:
+      ctx->delta_recovery = true;
       tracepoint(osd, do_osd_op_pre_truncate, soid.oid.name.c_str(), soid.snap.val, oi.size, oi.truncate_seq, op.extent.offset, op.extent.length, op.extent.truncate_size, op.extent.truncate_seq);
       if (pool.info.require_rollback()) {
 	result = -EOPNOTSUPP;
@@ -4367,6 +4376,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       break;
     
     case CEPH_OSD_OP_DELETE:
+      ctx->delta_recovery = true;
       ++ctx->num_write;
       tracepoint(osd, do_osd_op_pre_delete, soid.oid.name.c_str(), soid.snap.val);
       result = _delete_oid(ctx, ctx->ignore_cache);
@@ -5288,6 +5298,9 @@ int ReplicatedPG::_rollback_to(OpContext *ctx, ceph_osd_op& op)
 	modified.subtract(overlaps);
 	ctx->modified_ranges.union_of(modified);
       }
+      interval_set<uint64_t> modified_extent;
+      modified_extent.insert(0, MAX(obs.oi.size, rollback_to->obs.oi.size));
+      ctx->dirty_regions.union_of(modified_extent);
 
       // Adjust the cached objectcontext
       maybe_create_new_object(ctx);
@@ -5801,6 +5814,12 @@ void ReplicatedPG::finish_ctx(OpContext *ctx, int log_op_type, bool maintain_ssc
 				    ctx->obs->oi.version,
 				    ctx->user_at_version, ctx->reqid,
 				    ctx->mtime));
+  ctx->log.back().delta_recovery = ctx->delta_recovery;
+  if(ctx->delta_recovery) {
+    ctx->dirty_regions.union_of(ctx->modified_ranges);
+    ctx->log.back().dirty_regions.insert(ctx->dirty_regions);
+  }
+
   if (soid.snap < CEPH_NOSNAP) {
     set<snapid_t> _snaps(ctx->new_obs.oi.snaps.begin(),
 			 ctx->new_obs.oi.snaps.end());
