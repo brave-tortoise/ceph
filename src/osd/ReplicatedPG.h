@@ -479,6 +479,9 @@ public:
     bool ignore_cache;    ///< true if IGNORE_CACHE flag is set
     bool ignore_log_op_stats;  // don't log op stats
 
+    bool delta_recovery;
+    interval_set<uint64_t> dirty_regions;
+
     // side effects
     list<pair<watch_info_t,bool> > watch_connects; ///< new watch + will_ping flag
     struct watch_disconnect_t {
@@ -595,6 +598,7 @@ public:
       new_obs(obs->oi, obs->exists),
       modify(false), user_modify(false), undirty(false), cache_evict(false),
       ignore_cache(false), ignore_log_op_stats(false),
+      delta_recovery(false),
       bytes_written(0), bytes_read(0), user_at_version(0),
       current_osd_subop_num(0),
       op_t(NULL),
