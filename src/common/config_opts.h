@@ -493,7 +493,7 @@ OPTION(osd_rw_cache_persist_update_count, OPT_INT, 1000)
 OPTION(osd_rw_cache_namespace, OPT_STR, ".ceph-internal") // rados namespace for rw_cache tracking
 
 // promotion params
-OPTION(osd_promote_candidate_queue_max_size, OPT_INT, 256)
+OPTION(osd_promote_candidate_queue_max_size, OPT_INT, 64)
 OPTION(osd_promote_work_queue_max_size, OPT_INT, 32)
 OPTION(osd_promote_max_ops_in_flight, OPT_INT, 4)
 
