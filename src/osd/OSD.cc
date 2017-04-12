@@ -219,6 +219,7 @@ OSDService::OSDService(OSD *osd) :
   agent_timer(osd->client_messenger->cct, agent_timer_lock),
   candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
   degraded_candidates_queue(64),
+  recovery_lock("OSD::recovery_lock"),
   promote_lock("OSD::promote_lock"),
   promote_queue(cct->_conf->osd_promote_work_queue_max_size),
   promote_ops(0),

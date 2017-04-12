@@ -477,6 +477,7 @@ public:
   pg_shard_t up_primary;
   vector<int> up, acting, want_acting;
   set<pg_shard_t> actingbackfill, actingset;
+  set<pg_shard_t> recovery_set;
   map<pg_shard_t,eversion_t> peer_last_complete_ondisk;
   eversion_t  min_last_complete_ondisk;  // up: min over last_complete_ondisk, peer_last_complete_ondisk
   eversion_t  pg_trim_to;

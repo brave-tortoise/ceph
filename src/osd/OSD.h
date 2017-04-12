@@ -659,7 +659,32 @@ public:
     return agent_ops;
   }
 
+
   FIFOCache<hobject_t> candidates_queue, degraded_candidates_queue;
+
+  Mutex recovery_lock;
+  map<pg_shard_t, int> recovery_peers;
+
+  void start_recovery_pg(PG * pg) {
+    Mutex::Locker l(recovery_lock);
+    for(set<pg_shard_t>::iterator i = pg->recovery_set.begin();
+      i != pg->recovery_set.end();
+      ++i) {
+      ++recovery_peers[*i];
+    }
+  }
+
+  void finish_recovery_pg(PG * pg) {
+    Mutex::Locker l(recovery_lock);
+    for(set<pg_shard_t>::iterator i = pg->recovery_set.begin();
+      i != pg->recovery_set.end();
+      ++i) {
+      if(--recovery_peers[*i] == 0) {
+	recovery_peers.erase(*i);
+      }
+    }
+  }
+
 
   // -- promotion state --
   Mutex promote_lock;
