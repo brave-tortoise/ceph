@@ -659,7 +659,7 @@ public:
     return agent_ops;
   }
 
-  FIFOCache<hobject_t> candidates_queue;
+  FIFOCache<hobject_t> candidates_queue, degraded_candidates_queue;
 
   // -- promotion state --
   Mutex promote_lock;

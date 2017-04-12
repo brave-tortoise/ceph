@@ -1219,7 +1219,7 @@ ReplicatedPG::ReplicatedPG(OSDService *o, OSDMapRef curmap,
   pgbackend(
     PGBackend::build_pg_backend(
       _pool.info, curmap, this, coll_t(p), coll_t::make_temp_coll(p), o->store, cct)),
-  candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
+  //candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
   //rw_cache(cct->_conf->osd_rw_ghost_cache_max_size, cct->_conf->osd_rw_resident_victim_ratio),
   rw_cache(cct->_conf->osd_rw_cache_insert_pos_percentile, cct->_conf->osd_rw_cache_persist_update_count),
   object_contexts(o->cct, g_conf->osd_pg_object_context_cache_count),
@@ -1752,10 +1752,11 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   execute_ctx(ctx);
 
+  hobject_t soid = obc->obs.oi.soid;
   if(agent_state && !be_flush_op && obc->obs.exists && !obc->obs.oi.is_whiteout()) {
     dout(20) << "wugy-debug: "
-	<< "oid: " << obc->obs.oi.soid << dendl;
-    rw_cache.adjust_or_add(obc->obs.oi.soid);
+	<< "oid: " << soid << dendl;
+    rw_cache.adjust_or_add(soid);
 
     if(rw_cache.to_persist() ||
 	rw_cache_persist_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
@@ -1763,6 +1764,51 @@ void ReplicatedPG::do_op(OpRequestRef& op)
       agent_choose_mode();
     }
   }
+
+  if(!agent_state && is_undersized() && actingset.size() < actingbackfill.size()) {
+    if(osd->degraded_candidates_queue.adjust_or_add(soid) &&
+	!is_waiting_for_recovery_or_backfill(soid)) {
+      object_locator_t my_oloc = oloc;
+      my_oloc.pool = pool.info.write_tier;
+      call_for_promote(soid.oid, my_oloc);
+      dout(0) << "wugy-debug:"
+	<< " object: " << oid
+	<< " call for promote" << dendl;
+    } else {
+      dout(20) << "wugy-debug: not promote" << dendl;
+    }
+  }
+
+}
+
+bool ReplicatedPG::is_waiting_for_recovery_or_backfill(const hobject_t& soid)
+{
+  // Object is waiting for recovery
+  for (set<pg_shard_t>::iterator i = actingbackfill.begin();
+       i != actingbackfill.end();
+       ++i) {
+    if (*i == get_primary()) continue;
+    pg_shard_t peer = *i;
+    if (peer_missing.count(peer) &&
+	peer_missing[peer].missing.count(soid))
+      return true;
+  }
+  // Object is waiting for backfill if after last_backfill_started
+  for (set<pg_shard_t>::iterator i = backfill_targets.begin();
+	i != backfill_targets.end();
+	++i) {
+    if (*i == get_primary()) continue;
+    if (soid > last_backfill_started)
+      return true;
+  }
+  return false;
+}
+
+void ReplicatedPG::call_for_promote(const object_t& oid, const object_locator_t& oloc)
+{
+  ObjectOperation op;
+  op.promote_from(oloc);
+  osd->objecter->read(oid, oloc, op, CEPH_NOSNAP, NULL, 0, NULL);
 }
 
 bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
@@ -2396,11 +2442,9 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
     wait_for_blocked_object(oid, op);
 }
 
-void ReplicatedPG::async_promote_object(ObjectContextRef obc,
-					const hobject_t& missing_oid,
+void ReplicatedPG::async_promote_object(const hobject_t& missing_oid,
 				  	const object_locator_t& oloc)
 {
-  //PromoteInfo info = {this, obc, oloc};
   PromoteInfo info = {this, oloc};
   osd->promote_enqueue_object(missing_oid, info);
 
@@ -4039,6 +4083,15 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	}
 	osd->logger->inc(l_osd_tier_evict);
         rw_cache.remove(soid);
+      }
+      break;
+
+    case CEPH_OSD_OP_CACHE_PROMOTE:
+      dout(20) << "wugy-debug: cache promote" << dendl;
+      {
+	object_locator_t src_oloc;
+	::decode(src_oloc, bp);
+      	async_promote_object(soid, src_oloc);
       }
       break;
 

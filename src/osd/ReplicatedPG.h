@@ -895,11 +895,11 @@ protected:
   void simple_repop_submit(RepGather *repop);
 
   // candidate objects for promotion
-  FIFOCache<hobject_t> candidates_queue;
+  //FIFOCache<hobject_t> candidates_queue;
 
-  void candidate_enqueue_object(const hobject_t& oid) {
-    candidates_queue.add(oid);
-  }
+  //void candidate_enqueue_object(const hobject_t& oid) {
+    //candidates_queue.add(oid);
+  //}
 
   // objects in cache
   LRUCache<hobject_t> rw_cache;
@@ -1162,6 +1162,10 @@ protected:
 				   uint64_t length, bool count_bytes);
   void add_interval_usage(interval_set<uint64_t>& s, object_stat_sum_t& st);
 
+  bool is_waiting_for_recovery_or_backfill(const hobject_t& soid);
+
+  void call_for_promote(const object_t& soid, const object_locator_t& oloc);
+
   /**
    * This helper function is called from do_op if the ObjectContext lookup fails.
    * @returns true if the caching code is handling the Op, false otherwise.
@@ -1192,8 +1196,7 @@ protected:
    * The queue is a mru cache, so only hot objects are promoted,
    * and promotion of cold objects are canceled.
    */
-  void async_promote_object(ObjectContextRef obc,      ///< [optional] obc
-		      const hobject_t& missing_object, ///< oid (if !obc)
+  void async_promote_object(const hobject_t& missing_object, ///< oid (if !obc)
 		      const object_locator_t& oloc);   ///< locator for obc|oid
   // promote an object
   void promote_work(const hobject_t& missing_object,   ///< oid (if !obc)

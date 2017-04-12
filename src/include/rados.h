@@ -244,6 +244,7 @@ extern const char *ceph_osd_state_name(int s);
 	f(CACHE_FLUSH,	__CEPH_OSD_OP(CACHE, DATA, 31),	"cache-flush")	    \
 	f(CACHE_EVICT,	__CEPH_OSD_OP(CACHE, DATA, 32),	"cache-evict")	    \
 	f(CACHE_TRY_FLUSH, __CEPH_OSD_OP(CACHE, DATA, 33), "cache-try-flush") \
+	f(CACHE_PROMOTE,   __CEPH_OSD_OP(CACHE, DATA, 36), "cache-promote") \
 									    \
 	/* convert tmap to omap */					    \
 	f(TMAP2OMAP,	__CEPH_OSD_OP(RMW, DATA, 34),	"tmap2omap")	    \

@@ -218,6 +218,7 @@ OSDService::OSDService(OSD *osd) :
   agent_timer_lock("OSD::agent_timer_lock"),
   agent_timer(osd->client_messenger->cct, agent_timer_lock),
   candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
+  degraded_candidates_queue(64),
   promote_lock("OSD::promote_lock"),
   promote_queue(cct->_conf->osd_promote_work_queue_max_size),
   promote_ops(0),
@@ -8798,6 +8799,9 @@ int OSD::init_op_flags(OpRequestRef& op)
            iter->op.flags & CEPH_OSD_OP_FLAG_FADVISE_DONTNEED)) {
         op->set_write_full();
       }
+      break;
+    case CEPH_OSD_OP_CACHE_PROMOTE:
+      op->set_skip_handle_cache();
       break;
 
     default:
