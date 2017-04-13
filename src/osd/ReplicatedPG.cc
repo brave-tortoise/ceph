@@ -4157,7 +4157,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	    oi.truncate_size = op.extent.truncate_size;
 	    interval_set<uint64_t> modified_extent;
 	    modified_extent.insert(oi.truncate_size, oi.size - oi.truncate_size);
-	    ctx->dirty_regions.union_of(modified_extent);
+	    ctx->dirty_regions.union_of_skip_gap(modified_extent);
 	    if (op.extent.truncate_size != oi.size) {
 	      ctx->delta_stats.num_bytes -= oi.size;
 	      ctx->delta_stats.num_bytes += op.extent.truncate_size;
@@ -5300,7 +5300,7 @@ int ReplicatedPG::_rollback_to(OpContext *ctx, ceph_osd_op& op)
       }
       interval_set<uint64_t> modified_extent;
       modified_extent.insert(0, MAX(obs.oi.size, rollback_to->obs.oi.size));
-      ctx->dirty_regions.union_of(modified_extent);
+      ctx->dirty_regions.union_of_skip_gap(modified_extent);
 
       // Adjust the cached objectcontext
       maybe_create_new_object(ctx);
@@ -5816,7 +5816,7 @@ void ReplicatedPG::finish_ctx(OpContext *ctx, int log_op_type, bool maintain_ssc
 				    ctx->mtime));
   ctx->log.back().delta_recovery = ctx->delta_recovery;
   if(ctx->delta_recovery) {
-    ctx->dirty_regions.union_of(ctx->modified_ranges);
+    ctx->dirty_regions.union_of_skip_gap(ctx->modified_ranges);
     ctx->log.back().dirty_regions.insert(ctx->dirty_regions);
   }
 

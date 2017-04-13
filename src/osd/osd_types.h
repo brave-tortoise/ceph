@@ -2362,7 +2362,7 @@ struct pg_missing_t {
     void merge(const pg_log_entry_t & e) {
       need = e.version;
       delta_recovery = (delta_recovery && e.delta_recovery);
-      dirty_regions.union_of(e.dirty_regions);
+      dirty_regions.union_of_skip_gap(e.dirty_regions);
     }
 
     void encode(bufferlist& bl) const {
