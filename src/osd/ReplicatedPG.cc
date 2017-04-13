@@ -1767,7 +1767,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   //if(!agent_state && is_undersized() && actingset.size() < actingbackfill.size()) {
   //if(!agent_state && is_degraded()) {
-  if(!agent_state && !osd->recovery_peers.empty()) {
+  if(!agent_state && !osd->recovery_peers.empty() && m->get_snapid() != CEPH_SNAPDIR) {
     if(is_degraded()) {
       if(osd->degraded_candidates_queue.adjust_or_add(soid) &&
 		!is_waiting_for_recovery_or_backfill(soid)) {
@@ -4112,6 +4112,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       {
 	object_locator_t src_oloc;
 	::decode(src_oloc, bp);
+	osd->candidates_queue.adjust_or_add(soid);
       	async_promote_object(soid, src_oloc);
       }
       break;
