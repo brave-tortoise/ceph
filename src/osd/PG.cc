@@ -1083,13 +1083,14 @@ void PG::calc_replicated_acting(
   if (up.size() &&
       !all_info.find(up_primary)->second.is_incomplete() &&
       all_info.find(up_primary)->second.last_update >=
-        auth_log_shard->second.log_tail &&
-	auth_log_shard->second.last_update.version == all_info.find(up_primary)->second.last_update.version) {
+        auth_log_shard->second.log_tail) { //&&
+	//auth_log_shard->second.last_update.version == all_info.find(up_primary)->second.last_update.version) {
     ss << "up_primary: " << up_primary << ") selected as primary" << std::endl;
     primary = all_info.find(up_primary); // prefer up[0], all thing being equal
   } else {
     assert(!auth_log_shard->second.is_incomplete());
-    ss << "up[0] needs backfill or async recovery, osd." << auth_log_shard_id
+    ss << "up[0] needs backfill, osd." << auth_log_shard_id
+    //ss << "up[0] needs backfill or async recovery, osd." << auth_log_shard_id
        << " selected as primary instead" << std::endl;
     primary = auth_log_shard;
   }
