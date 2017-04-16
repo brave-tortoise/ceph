@@ -14,4 +14,3 @@ yum clean all
 yum makecache
 yum -y install tmux git.x86_64 redhat-lsb.x86_64 sshpass.x86_64 gdisk.x86_64
 yum -y update
-#reboot

@@ -419,8 +419,13 @@ public:
     assert(peer_info.count(peer));
     bool should_send = hoid.pool != (int64_t)info.pgid.pool() ||
       hoid <= MAX(last_backfill_started, peer_info[peer].last_backfill);
-    if (!should_send)
+    if (!should_send) {
       assert(is_backfill_targets(peer));
+      return should_send;
+    }
+    if (peer_missing.count(peer) &&
+	peer_missing[peer].missing.count(hoid))
+	should_send = false;
     return should_send;
   }
   
@@ -500,6 +505,9 @@ public:
     bool cache_evict;     ///< true if this is a cache eviction
     bool ignore_cache;    ///< true if IGNORE_CACHE flag is set
     bool ignore_log_op_stats;  // don't log op stats
+
+    bool delta_recovery;
+    interval_set<uint64_t> dirty_regions;
 
     // side effects
     list<pair<watch_info_t,bool> > watch_connects; ///< new watch + will_ping flag
@@ -617,6 +625,7 @@ public:
       new_obs(obs->oi, obs->exists),
       modify(false), user_modify(false), undirty(false), cache_evict(false),
       ignore_cache(false), ignore_log_op_stats(false),
+      delta_recovery(false),
       bytes_written(0), bytes_read(0), user_at_version(0),
       current_osd_subop_num(0),
       op_t(NULL),
