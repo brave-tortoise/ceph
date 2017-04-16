@@ -1312,7 +1312,7 @@ void ReplicatedBackend::calc_head_subsets(
   assert(it != missing.missing.end());
   if((delta_recovery = it->second.delta_recovery)) {
     data_subset.intersection_of(it->second.dirty_regions);
-    dout(0) << " calc_head_subsets"
+    dout(20) << " calc_head_subsets"
 	<< " data_subset " << data_subset << dendl;
   }
 
