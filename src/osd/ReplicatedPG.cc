@@ -1767,14 +1767,17 @@ void ReplicatedPG::do_op(OpRequestRef& op)
 
   //if(!agent_state && is_undersized() && actingset.size() < actingbackfill.size()) {
   //if(!agent_state && is_degraded()) {
-  if(!agent_state && !osd->recovery_peers.empty() && m->get_snapid() != CEPH_SNAPDIR) {
+  //if(!agent_state && 
+  if(pool.info.has_tiers() &&
+	!osd->recovery_peers.empty() &&
+	m->get_snapid() != CEPH_SNAPDIR) {
     if(is_degraded()) {
       if(osd->degraded_candidates_queue.adjust_or_add(soid) &&
 		!is_waiting_for_recovery_or_backfill(soid)) {
       	object_locator_t my_oloc = oloc;
       	my_oloc.pool = pool.info.write_tier;
       	call_for_promote(soid.oid, my_oloc);
-      	dout(0) << "wugy-debug:"
+      	dout(20) << "wugy-debug:"
 		<< " object: " << oid
 		<< " call for promote" << dendl;
       } else {
@@ -1789,7 +1792,7 @@ void ReplicatedPG::do_op(OpRequestRef& op)
       	    object_locator_t my_oloc = oloc;
       	    my_oloc.pool = pool.info.write_tier;
       	    call_for_promote(soid.oid, my_oloc);
-      	    dout(0) << "wugy-debug:"
+      	    dout(20) << "wugy-debug:"
 		<< " object: " << oid
 		<< " call for promote" << dendl;
 	  }
