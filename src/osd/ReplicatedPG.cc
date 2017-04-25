@@ -4122,7 +4122,6 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       {
 	object_locator_t src_oloc;
 	::decode(src_oloc, bp);
-	osd->candidates_queue.adjust_or_add(soid);
       	async_promote_object(soid, src_oloc);
       }
       break;
