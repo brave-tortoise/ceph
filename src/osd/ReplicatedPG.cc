@@ -1979,6 +1979,12 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	}
       }
 
+      do_proxy_write(op, missing_oid);
+      if(osd->candidates_queue.adjust_or_add(missing_oid)) {
+	async_promote_object(missing_oid, oloc);
+      }
+
+      /*
       //if(candidates_queue.lookup_or_add(missing_oid)) {
       if(osd->candidates_queue.lookup_or_add(missing_oid) &&
 		osd->promote_ops < g_conf->osd_promote_max_ops_in_flight) {
@@ -1986,6 +1992,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       } else {
 	do_proxy_write(op, missing_oid);
       }
+      */
 
       /*
       do_proxy_write(op, missing_oid);
@@ -2009,16 +2016,16 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	return true;
       }
 
+      /*
       if(osd->candidates_queue.lookup_or_add(missing_oid) &&
 		osd->promote_ops < g_conf->osd_promote_max_ops_in_flight) {
 	promote_object(obc, missing_oid, oloc);
       }
-
-      /*
-      if(candidates_queue.adjust_or_add(missing_oid)) {
-	async_promote_object(obc, missing_oid, oloc);
-      }
       */
+
+      if(osd->candidates_queue.adjust_or_add(missing_oid)) {
+	async_promote_object(missing_oid, oloc);
+      }
 
       /*
       if(!osd->promote_adjust_object(missing_oid)) {
@@ -4137,7 +4144,6 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
       {
 	object_locator_t src_oloc;
 	::decode(src_oloc, bp);
-	osd->candidates_queue.adjust_or_add(soid);
       	async_promote_object(soid, src_oloc);
       }
       break;
