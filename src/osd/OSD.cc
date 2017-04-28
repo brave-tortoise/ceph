@@ -3953,9 +3953,8 @@ void OSD::token_tick()
   assert(osd_lock.is_locked());
   dout(20) << "token tick" << dendl;
 
-  //if(io_tokens.read() < 180) {
   if(io_tokens.read() < cct->_conf->osd_recovery_max_token) {
-    io_tokens.inc();
+    io_tokens.add(3);
   }
 
   token_timer.add_event_after(cct->_conf->osd_recovery_tick_interval, new Token_Tick(this));
@@ -7847,7 +7846,6 @@ bool OSD::_recover_now()
 //	     << " >= max " << cct->_conf->osd_recovery_max_active << dendl;
     return false;
   }
-  //if (io_tokens.read() <= 150) {
   if (io_tokens.read() <= cct->_conf->osd_recovery_min_token) {
     return false;
   }
@@ -7934,7 +7932,6 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
   if (max > 0) {
     assert(recovery_ops_active >= max);
     recovery_ops_active -= max;
-    //io_tokens.add(max);
   }
   recovery_wq._wake();
   recovery_wq.unlock();
