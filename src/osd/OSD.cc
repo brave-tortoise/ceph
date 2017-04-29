@@ -3954,8 +3954,10 @@ void OSD::token_tick()
   dout(20) << "token tick" << dendl;
 
   if(io_tokens.read() < cct->_conf->osd_recovery_max_token) {
-    io_tokens.add(3);
+    io_tokens.add(4);
   }
+
+  //dout(0) << "token read: " << io_tokens.read() << dendl;
 
   token_timer.add_event_after(cct->_conf->osd_recovery_tick_interval, new Token_Tick(this));
 }
@@ -7863,8 +7865,9 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
   recovery_wq.lock();
   //int max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active,
   //    cct->_conf->osd_recovery_max_single_start);
-  int max = MIN(io_tokens.read() - cct->_conf->osd_recovery_min_token, cct->_conf->osd_recovery_max_single_start);
-  max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active, max);
+  int over_tokens = io_tokens.read() - cct->_conf->osd_recovery_min_token;
+  //int max = MIN(over_tokens, cct->_conf->osd_recovery_max_single_start);
+  int max = MIN(over_tokens/32 - recovery_ops_active, 1);
   /*
   dout(0) << "wugy-debug: "
 	<< "do_recovery tokens: " << io_tokens.read()
@@ -7875,7 +7878,7 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
     dout(10) << "do_recovery can start " << max << " (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
 	     << " rops)" << dendl;
     recovery_ops_active += max;  // take them now, return them if we don't use them.
-    io_tokens.sub(max);
+    io_tokens.sub(max<<5);
   } else {
     dout(10) << "do_recovery can start 0 (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
 	     << " rops)" << dendl;
@@ -7945,7 +7948,8 @@ void OSD::start_recovery_op(PG *pg, const hobject_t& soid)
 	   << dendl;
   assert(recovery_ops_active >= 0);
   recovery_ops_active++;
-  io_tokens.dec();
+  //io_tokens.dec();
+  //io_tokens.sub(8);
   /*
   dout(20) << "wugy-debug: "
 	<< "start_recovery_op tokens: " << io_tokens.read()
