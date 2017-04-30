@@ -1561,6 +1561,7 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   command_wq(this, cct->_conf->osd_command_thread_timeout, &command_tp),
   //in_flight_ops(0),
   io_tokens(0),
+  //latency_sum(0),io_num(0),
   recovery_ops_active(0),
   recovery_wq(this, cct->_conf->osd_recovery_thread_timeout, &recovery_tp),
   replay_queue_lock("OSD::replay_queue_lock"),
@@ -3944,6 +3945,18 @@ void OSD::tick()
   }
 
   check_ops_in_flight();
+
+  /*
+  int num = io_num.read();
+  if(num > 1000) {
+    int latency = latency_sum.read() / num;
+    latency_sum.set(0);
+    io_num.set(0);
+    dout(0) << "sum: " << latency_sum.read()
+	<< " num: " << num
+	<< " latency: " << latency << " ms" << dendl;
+  }
+  */
 
   tick_timer.add_event_after(1.0, new C_Tick(this));
 }

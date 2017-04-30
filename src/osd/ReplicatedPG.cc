@@ -7282,6 +7282,11 @@ void ReplicatedPG::eval_repop(RepGather *repop)
 
   // ondisk?
   if (repop->all_committed) {
+    /*if(repop->ctx->op) {
+      utime_t latency = ceph_clock_now(cct) - m->get_recv_stamp();
+      osd->osd->latency_sum.add(latency.to_msec());
+      osd->osd->io_num.inc();
+    }*/
     if (repop->ctx->op && !repop->log_op_stat) {
       log_op_stats(repop->ctx);
       repop->log_op_stat = true;

@@ -649,7 +649,6 @@ public:
     return agent_ops;
   }
 
-
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;
   Finisher objecter_finisher;
@@ -2002,6 +2001,7 @@ protected:
 
   //atomic_t in_flight_ops;
   atomic_t io_tokens;
+  //atomic_t latency_sum, io_num;
 
   // -- pg recovery --
   xlist<PG*> recovery_queue;
