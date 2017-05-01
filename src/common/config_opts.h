@@ -597,7 +597,7 @@ OPTION(osd_preserve_trimmed_log, OPT_BOOL, false)
 OPTION(osd_auto_mark_unfound_lost, OPT_BOOL, false)
 
 OPTION(osd_recovery_min_token, OPT_INT, 1000)
-OPTION(osd_recovery_max_token, OPT_INT, 1320)
+OPTION(osd_recovery_max_token, OPT_INT, 1640)
 OPTION(osd_recovery_tick_interval, OPT_FLOAT, 0.01)
 OPTION(osd_recovery_delay_start, OPT_FLOAT, 0)
 OPTION(osd_recovery_max_active, OPT_INT, 15)

@@ -3970,7 +3970,7 @@ void OSD::token_tick()
     io_tokens.add(4);
   }
 
-  //dout(0) << "token read: " << io_tokens.read() << dendl;
+  //dout(0) << "token read: " << io_tokens.read() << ", " << recovery_ops_active << dendl;
 
   token_timer.add_event_after(cct->_conf->osd_recovery_tick_interval, new Token_Tick(this));
 }
@@ -7856,11 +7856,11 @@ void OSD::check_replay_queue()
 
 bool OSD::_recover_now()
 {
-  if (recovery_ops_active >= cct->_conf->osd_recovery_max_active) {
+  /*if (recovery_ops_active >= cct->_conf->osd_recovery_max_active) {
     //dout(15) << "_recover_now active " << recovery_ops_active
 //	     << " >= max " << cct->_conf->osd_recovery_max_active << dendl;
     return false;
-  }
+  }*/
   if (io_tokens.read() <= cct->_conf->osd_recovery_min_token) {
     return false;
   }
@@ -7886,6 +7886,8 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
 	<< "do_recovery tokens: " << io_tokens.read()
 	<< dendl;
   */
+
+  //dout(0) << "recovery: " << over_tokens << ", " << recovery_ops_active << dendl;
 
   if (max > 0) {
     dout(10) << "do_recovery can start " << max << " (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
