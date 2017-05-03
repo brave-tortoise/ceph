@@ -280,6 +280,8 @@ void PGBackend::trim_stashed_object(
 PGBackend *PGBackend::build_pg_backend(
   const pg_pool_t &pool,
   const OSDMapRef curmap,
+  //atomic_t *in_flight_ops,
+  atomic_t *io_tokens,
   Listener *l,
   coll_t coll,
   coll_t temp_coll,
@@ -288,7 +290,11 @@ PGBackend *PGBackend::build_pg_backend(
 {
   switch (pool.type) {
   case pg_pool_t::TYPE_REPLICATED: {
-    return new ReplicatedBackend(l, coll, temp_coll, store, cct);
+    //return new ReplicatedBackend(l, coll, temp_coll, store, cct);
+    PGBackend *pgbackend = new ReplicatedBackend(l, coll, temp_coll, store, cct);
+    //pgbackend->in_flight_ops = in_flight_ops;
+    pgbackend->io_tokens = io_tokens;
+    return pgbackend;
   }
   case pg_pool_t::TYPE_ERASURE: {
     ErasureCodeInterfaceRef ec_impl;

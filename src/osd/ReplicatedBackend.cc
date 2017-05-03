@@ -660,6 +660,14 @@ void ReplicatedBackend::op_commit(
   if (op->op)
     op->op->mark_event("op_commit");
 
+  /*
+  in_flight_ops->dec();
+  dout(0) << "wugy-debug: "
+	<< "commit op " << op->op->get_reqid()
+	<< " in_flight_ops: " << in_flight_ops->read()
+	<< dendl;
+  */
+
   op->waiting_for_commit.erase(get_parent()->whoami_shard());
 
   if (op->waiting_for_commit.empty()) {
@@ -1104,6 +1112,23 @@ void ReplicatedBackend::issue_op(
 
 // sub op modify
 void ReplicatedBackend::sub_op_modify(OpRequestRef op) {
+  /*
+  in_flight_ops->inc();
+  dout(0) << "wugy-debug: "
+	<< "sub op modify " << op->get_reqid()
+	<< " in_flight_ops: " << in_flight_ops->read()
+	<< dendl;
+  */
+
+  if(io_tokens->read() > 0) {
+    io_tokens->dec();
+  }
+  /*
+  dout(20) << "wugy-debug: "
+	<< "sub_op_modify tokens: " << io_tokens->read()
+	<< dendl;
+  */
+
   Message *m = op->get_req();
   int msg_type = m->get_type();
   if (msg_type == MSG_OSD_SUBOP) {
@@ -1257,6 +1282,14 @@ void ReplicatedBackend::sub_op_modify_commit(RepModifyRef rm)
   dout(10) << "sub_op_modify_commit on op " << *rm->op->get_req()
 	   << ", sending commit to osd." << rm->ackerosd
 	   << dendl;
+
+  /*
+  in_flight_ops->dec();
+  dout(0) << "wugy-debug: "
+	<< "commit sub op " << rm->op->get_reqid()
+	<< " in_flight_ops: " << in_flight_ops->read()
+	<< dendl;
+  */
 
   assert(get_osdmap()->is_up(rm->ackerosd));
   get_parent()->update_last_complete_ondisk(rm->last_complete);

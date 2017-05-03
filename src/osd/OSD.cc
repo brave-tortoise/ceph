@@ -1500,6 +1500,7 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   Dispatcher(cct_),
   osd_lock("OSD::osd_lock"),
   tick_timer(cct, osd_lock),
+  token_timer(cct, osd_lock),
   authorize_handler_cluster_registry(new AuthAuthorizeHandlerRegistry(cct,
 								      cct->_conf->auth_supported.empty() ?
 								      cct->_conf->auth_cluster_required :
@@ -1558,6 +1559,9 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   osd_stat_updated(false),
   pg_stat_tid(0), pg_stat_tid_flushed(0),
   command_wq(this, cct->_conf->osd_command_thread_timeout, &command_tp),
+  //in_flight_ops(0),
+  io_tokens(0),
+  //latency_sum(0),io_num(0),
   recovery_ops_active(0),
   recovery_wq(this, cct->_conf->osd_recovery_thread_timeout, &recovery_tp),
   replay_queue_lock("OSD::replay_queue_lock"),
@@ -1758,6 +1762,7 @@ int OSD::init()
     return 0;
 
   tick_timer.init();
+  token_timer.init();
   service.backfill_request_timer.init();
 
   // mount.
@@ -1896,6 +1901,7 @@ int OSD::init()
 
   // tick
   tick_timer.add_event_after(cct->_conf->osd_heartbeat_interval, new C_Tick(this));
+  token_timer.add_event_after(1.0, new Token_Tick(this));
 
   service.init();
   service.publish_map(osdmap);
@@ -2326,6 +2332,7 @@ int OSD::shutdown()
   reset_heartbeat_peers();
 
   tick_timer.shutdown();
+  token_timer.shutdown();
 
   // note unmount epoch
   dout(10) << "noting clean unmount in epoch " << osdmap->get_epoch() << dendl;
@@ -3939,7 +3946,33 @@ void OSD::tick()
 
   check_ops_in_flight();
 
+  /*
+  int num = io_num.read();
+  if(num > 1000) {
+    int latency = latency_sum.read() / num;
+    latency_sum.set(0);
+    io_num.set(0);
+    dout(0) << "sum: " << latency_sum.read()
+	<< " num: " << num
+	<< " latency: " << latency << " ms" << dendl;
+  }
+  */
+
   tick_timer.add_event_after(1.0, new C_Tick(this));
+}
+
+void OSD::token_tick()
+{
+  assert(osd_lock.is_locked());
+  dout(20) << "token tick" << dendl;
+
+  if(io_tokens.read() < cct->_conf->osd_recovery_max_token) {
+    io_tokens.add(4);
+  }
+
+  //dout(0) << "token read: " << io_tokens.read() << ", " << recovery_ops_active << dendl;
+
+  token_timer.add_event_after(cct->_conf->osd_recovery_tick_interval, new Token_Tick(this));
 }
 
 void OSD::check_ops_in_flight()
@@ -7823,9 +7856,12 @@ void OSD::check_replay_queue()
 
 bool OSD::_recover_now()
 {
-  if (recovery_ops_active >= cct->_conf->osd_recovery_max_active) {
-    dout(15) << "_recover_now active " << recovery_ops_active
-	     << " >= max " << cct->_conf->osd_recovery_max_active << dendl;
+  /*if (recovery_ops_active >= cct->_conf->osd_recovery_max_active) {
+    //dout(15) << "_recover_now active " << recovery_ops_active
+//	     << " >= max " << cct->_conf->osd_recovery_max_active << dendl;
+    return false;
+  }*/
+  if (io_tokens.read() <= cct->_conf->osd_recovery_min_token) {
     return false;
   }
   if (ceph_clock_now(cct) < defer_recovery_until) {
@@ -7840,12 +7876,24 @@ void OSD::do_recovery(PG *pg, ThreadPool::TPHandle &handle)
 {
   // see how many we should try to start.  note that this is a bit racy.
   recovery_wq.lock();
-  int max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active,
-      cct->_conf->osd_recovery_max_single_start);
+  //int max = MIN(cct->_conf->osd_recovery_max_active - recovery_ops_active,
+  //    cct->_conf->osd_recovery_max_single_start);
+  int over_tokens = io_tokens.read() - cct->_conf->osd_recovery_min_token;
+  //int max = MIN(over_tokens, cct->_conf->osd_recovery_max_single_start);
+  int max = MIN(over_tokens/32 - recovery_ops_active, 1);
+  /*
+  dout(0) << "wugy-debug: "
+	<< "do_recovery tokens: " << io_tokens.read()
+	<< dendl;
+  */
+
+  //dout(0) << "recovery: " << over_tokens << ", " << recovery_ops_active << dendl;
+
   if (max > 0) {
     dout(10) << "do_recovery can start " << max << " (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
 	     << " rops)" << dendl;
     recovery_ops_active += max;  // take them now, return them if we don't use them.
+    io_tokens.sub(max<<5);
   } else {
     dout(10) << "do_recovery can start 0 (" << recovery_ops_active << "/" << cct->_conf->osd_recovery_max_active
 	     << " rops)" << dendl;
@@ -7915,6 +7963,13 @@ void OSD::start_recovery_op(PG *pg, const hobject_t& soid)
 	   << dendl;
   assert(recovery_ops_active >= 0);
   recovery_ops_active++;
+  //io_tokens.dec();
+  //io_tokens.sub(8);
+  /*
+  dout(20) << "wugy-debug: "
+	<< "start_recovery_op tokens: " << io_tokens.read()
+	<< dendl;
+  */
 
 #ifdef DEBUG_RECOVERY_OIDS
   dout(20) << "  active was " << recovery_oids[pg->info.pgid] << dendl;
@@ -7936,6 +7991,12 @@ void OSD::finish_recovery_op(PG *pg, const hobject_t& soid, bool dequeue)
   // adjust count
   recovery_ops_active--;
   assert(recovery_ops_active >= 0);
+  //io_tokens.inc();
+  /*
+  dout(20) << "wugy-debug: "
+	<< "finish_recovery_op tokens: " << io_tokens.read()
+	<< dendl;
+  */
 
 #ifdef DEBUG_RECOVERY_OIDS
   dout(20) << "  active oids was " << recovery_oids[pg->info.pgid] << dendl;

@@ -649,7 +649,6 @@ public:
     return agent_ops;
   }
 
-
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;
   Finisher objecter_finisher;
@@ -915,6 +914,7 @@ public:
 protected:
   Mutex osd_lock;			// global lock
   SafeTimer tick_timer;    // safe timer (osd_lock)
+  SafeTimer token_timer;
 
   AuthAuthorizeHandlerRegistry *authorize_handler_cluster_registry;
   AuthAuthorizeHandlerRegistry *authorize_handler_service_registry;
@@ -942,12 +942,23 @@ protected:
     }
   };
 
+  // token bucket tick
+  class Token_Tick : public Context {
+    OSD *osd;
+  public:
+    Token_Tick(OSD *o) : osd(o) {}
+    void finish(int r) {
+      osd->token_tick();
+    }
+  };
+
   Cond dispatch_cond;
   int dispatch_running;
 
   void create_logger();
   void create_recoverystate_perf();
   void tick();
+  void token_tick();
   void _dispatch(Message *m);
   void dispatch_op(OpRequestRef op);
   bool dispatch_op_fast(OpRequestRef& op, OSDMapRef& osdmap);
@@ -1987,6 +1998,10 @@ protected:
   void handle_command(class MMonCommand *m);
   void handle_command(class MCommand *m);
   void do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data);
+
+  //atomic_t in_flight_ops;
+  atomic_t io_tokens;
+  //atomic_t latency_sum, io_num;
 
   // -- pg recovery --
   xlist<PG*> recovery_queue;
