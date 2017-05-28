@@ -1219,8 +1219,6 @@ ReplicatedPG::ReplicatedPG(OSDService *o, OSDMapRef curmap,
   pgbackend(
     PGBackend::build_pg_backend(
       _pool.info, curmap, this, coll_t(p), coll_t::make_temp_coll(p), o->store, cct)),
-  candidates_queue(cct->_conf->osd_promote_candidate_queue_max_size),
-  //rw_cache(cct->_conf->osd_rw_ghost_cache_max_size, cct->_conf->osd_rw_resident_victim_ratio),
   rw_cache(cct->_conf->osd_rw_cache_insert_pos_percentile, cct->_conf->osd_rw_cache_persist_update_count),
   object_contexts(o->cct, g_conf->osd_pg_object_context_cache_count),
   snapset_contexts_lock("ReplicatedPG::snapset_contexts"),
@@ -1888,6 +1886,12 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
 	}
       }
 
+      do_proxy_write(op, missing_oid);
+      if(osd->candidates_queue.adjust_or_add(missing_oid)) {
+	async_promote_object(missing_oid, oloc);
+      }
+
+      /*
       //if(candidates_queue.lookup_or_add(missing_oid)) {
       if(osd->candidates_queue.lookup_or_add(missing_oid) &&
 		osd->promote_ops < g_conf->osd_promote_max_ops_in_flight) {
@@ -1895,6 +1899,7 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       } else {
 	do_proxy_write(op, missing_oid);
       }
+      */
 
       /*
       do_proxy_write(op, missing_oid);
@@ -1918,16 +1923,16 @@ bool ReplicatedPG::maybe_handle_cache(OpRequestRef op,
       	return true;
       }
 
+      /*
       if(osd->candidates_queue.lookup_or_add(missing_oid) &&
 		osd->promote_ops < g_conf->osd_promote_max_ops_in_flight) {
 	promote_object(obc, missing_oid, oloc);
       }
-
-      /*
-      if(candidates_queue.adjust_or_add(missing_oid)) {
-	async_promote_object(obc, missing_oid, oloc);
-      }
       */
+
+      if(osd->candidates_queue.adjust_or_add(missing_oid)) {
+	async_promote_object(missing_oid, oloc);
+      }
 
       /*
       if(!osd->promote_adjust_object(missing_oid)) {
@@ -2396,11 +2401,9 @@ void ReplicatedPG::promote_object(ObjectContextRef obc,
     wait_for_blocked_object(oid, op);
 }
 
-void ReplicatedPG::async_promote_object(ObjectContextRef obc,
-					const hobject_t& missing_oid,
+void ReplicatedPG::async_promote_object(const hobject_t& missing_oid,
 				  	const object_locator_t& oloc)
 {
-  //PromoteInfo info = {this, obc, oloc};
   PromoteInfo info = {this, oloc};
   osd->promote_enqueue_object(missing_oid, info);
 
