@@ -3039,6 +3039,7 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
          var == "hit_set_count" || var == "hit_set_fpp" ||
          var == "target_max_objects" || var == "target_max_bytes" ||
          var == "cache_target_full_ratio" ||
+         var == "cache_target_warm_ratio" ||
          var == "cache_target_dirty_ratio" ||
          var == "cache_min_flush_age" || var == "cache_min_evict_age")) {
       ss << "pool '" << poolstr
@@ -3098,6 +3099,11 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
                          p->cache_target_dirty_ratio_micro);
         f->dump_float("cache_target_dirty_ratio",
                       ((float)p->cache_target_dirty_ratio_micro/1000000));
+      } else if (var == "cache_target_warm_ratio") {
+        f->dump_unsigned("cache_target_warm_ratio_micro",
+                         p->cache_target_warm_ratio_micro);
+        f->dump_float("cache_target_warm_ratio",
+                      ((float)p->cache_target_warm_ratio_micro/1000000));
       } else if (var == "cache_target_full_ratio") {
         f->dump_unsigned("cache_target_full_ratio_micro",
                          p->cache_target_full_ratio_micro);
@@ -3111,6 +3117,12 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
        f->dump_string("erasure_code_profile", p->erasure_code_profile);
       } else if (var == "min_read_recency_for_promote") {
 	f->dump_int("min_read_recency_for_promote", p->min_read_recency_for_promote);
+      } else if (var == "min_write_recency_for_promote") {
+	f->dump_int("min_write_recency_for_promote", p->min_write_recency_for_promote);
+      } else if (var == "max_temp_increment") {
+	f->dump_int("max_temp_increment", p->max_temp_increment);
+      } else if (var == "hit_set_decay_factor") {
+	f->dump_int("hit_set_decay_factor", p->hit_set_decay_factor);
       } else if (var == "write_fadvise_dontneed") {
 	f->dump_string("write_fadvise_dontneed", p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ? "true" : "false");
       }
@@ -3153,6 +3165,9 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
       } else if (var == "cache_target_dirty_ratio") {
         ss << "cache_target_dirty_ratio: "
           << ((float)p->cache_target_dirty_ratio_micro/1000000);
+      } else if (var == "cache_target_warm_ratio") {
+        ss << "cache_target_warm_ratio: "
+          << ((float)p->cache_target_warm_ratio_micro/1000000);
       } else if (var == "cache_target_full_ratio") {
         ss << "cache_target_full_ratio: "
           << ((float)p->cache_target_full_ratio_micro/1000000);
@@ -3164,6 +3179,12 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
        ss << "erasure_code_profile: " << p->erasure_code_profile;
       } else if (var == "min_read_recency_for_promote") {
 	ss << "min_read_recency_for_promote: " << p->min_read_recency_for_promote;
+      } else if (var == "min_write_recency_for_promote") {
+	ss << "min_write_recency_for_promote: " << p->min_write_recency_for_promote;
+      } else if (var == "max_temp_increment") {
+	ss << "max_temp_increment: " << p->max_temp_increment;
+      } else if (var == "hit_set_decay_factor") {
+	ss << "hit_set_decay_factor: " << p->hit_set_decay_factor;
       } else if (var == "write_fadvise_dontneed") {
 	ss << "write_fadvise_dontneed: " <<  (p->has_flag(pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED) ? "true" : "false");
       }
@@ -4026,6 +4047,8 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
   pi->stripe_width = stripe_width;
   pi->cache_target_dirty_ratio_micro =
     g_conf->osd_pool_default_cache_target_dirty_ratio * 1000000;
+  pi->cache_target_warm_ratio_micro =
+    g_conf->osd_pool_default_cache_target_warm_ratio * 1000000;
   pi->cache_target_full_ratio_micro =
     g_conf->osd_pool_default_cache_target_full_ratio * 1000000;
   pi->cache_min_flush_age = g_conf->osd_pool_default_cache_min_flush_age;
@@ -4151,7 +4174,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       (var == "hit_set_type" || var == "hit_set_period" ||
        var == "hit_set_count" || var == "hit_set_fpp" ||
        var == "target_max_objects" || var == "target_max_bytes" ||
-       var == "cache_target_full_ratio" || var == "cache_target_dirty_ratio" ||
+       var == "cache_target_full_ratio" || var == "cache_target_dirty_ratio" || var == "cache_target_warm_ratio" ||
        var == "cache_min_flush_age" || var == "cache_min_evict_age")) {
     ss << "pool '" << poolstr << "' is not a tier pool: variable not applicable";
     return -EACCES;
@@ -4381,6 +4404,16 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       return -ERANGE;
     }
     p.cache_target_dirty_ratio_micro = uf;
+  } else if (var == "cache_target_warm_ratio") {
+    if (floaterr.length()) {
+      ss << "error parsing float '" << val << "': " << floaterr;
+      return -EINVAL;
+    }
+    if (f < 0 || f > 1.0) {
+      ss << "value must be in the range 0..1";
+      return -ERANGE;
+    }
+    p.cache_target_warm_ratio_micro = uf;
   } else if (var == "cache_target_full_ratio") {
     if (floaterr.length()) {
       ss << "error parsing float '" << val << "': " << floaterr;
@@ -4409,6 +4442,24 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       return -EINVAL;
     }
     p.min_read_recency_for_promote = n;
+  } else if (var == "min_write_recency_for_promote") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.min_write_recency_for_promote = n;
+  } else if (var == "max_temp_increment") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.max_temp_increment = n;
+  } else if (var == "hit_set_decay_factor") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.hit_set_decay_factor = n;
   } else if (var == "write_fadvise_dontneed") {
     if (val == "true" || (interr.empty() && n == 1)) {
       p.flags |= pg_pool_t::FLAG_WRITE_FADVISE_DONTNEED;
@@ -6112,6 +6163,31 @@ done:
       err = -ENOTEMPTY;
       goto reply;
     }
+
+    string modestr = g_conf->osd_tier_default_cache_mode;
+    pg_pool_t::cache_mode_t mode = pg_pool_t::get_cache_mode_from_str(modestr);
+    if (mode < 0) {
+      ss << "osd tier cache default mode '" << modestr << "' is not a valid cache mode";
+      err = -EINVAL;
+      goto reply;
+    }
+    HitSet::Params hsp;
+    if (g_conf->osd_tier_default_cache_hit_set_type == "bloom") {
+      BloomHitSet::Params *bsp = new BloomHitSet::Params;
+      bsp->set_fpp(g_conf->osd_pool_default_hit_set_bloom_fpp);
+      hsp = HitSet::Params(bsp);
+    } else if (g_conf->osd_tier_default_cache_hit_set_type == "explicit_hash") {
+      hsp = HitSet::Params(new ExplicitHashHitSet::Params);
+    }
+    else if (g_conf->osd_tier_default_cache_hit_set_type == "explicit_object") {
+      hsp = HitSet::Params(new ExplicitObjectHitSet::Params);
+    } else {
+      ss << "osd tier cache default hit set type '" <<
+	g_conf->osd_tier_default_cache_hit_set_type << "' is not a known type";
+      err = -EINVAL;
+      goto reply;
+    }
+
     // go
     pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
     pg_pool_t *ntp = pending_inc.get_new_pool(tierpool_id, tp);
@@ -6120,8 +6196,23 @@ done:
       return true;
     }
     np->tiers.insert(tierpool_id);
+    np->read_tier = np->write_tier = tierpool_id;
     np->set_snap_epoch(pending_inc.epoch); // tier will update to our snap info
     ntp->tier_of = pool_id;
+    ntp->cache_mode = mode;
+    ntp->hit_set_count = g_conf->osd_tier_default_cache_hit_set_count;
+    ntp->hit_set_period = g_conf->osd_tier_default_cache_hit_set_period;
+    ntp->min_read_recency_for_promote = g_conf->osd_tier_default_cache_min_read_recency_for_promote;
+    ntp->min_write_recency_for_promote = g_conf->osd_tier_default_cache_min_write_recency_for_promote;
+    ntp->max_temp_increment = g_conf->osd_tier_default_cache_max_temp_increment;
+    ntp->hit_set_decay_factor = g_conf->osd_tier_default_cache_hit_set_decay_factor;
+    dout(20) << "wugy-debug: "
+	<< "OSDMonitor read configs: "
+	<< "min_write_recency_for_promote = " << ntp->min_write_recency_for_promote << "; "
+	<< "max_temp_increment = " << ntp->max_temp_increment
+	<< dendl;
+    ntp->hit_set_params = hsp;
+
     ss << "pool '" << tierpoolstr << "' is now (or already was) a tier of '" << poolstr << "'";
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
 					      get_last_committed() + 1));
@@ -6466,8 +6557,12 @@ done:
     ntp->hit_set_count = g_conf->osd_tier_default_cache_hit_set_count;
     ntp->hit_set_period = g_conf->osd_tier_default_cache_hit_set_period;
     ntp->min_read_recency_for_promote = g_conf->osd_tier_default_cache_min_read_recency_for_promote;
+    ntp->min_write_recency_for_promote = g_conf->osd_tier_default_cache_min_write_recency_for_promote;
+    ntp->max_temp_increment = g_conf->osd_tier_default_cache_max_temp_increment;
+    ntp->hit_set_decay_factor = g_conf->osd_tier_default_cache_hit_set_decay_factor;
     ntp->hit_set_params = hsp;
     ntp->target_max_bytes = size;
+
     ss << "pool '" << tierpoolstr << "' is now (or already was) a cache tier of '" << poolstr << "'";
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
 					      get_last_committed() + 1));

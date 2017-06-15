@@ -8,12 +8,11 @@ clientname=admin
 pool=hdd-pool
 rw=randwrite
 bs=4k
-#size=40g
-#ramp_time=60
-runtime=360
+#size=20g
+ramp_time=30
+runtime=300
 #time_based
-iodepth=64
-direct=1
+iodepth=128
 
 [rbd-test1]
 rbdname=test1

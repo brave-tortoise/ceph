@@ -479,6 +479,24 @@ OPTION(osd_agent_hist_halflife, OPT_INT, 1000)
 // this amount below the threshold to disable.
 OPTION(osd_agent_slop, OPT_FLOAT, .02)
 
+// osd read/write cache size, not evict/flush objects in cache
+//OPTION(osd_read_cache_object_count, OPT_INT, 2048)
+//OPTION(osd_write_cache_object_count, OPT_INT, 1024)
+
+//OPTION(osd_rw_ghost_cache_max_size, OPT_INT, 32)
+//OPTION(osd_rw_resident_victim_ratio, OPT_INT, 8)
+
+// rw_cache params
+OPTION(osd_rw_cache_insert_pos_percentile, OPT_INT, 40)   // position of a new object inserted in rw_cache
+OPTION(osd_rw_cache_persist_update_count, OPT_INT, 1000)
+//OPTION(osd_rw_cache_persist_period, OPT_INT, 1200)
+OPTION(osd_rw_cache_namespace, OPT_STR, ".ceph-internal") // rados namespace for rw_cache tracking
+
+// promotion params
+OPTION(osd_promote_candidate_queue_max_size, OPT_INT, 64)
+OPTION(osd_promote_work_queue_max_size, OPT_INT, 32)
+OPTION(osd_promote_max_ops_in_flight, OPT_INT, 8)
+
 OPTION(osd_uuid, OPT_UUID, uuid_d())
 OPTION(osd_data, OPT_STR, "/var/lib/ceph/osd/$cluster-$id")
 OPTION(osd_journal, OPT_STR, "/var/lib/ceph/osd/$cluster-$id/journal")
@@ -523,6 +541,7 @@ OPTION(osd_pool_default_flag_nopgchange, OPT_BOOL, false) // pool's pg and pgp n
 OPTION(osd_pool_default_flag_nosizechange, OPT_BOOL, false) // pool's size and min size can't be changed
 OPTION(osd_pool_default_hit_set_bloom_fpp, OPT_FLOAT, .05)
 OPTION(osd_pool_default_cache_target_dirty_ratio, OPT_FLOAT, .4)
+OPTION(osd_pool_default_cache_target_warm_ratio, OPT_FLOAT, .7)
 OPTION(osd_pool_default_cache_target_full_ratio, OPT_FLOAT, .8)
 OPTION(osd_pool_default_cache_min_flush_age, OPT_INT, 0)  // seconds
 OPTION(osd_pool_default_cache_min_evict_age, OPT_INT, 0)  // seconds
@@ -534,7 +553,10 @@ OPTION(osd_tier_default_cache_mode, OPT_STR, "writeback")
 OPTION(osd_tier_default_cache_hit_set_count, OPT_INT, 4)
 OPTION(osd_tier_default_cache_hit_set_period, OPT_INT, 1200)
 OPTION(osd_tier_default_cache_hit_set_type, OPT_STR, "bloom")
-OPTION(osd_tier_default_cache_min_read_recency_for_promote, OPT_INT, 1) // number of recent HitSets the object must appear in to be promoted (on read)
+OPTION(osd_tier_default_cache_min_read_recency_for_promote, OPT_INT, 2) // number of recent HitSets the object must appear in to be promoted (on read)
+OPTION(osd_tier_default_cache_min_write_recency_for_promote, OPT_INT, 2) // number of recent HitSets the object must appear in to be promoted (on write)
+OPTION(osd_tier_default_cache_max_temp_increment, OPT_INT, 10000)
+OPTION(osd_tier_default_cache_hit_set_decay_factor, OPT_INT, 80)
 
 OPTION(osd_map_dedup, OPT_BOOL, true)
 OPTION(osd_map_max_advance, OPT_INT, 200) // make this < cache_size!

@@ -965,6 +965,11 @@ struct ObjectOperation {
     ::encode(src_oloc, osd_op.indata);
   }
 
+  void promote_from(const object_locator_t& src_oloc) {
+    OSDOp& osd_op = add_op(CEPH_OSD_OP_CACHE_PROMOTE);
+    ::encode(src_oloc, osd_op.indata);
+  }
+
   /**
    * writeback content to backing tier
    *
