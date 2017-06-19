@@ -1,27 +1,29 @@
 [global]
 #logging
-#write_iops_log=wiops
-#write_bw_log=wbw
-#write_lat_log=wlat
+write_iops_log=read4k
+write_bw_log=read4k
+write_lat_log=read4k
+time_based
 ioengine=rbd
 clientname=admin
 pool=hdd-pool
 rw=randread
 bs=4k
-#size=20g
+filesize=100g
 ramp_time=30
-runtime=300
-#time_based
-iodepth=128
+runtime=120
+direct=1
+randrepeat=0
+iodepth=256
 
 [rbd-test1]
 rbdname=test1
 
-[rbd-test2]
-rbdname=test2
+#[rbd-test2]
+#rbdname=test2
 
-[rbd-test3]
-rbdname=test3
+#[rbd-test3]
+#rbdname=test3
 
-[rbd-test4]
-rbdname=test4
+#[rbd-test4]
+#rbdname=test4

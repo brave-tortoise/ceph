@@ -5,12 +5,13 @@
 #write_lat_log=wlat
 ioengine=libaio
 direct=1
-filename=/dev/sdc #:/dev/sdb:/dev/sdc
+filename=/dev/sda1 #:/dev/sdb:/dev/sdc
 rw=randwrite
-bs=4k
+bs=1m
 ramp_time=30
 runtime=300
+direct=1
 #time_based
 
-[rbd_iodepth8]
-iodepth=8
+[rbd_iodepth32]
+iodepth=32
